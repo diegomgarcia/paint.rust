@@ -1,0 +1,129 @@
+{
+  "external_gates": {
+    "hosted_three_os_ci": "NOT_RUN",
+    "native_windows_linux_window_usability": "NOT_RUN",
+    "paintnet_5_1_12_full_parity": "OPEN",
+    "real_macos_window_keyboard": "NOT_RUN_HOST_LOCKED; current pixel revision not executed live",
+    "remaining_notice_legal_asset_font_review": "OPEN",
+    "signing_notarization_installer": "OPEN",
+    "stock_writer_open": "NOT_RUN",
+    "windows_qga_round4_probe": "NOT_REPEATED; last bounded probe failed with UTM RPC -2700",
+    "windows_x64_product_execution": "NOT_RUN"
+  },
+  "failed": 0,
+  "format": "paint.r.round4-integration",
+  "goal_complete": false,
+  "ignored": 0,
+  "integrated_log": {
+    "path": "artifacts/reference-local/round4-4798c28/integrated-final.log",
+    "sha256": "7a285deae234f97bd044bedbc32e584e7b8566a415906e2c84e348cc8f4612b9"
+  },
+  "native_pixel_commit": "7c62176f432bd6884105ba33ffbac4a0946c1b0e",
+  "native_pixel_evidence": {
+    "both_comparisons_use_rgba": true,
+    "metadata_only_and_mutation_regressions": "pass",
+    "oracle": "tests/e2e/png_rgba.py",
+    "oracle_sha256": "a6fddfa6b6d3ce0c05c5758aaf8c7eece75d84069cf8bcfbed958a65df453c30",
+    "orchestration_passed": 21,
+    "receipt": "artifacts/validation/2026-10-27-native-pixel-evidence-7c62176.json",
+    "round4_native_execution": "NOT_RUN"
+  },
+  "notice_merge_commit": "58a503cfeeff40a62aa3536b8efbedc1cef08b8f",
+  "notice_provenance": {
+    "curated_supplements": 11,
+    "deterministic_tree_entries": 769,
+    "deterministic_tree_sha256": "40e06560db4eb47985d697e2522b3e1655ec6a2d87bbe63f680eacdefd5f9ecf",
+    "extraction_complete": false,
+    "fallback_or_moving_license_used": false,
+    "independent_core_commit_page_status": 404,
+    "new_packages": [
+      "eframe",
+      "egui_kittest",
+      "egui_system_font_provider"
+    ],
+    "package_count": 457,
+    "public_packaging": "REFUSED",
+    "receipt": "artifacts/validation/2026-10-27-egui-notices-58a503c.json",
+    "remaining_gaps": 49,
+    "unavailable_core_commit": "7c0b40402271e8d40cda69f87cf3c2617c2e4382",
+    "unresolved_core_packages": [
+      "ecolor",
+      "egui",
+      "egui-wgpu",
+      "egui-winit",
+      "egui_glow",
+      "emath",
+      "epaint"
+    ],
+    "with_texts": 408
+  },
+  "package_logs": [
+    {
+      "path": "artifacts/reference-local/round4-4798c28/package-a.log",
+      "sha256": "381c59b48f927530b492fe9b13a2c7c1e7ea7ae2eb5edae66c9aaf698ac53c16"
+    },
+    {
+      "path": "artifacts/reference-local/round4-4798c28/package-b.log",
+      "sha256": "6bb527ea70848e916be25febde764803fad848cf5339bf1683613293e100c950"
+    }
+  ],
+  "property_stress": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 93,
+    "proptest_cases": 8192,
+    "scope": [
+      "paint-core",
+      "paint-document",
+      "paint-raster",
+      "paint-pdn3",
+      "paint-plugin-bridge"
+    ],
+    "source_commit": "00d8819ca662afb20e24c375503aef37839d4617",
+    "suite_records": 21
+  },
+  "real_package_integration": {
+    "archive": {
+      "bytes": 7175886,
+      "path": "artifacts/preview/round4-70e2461-a/paint-r-0.1.0-macos-aarch64.zip",
+      "sha256": "a48dd208e714b5134b3f00ab4f1e3013ca4e74de2b009a10d422e52478df8eff"
+    },
+    "binary_sha256": "ad69dcd9dbbe22d9fef3bc8e31265fcd87220a1764ee8fbff3b5eedb86e1d922",
+    "curated_files_verified_inside_archive": 22,
+    "embedded_ledger_matches_source": true,
+    "embedded_ledger_sha256": "2cd0e66c60d410bab1601eac14afa310d60a694e4a3cf5423f8496059feb4889",
+    "fresh_binary_reproduction": "NOT_RUN_IN_THIS_INTEGRATION",
+    "native_window": "NOT_RUN_HOST_LOCKED",
+    "package_output_tree_sha256": "ab201982f8e8edfa2cebd16c64863c9d7a1bac2955acaf9fd76291f1c8c4c18c",
+    "post_extract_smoke": {
+      "repeat": 2,
+      "status": "pass",
+      "trace_count": 2
+    },
+    "public_release": false
+  },
+  "rust_full_gate": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 205,
+    "product_tree_unchanged_at_round4_head": true,
+    "source_commit": "01dcbb8f4a99d50115f26747acf1ddb509d1bedc",
+    "suite_records": 40
+  },
+  "source_commit": "70e24617b59d7a4995b86775a3d92d75bdd2c5e9",
+  "static_checks": {
+    "actionlint": "pass",
+    "launcher_shellcheck": "pass",
+    "swift_typecheck": "pass"
+  },
+  "status": "PASS_ENGINEERING_ROUND_NOT_A_PUBLIC_RELEASE",
+  "tests": {
+    "cross_language_live": 8,
+    "dotnet": 12,
+    "native_orchestration": 21,
+    "package_workflow": 46,
+    "python_end_to_end": 18,
+    "reference_tools": 30
+  },
+  "version": 1
+}
