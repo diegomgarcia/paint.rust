@@ -16,6 +16,7 @@ artifacts/reference-local/*
 !artifacts/reference-local/paintnet-5.1.12-invert.png
 !artifacts/reference-local/paintnet-5.1.12-invert.manifest.json
 artifacts/reference-private/
+artifacts/preview/
 docs/architecture.visual-check*.png
 docs/architecture.visual-check.html
 docs/architecture.visual-check.json

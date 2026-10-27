@@ -125,6 +125,10 @@ fn excluded_directories_never_hide_or_create_findings() {
     tree.write(".git/hidden.rs", "fn hidden() { todo!(); }\n");
     tree.write("target/generated.rs", "fn hidden() { unimplemented!(); }\n");
     tree.write(
+        "artifacts/preview/copying.rs",
+        "fn third_party_notice() { todo!(); }\n",
+    );
+    tree.write(
         ".worktrees/other/src/lib.rs",
         "fn hidden() { assert!(true); }\n#[ignore]\nfn ignored() {}\n",
     );

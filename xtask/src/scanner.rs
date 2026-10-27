@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::{Error, Result};
 
 pub const DEFAULT_ALLOWLIST: &str = "tools/verify/stub-scan-allowlist.txt";
-const EXCLUDED_DIRECTORIES: [&str; 3] = [".git", "target", ".worktrees"];
+const EXCLUDED_DIRECTORIES: [&str; 4] = [".git", "target", ".worktrees", "artifacts"];
 const PLACEHOLDER_MARKERS: [&str; 6] = [
     "placeholder_success",
     "placeholder_ok",
