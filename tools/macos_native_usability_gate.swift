@@ -496,7 +496,7 @@ private func run() throws {
         let pid = try processID(arguments[2])
         try emitJSON(pressCloseButton(pid: pid, title: arguments[3]))
     case "press":
-        guard arguments.count == 6, arguments[5] == "Discard" else {
+        guard arguments.count == 5, arguments[4] == "Discard" else {
             throw error("USAGE", "press <pid> <window-title> Discard")
         }
         try requirePreflight()

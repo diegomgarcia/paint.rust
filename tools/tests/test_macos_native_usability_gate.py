@@ -576,6 +576,20 @@ class NativeGateTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "COMMAND_OUTPUT_LIMIT")
         self.assertLess(time.monotonic() - started, 2.0)
 
+    def test_native_backend_press_uses_exact_helper_protocol(self) -> None:
+        source = self.root / "helper.swift"
+        source.write_text("// disposable helper source\n", encoding="utf-8")
+        backend = gate.MacOSNativeBackend(source, self.root / "native-tool", self.config)
+        completed = subprocess.CompletedProcess(["helper"], 0, stdout=b'{"event":"AXPress"}\n', stderr=b"")
+        with mock.patch.object(backend, "_ensure_helper", return_value=None), \
+             mock.patch.object(gate, "run_native_command", return_value=completed) as command:
+            self.assertEqual(backend.press(4242, "Discard"), {"event": "AXPress"})
+
+        self.assertEqual(
+            command.call_args.args[0],
+            [str(backend.helper), "press", "4242", gate.WINDOW_TITLE, "Discard"],
+        )
+
     def test_manifest_and_binary_identity_are_structured(self) -> None:
         result = self.run_gate()
 
