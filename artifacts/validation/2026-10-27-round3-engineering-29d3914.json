@@ -1,0 +1,90 @@
+{
+  "base_commit": "00d8819ca662afb20e24c375503aef37839d4617",
+  "cross_language_launcher": {
+    "cdpath": "/tmp",
+    "commit": "a53191885073a233a18f3667aea19e8bd05907e0",
+    "conformance": {
+      "failed": 0,
+      "passed": 8,
+      "skipped": 0
+    },
+    "invocation_cwd": "/tmp",
+    "log": {
+      "path": "artifacts/reference-local/round3-00d8819/cross-language-script.log",
+      "sha256": "9d2bac85b509fae053164d1e9107e68ef78bbcb5f74da54948c57fb162e53fe9"
+    },
+    "shellcheck": "pass"
+  },
+  "format": "paint.r.round3-engineering",
+  "native_macos_build": {
+    "architecture": "Mach-O 64-bit arm64",
+    "bytes": 12518832,
+    "log": {
+      "path": "artifacts/reference-local/round3-00d8819/native-release-build.log",
+      "sha256": "b65d97c967cb13bb2fd061b2f5b86011ef366acea387375a92a9808f93395384"
+    },
+    "native_window_or_keyboard_executed": false,
+    "sha256": "ad69dcd9dbbe22d9fef3bc8e31265fcd87220a1764ee8fbff3b5eedb86e1d922"
+  },
+  "native_property_stress": {
+    "failed": 0,
+    "ignored": 0,
+    "log": {
+      "path": "artifacts/reference-local/round3-00d8819/native-property-stress.log",
+      "sha256": "b4e4a3bb7178262cbad4da71a28c80584347be74cb9f42ce07d43c490d332d5b"
+    },
+    "passed": 93,
+    "proptest_cases": 8192,
+    "scope": [
+      "paint-core",
+      "paint-document",
+      "paint-raster",
+      "paint-pdn3",
+      "paint-plugin-bridge"
+    ],
+    "suite_records": 21
+  },
+  "native_runtime_preflight": {
+    "accessibility_trusted": true,
+    "native_execution": "NOT_RUN",
+    "permission_requests_or_unlock_attempted": false,
+    "screen_capture_preflight": true,
+    "screen_locked": true
+  },
+  "status": "PASS_SCOPED_ENGINEERING_EXTERNAL_RUNTIME_GATES_OPEN",
+  "through_commit": "29d39145eeaca97e23467de7c635f48f0572ba69",
+  "version": 1,
+  "windows_qga": {
+    "error": "UTM RPC timeout -2700",
+    "inventory_exit_code": 0,
+    "log": {
+      "path": "artifacts/reference-local/round3-00d8819/qga-probe.log",
+      "sha256": "0af0277f556f1e589e3605b351f7f87db3dcc514f5640e0bb534028f03aefd6f"
+    },
+    "qga_available": false,
+    "qga_echo_exit_code": 2,
+    "vm_restart_reset_or_unlock_attempted": false,
+    "windows_x64_product_command_executed": false
+  },
+  "workflow_shellcheck_guard": {
+    "actionlint": "pass",
+    "commit": "29d39145eeaca97e23467de7c635f48f0572ba69",
+    "green_log": {
+      "path": "artifacts/reference-local/round3-00d8819/workflow-shellcheck-green-r2.log",
+      "sha256": "939161a668ab31a4cdb4f6d074681e316f976787ef57f3f8c7380e2381290abf"
+    },
+    "hosted_execution": false,
+    "local_shellcheck": "pass",
+    "official_runner_inventory": "https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md",
+    "package_workflow_tests": {
+      "failed": 0,
+      "passed": 39
+    },
+    "red_log": {
+      "path": "artifacts/reference-local/round3-00d8819/workflow-shellcheck-red.log",
+      "sha256": "84fb01a12def02f30677d90128cc4766fc5a9f6f18631542cf1786ac05ebc629"
+    },
+    "runner_shellcheck_package": "0.9.0-1",
+    "scope": "Ubuntu 24.04 matrix leg in CI and manual preview workflows"
+  }
+}
