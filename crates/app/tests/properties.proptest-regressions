@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc cbd160fea837317773aef3b59489e5f88261f2f5df962392f98d970764e0e29d # shrinks to initial = Bgra { b: 0, g: 0, r: 0, a: 0 }, operations = [Fill(Bgra { b: 0, g: 0, r: 0, a: 1 }), Fill(Bgra { b: 0, g: 0, r: 0, a: 2 }), Undo, Undo]
