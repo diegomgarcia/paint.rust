@@ -9,14 +9,14 @@ No entry is marked `parity-pinned` by an implementation agent. The integrator re
 | Windows reference VM | Signed 5.1.12; D3D11; interactive launch; one Invert/PNG observation | implemented-unverified | Windows 11 ARM64 / UTM | Pin configuration; repeat A/A; clean snapshots; scripted semantic capture |
 | Main-window UI structure | Initial screen observation only | unimplemented | All | Real session-driven UI and usability tests, then reference screenshots |
 | Exact UI pixels | None | unimplemented | All | Asset/font rights and zero-diff pinned comparisons |
-| Default 800×600 document + Invert | One stock 5.1.12 PNG: all 480,000 pixels opaque black | unimplemented | All | Clone implementation, exact differential comparison, repeatability |
-| Normal layer composition | Public behavior documentation | unimplemented | All | Exhaustive alpha/opacity differential probes |
+| Default 800×600 document + Invert | One stock 5.1.12 PNG: all 480,000 pixels opaque black | implemented-unverified | Engine, all CPU targets | Session integration, exact differential comparison, repeatability |
+| Normal layer composition | Hand-computed unit/property tests; no Paint.NET differential yet | implemented-unverified | Engine, all CPU targets | Exhaustive alpha/opacity differential probes against stock Paint.NET |
 | Other blend modes | Public documentation | unimplemented | All | Implement only with exact per-mode reference evidence |
-| Rectangle selection and solid fill | No reference corpus yet | unimplemented | All | Boundary/coverage differential corpus |
-| Undo/redo | Behavioral contract only | unimplemented | All | Integration/property tests and reference interaction traces |
-| PNG decode/encode | One stock PNG artifact | unimplemented | All | Exact decoded RGBA, malformed input, atomic-save failure tests |
+| Rectangle selection and solid fill | Engine clipping/property tests; no reference corpus yet | implemented-unverified | Engine, all CPU targets | Session integration and boundary/coverage differential corpus |
+| Undo/redo | Atomic forward/inverse patches tested; session history pending | unimplemented | All | Session integration/property tests and reference interaction traces |
+| PNG decode/encode | One stock PNG artifact; atomic byte output tested | unimplemented | All | PNG semantic API, exact decoded RGBA, malformed input, integrated save tests |
 | JPEG/lossy codecs | None | unimplemented | All | Separate exact decoded-output specification; no arbitrary tolerance |
-| PDN3 reader | Independent format research; authentic local corpus pending | unimplemented | All | Bounded semantic reads of authentic files |
+| PDN3 reader | Bounded data-only NRBF component tested; authentic local corpus pending | unimplemented | All | PDN container/semantic mapping and bounded reads of authentic files |
 | PDN3 writer | No accepted clone output | unimplemented | All | Stock Paint.NET open/export/re-save and two-way semantic cycles |
 | Isolated plugin transport | Architecture only | unimplemented | All | Real .NET/Rust protocol, cancellation, timeout, and crash tests |
 | HCL/L*a*b* adjustment binary | Candidate identified; current compatibility unverified | unimplemented | Windows first | Hash/API inventory, clean-room shim, exact reference results |

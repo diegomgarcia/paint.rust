@@ -33,6 +33,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit, property, integration, and usability tests
         run: cargo test --workspace --all-features --locked
+      - name: Stub and suspicious-test scan
+        run: cargo run --locked -p xtask -- scan-stubs
       - name: Independent PNG parity-oracle tests
         run: python3 -m unittest discover -s tests/e2e -p 'test_*.py' -v
       - name: Release build
