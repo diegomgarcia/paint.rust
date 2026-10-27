@@ -191,6 +191,18 @@ class FakeBackend:
             extra_text=self.cancel_extra_text if self.cancel_finished else None,
         )
 
+    def close_window(self, pid: int, title: str) -> dict[str, object]:
+        self._check_lock()
+        self.actions.append(("close_window", pid))
+        if self.modified:
+            if self.exit_on_dirty_close:
+                self.process.returncode = 0
+            else:
+                self.dialog = True
+        else:
+            self.process.returncode = 0
+        return {"event": "fake AXPress", "pid": pid, "title": title, "role": "AXCloseButton"}
+
     def key(self, pid: int, name: str, modifiers: tuple[str, ...] = ()) -> dict[str, object]:
         self._check_lock()
         self.actions.append(("key", pid, name, modifiers))
@@ -285,14 +297,14 @@ class NativeGateTests(unittest.TestCase):
         self.assertEqual(result["process"]["exit_code"], 0)
         self.assertEqual(self.backend.process.terminate_calls, 0)
         self.assertEqual(self.backend.process.kill_calls, 0)
-        native_actions = [action for action in self.backend.actions if action[0] in {"key", "press"}]
+        native_actions = [action for action in self.backend.actions if action[0] in {"key", "close_window", "press"}]
         self.assertEqual(
             native_actions,
             [
                 ("key", 4242, "i", ("command",)),
-                ("key", 4242, "w", ("command",)),
+                ("close_window", 4242),
                 ("key", 4242, "escape", ()),
-                ("key", 4242, "w", ("command",)),
+                ("close_window", 4242),
                 ("press", 4242, "Discard"),
             ],
         )

@@ -370,11 +370,10 @@ private func focusTarget(pid: pid_t, title: String) throws {
 
 private func sendKey(pid: pid_t, title: String, name: String, modifierText: String) throws -> [String: Any] {
     let allowed = (name == "i" && modifierText == "command")
-        || (name == "w" && modifierText == "command")
         || (name == "q" && modifierText == "command")
         || (name == "escape" && modifierText.isEmpty)
     guard allowed else { throw error("INPUT_REJECTED", "key is outside the native gate allowlist") }
-    let keyCodes: [String: CGKeyCode] = ["i": 34, "w": 13, "q": 12, "escape": 53]
+    let keyCodes: [String: CGKeyCode] = ["i": 34, "q": 12, "escape": 53]
     guard let keyCode = keyCodes[name] else { throw error("INPUT_REJECTED", "unknown native key") }
     try focusTarget(pid: pid, title: title)
     try requirePreflight() // Recheck immediately before posting into the console session.
@@ -417,6 +416,31 @@ private func entryText(_ entry: AXEntry) -> [String] {
     ["title", "description", "value"].compactMap { entry.attributes[$0] as? String }
 }
 
+private func pressCloseButton(pid: pid_t, title: String) throws -> [String: Any] {
+    try focusTarget(pid: pid, title: title)
+    let application = AXUIElementCreateApplication(pid)
+    let targets = try accessibilityWindows(application).filter { $0.title == title }
+    guard targets.count == 1 else {
+        throw error("AMBIGUOUS_NATIVE_WINDOW", "expected exactly one Accessibility window titled \(title)")
+    }
+    guard let rawCloseButton = attribute(targets[0].element, kAXCloseButtonAttribute as String) else {
+        throw error("AX_ACTION_FAILED", "root window has no Accessibility close button")
+    }
+    guard CFGetTypeID(rawCloseButton) == AXUIElementGetTypeID() else {
+        throw error("AX_ACTION_FAILED", "root window close button has an invalid Accessibility type")
+    }
+    let closeButton = rawCloseButton as! AXUIElement
+    guard boolAttribute(closeButton, kAXEnabledAttribute) == true else {
+        throw error("AX_ACTION_FAILED", "root window close button is not enabled")
+    }
+    try requirePreflight()
+    let result = AXUIElementPerformAction(closeButton, kAXPressAction as CFString)
+    guard result == .success else {
+        throw error("AX_ACTION_FAILED", "AXPress on the window close button failed (\(result.rawValue))")
+    }
+    return ["event": "AXPress", "pid": Int(pid), "title": "AXCloseButton"]
+}
+
 private func pressDiscard(pid: pid_t, title: String) throws -> [String: Any] {
     try focusTarget(pid: pid, title: title)
     let application = AXUIElementCreateApplication(pid)
@@ -450,7 +474,7 @@ private func pressDiscard(pid: pid_t, title: String) throws -> [String: Any] {
 private func run() throws {
     let arguments = CommandLine.arguments
     guard arguments.count >= 2 else {
-        throw error("USAGE", "usage: macos-native-ui preflight|observe|key|press ...")
+        throw error("USAGE", "usage: macos-native-ui preflight|observe|key|close-window|press ...")
     }
     switch arguments[1] {
     case "preflight":
@@ -466,6 +490,11 @@ private func run() throws {
         try requirePreflight()
         let pid = try processID(arguments[2])
         try emitJSON(sendKey(pid: pid, title: arguments[3], name: arguments[4], modifierText: arguments[5]))
+    case "close-window":
+        guard arguments.count == 4 else { throw error("USAGE", "close-window <pid> <window-title>") }
+        try requirePreflight()
+        let pid = try processID(arguments[2])
+        try emitJSON(pressCloseButton(pid: pid, title: arguments[3]))
     case "press":
         guard arguments.count == 6, arguments[5] == "Discard" else {
             throw error("USAGE", "press <pid> <window-title> Discard")
