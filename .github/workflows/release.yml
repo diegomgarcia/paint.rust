@@ -50,6 +50,8 @@ jobs:
         run: shellcheck tools/cargo-pinned.sh plugin-host/test-cross-language.sh tools/macos_native_window_smoke.sh
       - name: Test standard-library packaging tool
         run: python3 -m unittest discover -s tools/package/tests -p 'test_*.py' -v
+      - name: Native gate orchestration tests (no native input)
+        run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
       - name: Check formatting
         run: bash ./tools/cargo-pinned.sh fmt --all -- --check
       - name: Strict Clippy

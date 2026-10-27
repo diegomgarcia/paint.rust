@@ -73,6 +73,8 @@ jobs:
         run: python3 -m unittest discover -s tests/e2e -p 'test_*.py' -v
       - name: Preview packaging tests
         run: python3 -m unittest discover -s tools/package/tests -p 'test_*.py' -v
+      - name: Native gate orchestration tests (no native input)
+        run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
       - name: Reference harness unit tests
         run: python3 -m unittest discover -s tools/reference/tests -p 'test_*.py' -v
       - name: Release build

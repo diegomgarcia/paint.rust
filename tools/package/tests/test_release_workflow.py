@@ -83,6 +83,15 @@ class ReleaseWorkflowTests(unittest.TestCase):
             with self.subTest(workflow=workflow_name):
                 self.assertIn(expected, text)
 
+    def test_ci_runs_native_gate_orchestration_without_claiming_native_input(self) -> None:
+        expected = (
+            "- name: Native gate orchestration tests (no native input)\n"
+            "        run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -v"
+        )
+        for workflow_name, text in (("ci", self.ci), ("release", self.workflow)):
+            with self.subTest(workflow=workflow_name):
+                self.assertIn(expected, text)
+
     def test_ci_runs_the_release_package_gate_without_uploading(self) -> None:
         build = self.ci.index("- name: Release build")
         package = self.ci.index("- name: Reproduce and verify release binary and complete internal package")
