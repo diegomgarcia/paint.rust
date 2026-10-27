@@ -1,0 +1,77 @@
+{
+  "archives": "Existing source-qualified internal engineering archives are historical; this round did not accept a new final three-OS release.",
+  "format": "paint.r.round3-integration",
+  "hosted_ci": "NOT_RUN_NO_REMOTE_OR_GH_AUTH",
+  "integrated_log": {
+    "path": "artifacts/reference-local/round3-00d8819/integrated-final.log",
+    "sha256": "553d70c759ecc185a0500d38e84dee6ac92a18c5f2ba424e17794a9d8fb4f936"
+  },
+  "native_gate": {
+    "live_window_keyboard_ax_screencapture": "NOT_RUN_HOST_LOCKED",
+    "orchestration_passed": 19,
+    "product_launch_or_native_input": false,
+    "real_locked_host_outcome": "BLOCKED",
+    "real_native_execution": "NOT_RUN",
+    "receipt": "artifacts/validation/2026-10-27-native-usability-gate-97fc607.json"
+  },
+  "notice_provenance": {
+    "curated_accesskit_packages": 8,
+    "legal_clearance": false,
+    "locked_third_party_packages": 457,
+    "public_packaging": "REFUSED",
+    "real_packager_and_post_extract_smoke": "pass",
+    "receipt": "artifacts/validation/2026-10-27-accesskit-notices-82bdc9e.json",
+    "remaining_gaps": 52,
+    "with_texts": 405
+  },
+  "property_stress": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 338,
+    "proptest_cases": 8192,
+    "scope": "full workspace plus UI with 8192 cases per property",
+    "source_commit": "00d8819ca662afb20e24c375503aef37839d4617",
+    "suite_records": 93
+  },
+  "remaining_release_gates": [
+    "real macOS native keyboard/window usability after user unlock",
+    "native Windows and Linux window usability",
+    "Windows x64 build/execution and stock Paint.NET writer-open",
+    "hosted three-OS GitHub Actions execution",
+    "remaining notice provenance and owner asset/font licensing",
+    "signing, notarization, installer, migration, and performance gates",
+    "Paint.NET 5.1.12 behavior and codec parity"
+  ],
+  "rust_full_gate": {
+    "failed": 0,
+    "format_clippy_metadata_stub_release_build": "pass",
+    "ignored": 0,
+    "passed": 205,
+    "product_tree_unchanged_at_integrated_head": true,
+    "source_commit": "01dcbb8f4a99d50115f26747acf1ddb509d1bedc",
+    "suite_records": 40
+  },
+  "source_commit": "b6ac2c76692ceb287811b7bef5487f0c349309a3",
+  "static_checks": {
+    "actionlint": "pass",
+    "shellcheck_three_launchers": "pass",
+    "swift_typecheck_and_real_arm64_compile": "pass"
+  },
+  "status": "PASS_ENGINEERING_ROUND_NOT_A_PUBLIC_RELEASE",
+  "tests": {
+    "cross_language_live": 8,
+    "dotnet": 12,
+    "native_orchestration": 19,
+    "package_workflow": 46,
+    "python_end_to_end": 18,
+    "reference_tools": 30
+  },
+  "version": 1,
+  "windows": {
+    "error": "UTM RPC timeout -2700",
+    "qga_available": false,
+    "vm_reset_restart_or_unlock_attempted": false,
+    "writer_open_executed": false,
+    "x64_product_command_executed": false
+  }
+}
