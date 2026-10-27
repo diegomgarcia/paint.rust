@@ -1,0 +1,75 @@
+{
+  "agent_commit": "1a482fb61846d19be13c9a7fabe84614bfc49c5a",
+  "focus_fix_commit": "c6d55b3",
+  "focus_regression": {
+    "fixed_requirement": "enabled Cancel must also have native focus before close confirmation or Discard is accepted",
+    "red_log": {
+      "path": "artifacts/reference-local/round3-00d8819/native-focus-red.log",
+      "sha256": "34a55fac9df9fc40432a1622ab2e4b84d415f0e1b72fdcabca83ee115837e2b6"
+    }
+  },
+  "format": "paint.r.native-usability-gate",
+  "hosted_ci": "NOT_RUN_NO_REMOTE_OR_GH_AUTH",
+  "limitations": [
+    "Fake orchestration and Swift compilation are not native window or keyboard evidence.",
+    "The real run proves fail-closed locked-screen behavior only.",
+    "Native AX focus/labels, CGEvent delivery, screencapture pixels, and graceful Discard remain live acceptance gates.",
+    "CI workflow additions have local policy/actionlint evidence, not hosted execution."
+  ],
+  "live_acceptance": {
+    "native_ax_labels_and_focus": "NOT_RUN_HOST_LOCKED",
+    "native_keyboard": "NOT_RUN_HOST_LOCKED",
+    "native_screencapture": "NOT_RUN_HOST_LOCKED",
+    "native_window": "NOT_RUN_HOST_LOCKED",
+    "user_unlock_or_permission_bypass_attempted": false
+  },
+  "orchestration_tests": {
+    "failed": 0,
+    "passed": 19,
+    "scope": "deterministic fake backend; no native input or Paint.R launch"
+  },
+  "package_workflow_tests": {
+    "failed": 0,
+    "passed": 46
+  },
+  "real_blocked_gate_log": {
+    "path": "artifacts/reference-local/round3-00d8819/native-gate-blocked-97fc607.log",
+    "sha256": "46dc49433da920f723ebabd61c16072dc38dd950ad89add0e39185d280fb5d61"
+  },
+  "real_locked_host_gate": {
+    "binary_sha256": "ad69dcd9dbbe22d9fef3bc8e31265fcd87220a1764ee8fbff3b5eedb86e1d922",
+    "error": {
+      "code": "SCREEN_LOCKED",
+      "message": "the macOS screen is locked or its state is invalid"
+    },
+    "manifest": "artifacts/reference-local/round3-00d8819/native-gate-blocked-97fc607/manifest.json",
+    "manifest_sha256": "46dc49433da920f723ebabd61c16072dc38dd950ad89add0e39185d280fb5d61",
+    "native_execution": "NOT_RUN",
+    "observations": 0,
+    "outcome": "BLOCKED",
+    "process": {
+      "exit_code": null,
+      "pid": null
+    },
+    "product_launch_or_native_input": false,
+    "screenshots": 0
+  },
+  "real_swift_helper": {
+    "compile": "pass",
+    "interactive_helper_execution": false,
+    "target": "native macOS ARM64 host compiler"
+  },
+  "source_commit": "97fc6073a4c8f998e69b47e3fcaef1119c6d9812",
+  "static_checks": {
+    "actionlint": "pass",
+    "launcher_shellcheck": "pass",
+    "log": {
+      "path": "artifacts/reference-local/round3-00d8819/native-gate-integrated.log",
+      "sha256": "78caefcfa59ac3566897975f25cfd0ac57b6df4689e8cc90d3cbadd764f4a7cf"
+    },
+    "python_compile": "pass",
+    "swift_5_typecheck": "pass"
+  },
+  "status": "PASS_ORCHESTRATION_AND_BLOCKED_PREFLIGHT_LIVE_ACCEPTANCE_NOT_RUN",
+  "version": 1
+}
