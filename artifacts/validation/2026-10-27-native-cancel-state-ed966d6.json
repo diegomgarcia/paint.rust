@@ -1,0 +1,62 @@
+{
+  "expected_red": {
+    "failed": 1,
+    "log": {
+      "path": "artifacts/reference-local/round6-5ab0ec2/cancel-state-red.log",
+      "sha256": "89a098b961c7942217b035347c7b5de0434b150826157605c906dd92ee619464"
+    },
+    "old_behavior": "Unexpected accessible document replacement during Cancel still produced PASS",
+    "tests": 23
+  },
+  "format": "paint.r.native-cancel-state",
+  "green": {
+    "failed": 0,
+    "failure_cleanup_may_discard_spawned_process": true,
+    "logs": [
+      {
+        "path": "artifacts/reference-local/round6-5ab0ec2/cancel-state-final.log",
+        "sha256": "23fd69fe5dd1f80e4ec6a6e35adcc2b8c1b1c426f089fdf0e1bc591dcac10f1a"
+      },
+      {
+        "path": "artifacts/reference-local/round6-5ab0ec2/reference-after-cancel.log",
+        "sha256": "188583e4c3ef7386cde06bfd71bb9578bbd09e4cf802c24690c2de9fa8805e0c"
+      },
+      {
+        "path": "artifacts/reference-local/round6-5ab0ec2/e2e-after-cancel.log",
+        "sha256": "d5c44cdb9365c1f36664b8b42ea8cf8f7967e3440c9c7ffeba574cdb2753493f"
+      }
+    ],
+    "native_orchestration": 23,
+    "new_failure_code": "CANCEL_CHANGED_DOCUMENT_STATE",
+    "python_end_to_end": 18,
+    "reference_tools": 30,
+    "second_close_acceptance_not_reached_on_mutation": true
+  },
+  "limitations": [
+    "The new sequence is fake/orchestration evidence until executed on the unlocked host.",
+    "Accessible text equality is not a canvas-pixel or Paint.NET parity oracle.",
+    "No hosted CI or public release claim is made."
+  ],
+  "live_acceptance": {
+    "current_revision_executed_against_real_window": false,
+    "host_unlock_or_permission_bypass_attempted": false,
+    "native_execution": "NOT_RUN"
+  },
+  "relocated_fake_suite": {
+    "cwd": "/tmp",
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round6-5ab0ec2/cancel-state-relocated.log",
+      "sha256": "7240564d972296ef84ad2f77c4db73e24cc2b7b065e5160bc36c3e53493d015e"
+    },
+    "passed": 23
+  },
+  "requirement": "The complete accessible text set after Escape must equal the pre-close modified observation; required labels alone are insufficient.",
+  "source_commit": "ed966d6a2082220c0921d17e5e46f76a6d91fd66",
+  "static_checks": {
+    "python_compile": "pass",
+    "swift_5_typecheck": "pass"
+  },
+  "status": "PASS_CANCEL_STATE_ORCHESTRATION_NOT_LIVE_NATIVE_ACCEPTANCE",
+  "version": 1
+}
