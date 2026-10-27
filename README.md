@@ -2,7 +2,7 @@
 
 An original, cross-platform Rust image editor being developed against a pinned Paint.NET 5.1.12 reference environment.
 
-> **Status:** 0.1.0 internal development-preview candidate. The native application and headless automation path are implemented, but this is not a pixel-identical Paint.NET clone, a certified PDN implementation, or a general Paint.NET binary-plugin host. Public distribution remains blocked. Exact scope is tracked in `docs/PARITY_LEDGER.md`.
+> **Status:** 0.1.0 internal development-preview candidate. The native application and headless automation path are implemented, but this is not a pixel-identical Paint.NET clone, a certified PDN implementation, or a general Paint.NET binary-plugin host. Public distribution remains blocked. See the [release status matrix](docs/RELEASE_STATUS.md) and exact scope in `docs/PARITY_LEDGER.md`.
 
 ## Implemented preview slice
 
@@ -15,7 +15,7 @@ An original, cross-platform Rust image editor being developed against a pinned P
 - A deterministic real-binary headless protocol with semantic snapshots, exact output checks, malformed-input failures, and per-file atomic replacement.
 - Bounded PNG and data-only PDN3/NRBF libraries. An authentic signed Paint.NET 5.1.12 2×2 Normal/BGRA fixture passes exact reader/composite acceptance. The writer remains experimental and self-round-trip-tested only until stock acceptance is demonstrated.
 - An isolated Rust↔.NET source-owned plugin transport proof. This does not load arbitrary Paint.NET plugin DLLs.
-- The current source also builds a reproducible x86_64 Linux artifact in an isolated ARM64 Lima VZ/Rosetta VM. It passed 219 Rust tests across 40 suite records, strict Linux Clippy/format, deterministic two-target packaging, and independent extraction smoke. This is emulated userspace evidence, not native x86_64 hardware CI or native Linux window acceptance.
+- The current source also builds a reproducible x86_64 Linux artifact in an isolated ARM64 Lima VZ/Rosetta VM. It passed 219 Rust tests across 40 suite records, strict Linux Clippy/format, deterministic packaging, and independent extraction smoke; clean-target independence was established at `5af5981`. This is emulated userspace evidence, not native x86_64 hardware CI or native Linux window acceptance.
 
 The development UI uses a custom dark `egui` theme, original first-party icon geometry, and a text-path PNG dialog. On macOS the default native menu bar is intentionally disabled so Command-Q and Command-W pass through the document dirty guard; application actions remain in the in-window menu. The UI is not a pixel-parity skin and does not include a native OS file picker or full image-library management. The Open dialog has an app-drawn, bounded folder browser: it lists at most 200 directories and regular `.png` files, skips hidden and symlink entries, and previews one bounded PNG without changing the current session. Keyboard evidence is semantic `egui_kittest` input/focus coverage, not native OS, screen-reader, or Paint.NET shortcut-parity evidence. Use disposable test documents; the preview is not a complete document-safety or Paint.NET workflow implementation.
 

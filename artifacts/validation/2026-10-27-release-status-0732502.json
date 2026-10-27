@@ -1,0 +1,93 @@
+{
+  "artifacts": {
+    "linux_x86_64_emulated": {
+      "archive_sha256": "983b61046738282269aa4dd28d67e4aee06fb00d4c7bd333dd7a58f268b9da07",
+      "binary_sha256": "ae0244c2f8875a42c177ba960b75b4567a211fb7df06dc3ee02735d4797ff6bf"
+    },
+    "macos": {
+      "archive_sha256": "7abed7bcd838df50824d0ef3c7a806def4260fea1542879d91e2e81dd155f256",
+      "binary_sha256": "148add8ef907fdba8a3f37b75de4c452b74d3e31fbaf0382f280cfa4fd785dc8"
+    }
+  },
+  "format": "paint.r.release-status",
+  "gates": {
+    "development_signing": {
+      "cdhash": "f27e2eb7c81bd89cc172b4ddb4de60497bae1649",
+      "codesign_verify": "valid on disk and satisfies designated requirement",
+      "gate_process": {
+        "exit_code": 0,
+        "pid": 56627
+      },
+      "identity": "Apple Development: talkto@diegogarcia.ca (8Y7S3ZUWFA)",
+      "independent_rgba": [
+        "4e4b3383ecef22d5c5e970bc1e1546c0edb5c5527445b18b0b5cf383ed603717",
+        "ed42a5bfb4945ab0c835cce92d21942e9a0b1eec714b099f185e40e1eb27c56f",
+        "6843f497729cc9d46d69ea29adab7ba4669567e6949f452e357fa74348ec8292",
+        "ed42a5bfb4945ab0c835cce92d21942e9a0b1eec714b099f185e40e1eb27c56f",
+        "6843f497729cc9d46d69ea29adab7ba4669567e6949f452e357fa74348ec8292"
+      ],
+      "native_gate": "PASS",
+      "signed_binary_sha256": "6d183e2b0b6ce2b110a78515f49bdd89d92fd2d11a60d7d2a91c947fd6110207",
+      "status": "PASS"
+    },
+    "distribution_signing": {
+      "status": "NOT_RUN"
+    },
+    "gatekeeper_assessment": {
+      "exit_code": 3,
+      "reason": "Apple Development signature is not a Developer ID distribution signature and the app is not notarized",
+      "status": "REJECTED"
+    },
+    "hosted_three_os_ci": {
+      "reason": "no git remote and no gh CLI",
+      "status": "NOT_CONFIGURED"
+    },
+    "linux_x64_emulated": {
+      "evidence": "artifacts/validation/2026-10-27-linux-x64-picker-3090c18.json",
+      "status": "PASS_EMULATED"
+    },
+    "macos_packaged_native": {
+      "evidence": "artifacts/validation/2026-10-27-packaged-app-picker-3090c18.json",
+      "status": "PASS"
+    },
+    "native_linux_x64_hardware": {
+      "status": "NOT_RUN"
+    },
+    "native_windows": {
+      "reason": "UTM guest RPC timed out (-2700) before guest execution",
+      "status": "BLOCKED",
+      "vm_changed": false
+    },
+    "notarization": {
+      "status": "NOT_RUN"
+    },
+    "owner_legal_clearance": {
+      "status": "NOT_PROVIDED"
+    },
+    "third_party_notices": {
+      "curated_supplements": 50,
+      "package_count": 457,
+      "packages_with_texts": 447,
+      "remaining_gaps": 10,
+      "status": "INCOMPLETE"
+    }
+  },
+  "limitations": [
+    "Unsigned and development-signed artifacts are internal only.",
+    "Ten notice gaps and missing owner legal clearance block public redistribution.",
+    "Windows and hosted three-OS CI are unexecuted.",
+    "Native Linux x86_64 hardware and native Linux windows are unexecuted.",
+    "No Developer ID distribution signature or notarization exists."
+  ],
+  "product_source_commit": "3090c18b6260cffa5ecd3b1fe92d94952bd6fbb7",
+  "public_release": false,
+  "source_commit": "0732502311e7a28e0e72603b888846259d162248",
+  "status": "INTERNAL_CANDIDATE_NOT_PUBLICLY_RELEASABLE",
+  "tests": {
+    "native_gate": 27,
+    "package_workflow": 50,
+    "paint_ui": 33,
+    "workspace": 219
+  },
+  "version": 1
+}
