@@ -30,10 +30,22 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Unit, property, integration, and usability tests
         run: cargo test --workspace --all-features --locked
+      - name: Stub and suspicious-test scan
+        run: cargo run --locked -p xtask -- scan-stubs
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.201
+      - name: Restore locked .NET dependencies
+        run: dotnet restore plugin-host/Paint.PluginHost.sln --locked-mode
+      - name: .NET host and protocol tests
+        run: dotnet test plugin-host/Paint.PluginHost.sln --configuration Release --no-restore
+      - name: Real Rust to .NET plugin conformance
+        shell: bash
+        run: plugin-host/test-cross-language.sh
       - name: Independent PNG parity-oracle tests
         run: python3 -m unittest discover -s tests/e2e -p 'test_*.py' -v
       - name: Release build
-        run: cargo build --workspace --release --locked
+        run: cargo build --workspace --release --all-features --locked

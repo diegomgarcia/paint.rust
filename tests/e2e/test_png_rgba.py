@@ -138,6 +138,63 @@ class DecodeTests(unittest.TestCase):
             decode_png(encoded)
 
 
+class RandomizedOracleTests(unittest.TestCase):
+    def test_random_packed_palettes_and_filters(self) -> None:
+        import random
+
+        randomizer = random.Random(0x50A17)
+        for depth in (1, 2, 4, 8):
+            entry_count = 1 << depth
+            palette = bytes(randomizer.randrange(256) for _ in range(entry_count * 3))
+            transparency = bytes(randomizer.randrange(256) for _ in range(entry_count))
+            for height in range(1, 6):
+                width = 2 * depth + 1
+                indexes = [[randomizer.randrange(entry_count) for _ in range(width)] for _ in range(height)]
+                expected = bytearray()
+                raw = bytearray()
+                previous = bytes((width * depth + 7) // 8)
+                for row_index, row_indexes in enumerate(indexes):
+                    packed = bytearray(len(previous))
+                    for x, palette_index in enumerate(row_indexes):
+                        bit_offset = x * depth
+                        shift = 8 - depth - (bit_offset % 8)
+                        packed[bit_offset // 8] |= palette_index << shift
+                        palette_offset = palette_index * 3
+                        expected.extend(palette[palette_offset : palette_offset + 3])
+                        expected.append(transparency[palette_index])
+                    filter_type = row_index % 5
+                    raw.append(filter_type)
+                    raw.extend(filter_source(filter_type, bytes(packed), previous, 1))
+                    previous = bytes(packed)
+                encoded = make_png(
+                    width,
+                    height,
+                    depth,
+                    3,
+                    bytes(raw),
+                    palette=palette,
+                    transparency=transparency,
+                )
+                image = decode_png(encoded)
+                self.assertEqual(bytes(expected), image.pixels, f"depth={depth}, height={height}")
+
+    def test_arbitrary_bytes_fail_with_bounded_public_error(self) -> None:
+        import random
+
+        randomizer = random.Random(0xBAD5EED)
+        for _ in range(500):
+            data = bytearray(randomizer.randrange(256) for _ in range(randomizer.randrange(256)))
+            if randomizer.choice((True, False)):
+                data[:0] = b"\x89PNG\r\n\x1a\n"
+            with self.subTest(length=len(data)):
+                try:
+                    decode_png(bytes(data))
+                except PngError:
+                    pass
+                except Exception as error:  # noqa: BLE001 - this test forbids leaked parser exceptions.
+                    self.fail(f"unexpected parser exception: {type(error).__name__}: {error}")
+
+
 class ComparisonTests(unittest.TestCase):
     def test_equal_images_have_exact_counts(self) -> None:
         image = RgbaImage(1, 2, bytes((1, 2, 3, 4)) * 2)
