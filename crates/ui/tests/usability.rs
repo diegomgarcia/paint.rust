@@ -54,6 +54,30 @@ fn write_input_png(path: &Path) -> Surface {
     source
 }
 
+fn request_close(harness: &mut Harness<'_, PaintApp>) -> Vec<egui::ViewportCommand> {
+    harness
+        .input_mut()
+        .viewports
+        .get_mut(&egui::ViewportId::ROOT)
+        .expect("root viewport input")
+        .events
+        .push(egui::ViewportEvent::Close);
+    harness.step();
+    let commands = viewport_commands(harness);
+    harness.run();
+    commands
+}
+
+fn viewport_commands(harness: &Harness<'_, PaintApp>) -> Vec<egui::ViewportCommand> {
+    harness
+        .output()
+        .viewport_output
+        .get(&egui::ViewportId::ROOT)
+        .expect("root viewport output")
+        .commands
+        .clone()
+}
+
 #[test]
 fn new_invert_undo_and_redo_operate_on_the_real_session() {
     let mut harness = app();
@@ -115,6 +139,7 @@ fn new_invert_undo_and_redo_operate_on_the_real_session() {
     assert!(!harness.state().session().can_redo());
 
     menu_item(&mut harness, "File", "New");
+    click(&mut harness, "Discard");
     let session = harness.state().session();
     assert_eq!(
         session.document().size(),
@@ -133,6 +158,64 @@ fn new_invert_undo_and_redo_operate_on_the_real_session() {
             .pixels()
             .iter()
             .all(|pixel| *pixel == Bgra::WHITE)
+    );
+}
+
+#[test]
+fn dirty_new_cancel_preserves_document_and_history_and_discard_replaces_it() {
+    let mut harness = app();
+    menu_item(&mut harness, "Adjustments", "Invert Colors");
+    let before_document = harness.state().session().document().clone();
+    let before = harness.state().session().snapshot().expect("snapshot");
+    assert!(before.dirty && before.can_undo && !before.can_redo);
+
+    menu_item(&mut harness, "File", "New");
+    assert_eq!(harness.state().session().document(), &before_document);
+    assert_eq!(
+        harness.state().session().snapshot().expect("snapshot"),
+        before
+    );
+    harness.get_by_role_and_label(Role::Button, "Discard");
+    click(&mut harness, "Cancel");
+    assert_eq!(harness.state().session().document(), &before_document);
+    assert_eq!(
+        harness.state().session().snapshot().expect("snapshot"),
+        before
+    );
+
+    click(&mut harness, "Undo");
+    assert!(!harness.state().session().dirty());
+    assert!(harness.state().session().can_redo());
+    click(&mut harness, "Redo");
+    assert_eq!(
+        harness.state().session().snapshot().expect("snapshot"),
+        before,
+        "redo must restore pixels and semantic history state, not monotonic revision numbers"
+    );
+
+    menu_item(&mut harness, "File", "New");
+    click(&mut harness, "Discard");
+    assert!(!harness.state().session().dirty());
+    assert!(!harness.state().session().can_undo());
+    assert!(!harness.state().session().can_redo());
+    assert_eq!(harness.state().session().document().layers().len(), 1);
+    assert!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()
+            .iter()
+            .all(|pixel| *pixel == Bgra::WHITE)
+    );
+
+    menu_item(&mut harness, "File", "New");
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Button, "Discard")
+            .is_none(),
+        "clean New must proceed without a discard confirmation"
     );
 }
 
@@ -251,6 +334,48 @@ fn layer_add_opacity_active_selection_and_visibility_change_composition() {
 }
 
 #[test]
+fn dirty_open_cancel_preserves_session_and_only_discard_replaces_it() {
+    let temporary = TempDir::new().expect("temporary directory");
+    let input = temporary.path().join("replacement.png");
+    let source = write_input_png(&input);
+    let mut harness = app();
+    menu_item(&mut harness, "Adjustments", "Invert Colors");
+    let before_document = harness.state().session().document().clone();
+    let before = harness.state().session().snapshot().expect("snapshot");
+
+    menu_item(&mut harness, "File", "Open PNG…");
+    enter_path(&mut harness, &input);
+    click(&mut harness, "Open PNG");
+    assert_eq!(harness.state().session().document(), &before_document);
+    assert_eq!(
+        harness.state().session().snapshot().expect("snapshot"),
+        before
+    );
+    harness.get_by_role_and_label(Role::Button, "Discard");
+
+    click(&mut harness, "Cancel");
+    assert_eq!(harness.state().session().document(), &before_document);
+    assert_eq!(
+        harness.state().session().snapshot().expect("snapshot"),
+        before
+    );
+    harness.get_by_label("PNG file path");
+
+    click(&mut harness, "Open PNG");
+    harness.get_by_role_and_label(Role::Button, "Discard");
+    assert_eq!(harness.state().session().document(), &before_document);
+    click(&mut harness, "Discard");
+
+    let session = harness.state().session();
+    assert_eq!(session.document().size(), source.size());
+    assert_eq!(session.document().layers().len(), 1);
+    assert_eq!(session.document().active_layer().surface(), &source);
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+    assert!(!session.can_redo());
+}
+
+#[test]
 fn png_open_is_flattened_and_export_preserves_the_layered_session() {
     let temporary = TempDir::new().expect("temporary directory");
     let input = temporary.path().join("input.png");
@@ -326,10 +451,72 @@ fn failed_open_preserves_the_current_session() {
     menu_item(&mut harness, "File", "Open PNG…");
     enter_path(&mut harness, &input);
     click(&mut harness, "Open PNG");
+    click(&mut harness, "Discard");
 
     assert_eq!(
         harness.state().session().snapshot().expect("snapshot"),
         before
     );
     assert!(harness.state().status().contains("Open failed"));
+}
+
+#[test]
+fn post_export_close_is_canceled_until_explicit_discard() {
+    let temporary = TempDir::new().expect("temporary directory");
+    let output = temporary.path().join("exported.png");
+    let mut harness = app();
+    menu_item(&mut harness, "Adjustments", "Invert Colors");
+    menu_item(&mut harness, "File", "Export PNG…");
+    enter_path(&mut harness, &output);
+    click(&mut harness, "Export PNG");
+    assert!(output.exists());
+    assert!(harness.state().session().dirty());
+    let before = harness.state().session().snapshot().expect("snapshot");
+
+    let commands = request_close(&mut harness);
+    assert!(commands.contains(&egui::ViewportCommand::CancelClose));
+    assert!(!commands.contains(&egui::ViewportCommand::Close));
+    assert_eq!(
+        harness.state().session().snapshot().expect("snapshot"),
+        before
+    );
+    harness.get_by_role_and_label(Role::Button, "Discard");
+
+    click(&mut harness, "Cancel");
+    assert_eq!(
+        harness.state().session().snapshot().expect("snapshot"),
+        before
+    );
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Button, "Discard")
+            .is_none()
+    );
+    assert!(!viewport_commands(&harness).contains(&egui::ViewportCommand::Close));
+
+    let commands = request_close(&mut harness);
+    assert!(commands.contains(&egui::ViewportCommand::CancelClose));
+    harness
+        .get_by_role_and_label(Role::Button, "Discard")
+        .click();
+    harness.step();
+    let commands = viewport_commands(&harness);
+    assert!(commands.contains(&egui::ViewportCommand::Close));
+    assert!(!commands.contains(&egui::ViewportCommand::CancelClose));
+    assert_eq!(
+        harness.state().session().snapshot().expect("snapshot"),
+        before
+    );
+    assert!(harness.state().session().dirty());
+
+    let commands = request_close(&mut harness);
+    assert!(
+        !commands.contains(&egui::ViewportCommand::CancelClose),
+        "egui-winit's forwarded close event must be allowed after explicit Discard"
+    );
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Button, "Discard")
+            .is_none()
+    );
 }

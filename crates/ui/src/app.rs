@@ -17,6 +17,8 @@ pub struct PaintApp {
     next_layer_number: usize,
     status: String,
     path_dialog: Option<PathDialog>,
+    pending_discard: Option<DiscardAction>,
+    close_approved: bool,
 }
 
 impl PaintApp {
@@ -30,6 +32,8 @@ impl PaintApp {
             next_layer_number: 1,
             status: "New 800×600 opaque-white document".to_owned(),
             path_dialog: None,
+            pending_discard: None,
+            close_approved: false,
         };
         app.refresh_texture(&creation_context.egui_ctx);
         app
@@ -52,8 +56,47 @@ impl PaintApp {
         self.selection_input = SelectionInput::default();
         self.next_layer_number = 1;
         self.path_dialog = None;
+        self.pending_discard = None;
         self.texture_dirty = true;
         self.status = "New 800×600 opaque-white document".to_owned();
+    }
+
+    fn request_new(&mut self) {
+        if self.session.dirty() {
+            self.path_dialog = None;
+            self.pending_discard = Some(DiscardAction::NewDocument);
+        } else {
+            self.new_document();
+        }
+    }
+
+    fn request_open(&mut self, path: String) {
+        self.path_dialog = None;
+        if self.session.dirty() {
+            self.pending_discard = Some(DiscardAction::OpenPng(path));
+        } else {
+            self.open_png(path);
+        }
+    }
+
+    fn open_png(&mut self, path: String) {
+        let path_buffer = PathBuf::from(&path);
+        match AppSession::open_png(&path_buffer) {
+            Ok(session) => {
+                self.session = session;
+                self.next_layer_number = 1;
+                self.texture_dirty = true;
+                self.path_dialog = None;
+                self.status = format!("Opened flattened PNG: {}", path_buffer.display());
+            }
+            Err(error) => {
+                self.path_dialog = Some(PathDialog {
+                    kind: PathDialogKind::Open,
+                    path,
+                });
+                self.status = format!("Open failed: {error}");
+            }
+        }
     }
 
     fn execute(&mut self, command: Command, success: impl Into<String>) -> bool {
@@ -139,7 +182,7 @@ impl PaintApp {
             ui.horizontal_wrapped(|ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("New").clicked() {
-                        self.new_document();
+                        self.request_new();
                         ui.close();
                     }
                     if ui.button("Open PNG…").clicked() {
@@ -367,37 +410,110 @@ impl PaintApp {
         if !confirm {
             return;
         }
-        let path = PathBuf::from(&dialog.path);
+        let path = dialog.path.clone();
         match kind {
-            PathDialogKind::Open => match AppSession::open_png(&path) {
-                Ok(session) => {
-                    self.session = session;
-                    self.next_layer_number = 1;
-                    self.texture_dirty = true;
-                    self.path_dialog = None;
-                    self.status = format!("Opened flattened PNG: {}", path.display());
+            PathDialogKind::Open => self.request_open(path),
+            PathDialogKind::Export => {
+                let path = PathBuf::from(path);
+                match self.session.export_png_atomic(&path) {
+                    Ok(()) => {
+                        self.path_dialog = None;
+                        self.status = format!(
+                            "Exported flattened PNG without changing the layered session: {}",
+                            path.display()
+                        );
+                    }
+                    Err(error) => {
+                        self.status = format!("Export failed: {error}");
+                    }
                 }
-                Err(error) => {
-                    self.status = format!("Open failed: {error}");
-                }
-            },
-            PathDialogKind::Export => match self.session.export_png_atomic(&path) {
-                Ok(()) => {
-                    self.path_dialog = None;
-                    self.status = format!(
-                        "Exported flattened PNG without changing the layered session: {}",
-                        path.display()
-                    );
-                }
-                Err(error) => {
-                    self.status = format!("Export failed: {error}");
-                }
-            },
+            }
+        }
+    }
+
+    fn cancel_discard(&mut self) {
+        if let Some(DiscardAction::OpenPng(path)) = self.pending_discard.take() {
+            self.path_dialog = Some(PathDialog {
+                kind: PathDialogKind::Open,
+                path,
+            });
+        }
+    }
+
+    fn discard_confirmation(&mut self, ui: &mut egui::Ui) {
+        let explanation = match self.pending_discard.as_ref() {
+            Some(DiscardAction::NewDocument) => {
+                "Creating a new document will discard the modified document and its undo history."
+            }
+            Some(DiscardAction::OpenPng(_)) => {
+                "Opening a PNG will replace the modified document and its undo history with one flattened layer."
+            }
+            Some(DiscardAction::CloseViewport) => {
+                "Closing Paint.R will discard the modified document and its undo history."
+            }
+            None => return,
+        };
+        let mut cancel = false;
+        let mut discard = false;
+        egui::Window::new("Discard unsaved changes?")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ui.ctx(), |ui| {
+                ui.label(explanation);
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                    if ui.button("Discard").clicked() {
+                        discard = true;
+                    }
+                });
+            });
+
+        if cancel {
+            self.cancel_discard();
+            return;
+        }
+        if !discard {
+            return;
+        }
+        match self.pending_discard.take() {
+            Some(DiscardAction::NewDocument) => self.new_document(),
+            Some(DiscardAction::OpenPng(path)) => self.open_png(path),
+            Some(DiscardAction::CloseViewport) => {
+                // egui-winit delivers this command as a fresh ViewportEvent::Close.
+                self.close_approved = true;
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            None => {}
+        }
+    }
+
+    fn handle_close_request(&mut self, context: &egui::Context) {
+        let close_requested = context.input(|input| input.viewport().close_requested());
+        if !close_requested {
+            return;
+        }
+        if self.close_approved {
+            // Allow only the close event forwarded after explicit Discard.
+            self.close_approved = false;
+            return;
+        }
+        if self.session.dirty() {
+            context.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.path_dialog = None;
+            self.pending_discard = Some(DiscardAction::CloseViewport);
         }
     }
 }
 
 impl eframe::App for PaintApp {
+    fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
+        // `logic` also runs for hidden windows, where `ui` would not see the close request.
+        self.handle_close_request(context);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.refresh_texture(ui.ctx());
         self.menu_panel(ui);
@@ -407,6 +523,7 @@ impl eframe::App for PaintApp {
         self.status_panel(ui);
         self.canvas_panel(ui);
         self.path_dialog(ui);
+        self.discard_confirmation(ui);
         if self.texture_dirty {
             // Mutations happen while widgets run, after this frame's initial texture refresh.
             // Schedule the real composed-surface upload instead of relying on incidental repaints.
@@ -432,6 +549,12 @@ impl Default for SelectionInput {
             bottom: 1,
         }
     }
+}
+
+enum DiscardAction {
+    NewDocument,
+    OpenPng(String),
+    CloseViewport,
 }
 
 #[derive(Clone, Copy)]
