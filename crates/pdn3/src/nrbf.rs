@@ -55,6 +55,8 @@ pub enum NrbfError {
     },
     #[error("malformed NRBF at byte {offset}: {reason}")]
     Malformed { offset: usize, reason: &'static str },
+    #[error("dangling NRBF object reference {id} at byte {offset}")]
+    DanglingReference { offset: usize, id: ObjectId },
     #[error("unsupported NRBF record {record_type} at byte {offset}")]
     UnsupportedRecord { offset: usize, record_type: u8 },
     #[error("unsupported NRBF feature at byte {offset}: {feature}")]
@@ -459,10 +461,7 @@ mod tests {
         dangling.push(11);
         assert!(matches!(
             parse_nrbf_prefix(&dangling, &NrbfLimits::default()),
-            Err(NrbfError::Malformed {
-                reason: "dangling object reference",
-                ..
-            })
+            Err(NrbfError::DanglingReference { id: 99, .. })
         ));
 
         let mut duplicate = byte_array_fixture(b"a");
@@ -493,6 +492,37 @@ mod tests {
             parse_nrbf_prefix(&fixture, &NrbfLimits::default()),
             Err(NrbfError::Malformed {
                 reason: "null run exceeds member count",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn negative_inline_object_id_is_valid_but_negative_member_reference_is_not() {
+        let mut fixture = header(1);
+        fixture.push(4);
+        push_i32(&mut fixture, 1);
+        push_string(&mut fixture, "Root");
+        push_i32(&mut fixture, 1);
+        push_string(&mut fixture, "value");
+        fixture.push(1); // String
+        let inline_record_offset = fixture.len();
+        fixture.push(6); // inline BinaryObjectString
+        push_i32(&mut fixture, -8);
+        push_string(&mut fixture, "inline");
+        fixture.push(11);
+        let parsed = parse_nrbf_prefix(&fixture, &NrbfLimits::default())
+            .expect("negative inline id is permitted by MS-NRBF");
+        let encoded = write_nrbf(&parsed.stream, &NrbfLimits::default()).expect("write inline id");
+        let reparsed =
+            parse_nrbf_prefix(&encoded, &NrbfLimits::default()).expect("reparse inline id");
+        assert_eq!(reparsed.stream, parsed.stream);
+
+        fixture[inline_record_offset] = 9; // MemberReference instead of inline string
+        assert!(matches!(
+            parse_nrbf_prefix(&fixture, &NrbfLimits::default()),
+            Err(NrbfError::Malformed {
+                reason: "object reference id must be positive",
                 ..
             })
         ));

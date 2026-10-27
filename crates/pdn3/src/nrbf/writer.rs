@@ -53,6 +53,9 @@ impl Writer<'_> {
             return Err(self.limit("object depth", depth, self.limits.max_depth));
         }
         if self.emitted_objects.contains(&id) {
+            if id <= 0 {
+                return Err(self.malformed("cannot write a member reference to a non-positive id"));
+            }
             self.write_u8(9)?;
             return self.write_i32(id);
         }
