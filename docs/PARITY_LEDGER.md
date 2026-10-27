@@ -6,10 +6,10 @@ No entry is marked `parity-pinned` by an implementation agent. The integrator re
 
 | Feature / environment | Reference evidence | Product status | Platform scope | Next required gate |
 |---|---|---|---|---|
-| Windows reference VM | Signed 5.1.12; D3D11; interactive launch; one Invert/PNG observation | implemented-unverified | Windows 11 ARM64 / UTM | Pin configuration; repeat A/A; clean snapshots; scripted semantic capture |
+| Windows reference VM | Signed 5.1.12; D3D11; audited 3/3 fresh-document Invert/PNG A/A/A run with matching guest/host/FFmpeg evidence | implemented-unverified | Windows 11 ARM64 / UTM | Pin remaining configuration fields; preserve clean snapshots; expand semantic corpus; Windows x64 remains separate |
 | Main-window UI structure | Initial screen observation only | unimplemented | All | Real session-driven UI and usability tests, then reference screenshots |
 | Exact UI pixels | None | unimplemented | All | Asset/font rights and zero-diff pinned comparisons |
-| Default 800×600 document + Invert | One stock 5.1.12 PNG: all 480,000 pixels opaque black | implemented-unverified | Engine, all CPU targets | Session integration, exact differential comparison, repeatability |
+| Default 800×600 document + Invert | Audited stock 5.1.12 A/A/A: three identical 436-byte PNGs; all 480,000 decoded pixels opaque black in every run | implemented-unverified | Engine/session; reference on Windows ARM64 | Real clone headless/UI differential comparison and native platform gates |
 | Normal layer composition | Hand-computed unit/property tests; no Paint.NET differential yet | implemented-unverified | Engine, all CPU targets | Exhaustive alpha/opacity differential probes against stock Paint.NET |
 | Other blend modes | Public documentation | unimplemented | All | Implement only with exact per-mode reference evidence |
 | Rectangle selection and solid fill | Engine clipping/property tests; no reference corpus yet | implemented-unverified | Engine, all CPU targets | Session integration and boundary/coverage differential corpus |
