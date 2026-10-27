@@ -1,6 +1,6 @@
 # Authentic Paint.NET 5.1.12 fixture requests
 
-No authentic PDN produced by stock Paint.NET 5.1.12 is currently committed. The existing `paintnet-5.1.12-invert.png` is PNG evidence only. The third-party 4.21 research sample is not a substitute for this corpus.
+One authentic stock 5.1.12 fixture is now committed: `tests/fixtures/paintnet-5.1.12-invert-2x2.pdn`, with its stock-reopened PNG and provenance manifest. It establishes one 2×2 Normal/BGRA reader baseline only. The remaining corpus below is still required; the third-party 4.21 research sample is not a substitute.
 
 Each new PDN artifact must be saved by stock Paint.NET 5.1.12 and accompanied by a manifest containing: exact product/build, source SHA-256, canvas dimensions, bottom-to-top layer order, names, visibility, background flags, opacity, blend modes, exact straight-alpha BGRA pixel hashes per layer, and the UI/script actions used to produce it. Record whether any ancillary tool edited the file; such a file is derived, not authentic stock output. Reference-agent execution is required; lane B did not operate the VM.
 
@@ -28,6 +28,7 @@ Each new PDN artifact must be saved by stock Paint.NET 5.1.12 and accompanied by
    - Default/sRGB and any other stock-selectable color profile/color-context cases; record profile bytes or hash.
    - Nonempty document and layer metadata, Unicode/long metadata values, thumbnail presence, and resave-after-metadata-edit cases. Identify which fields are semantic versus preserved-only.
 6. **Writer acceptance, after reference automation exists**
+   - Two untouched 2×2 Normal/BGRA clone probes (raw and gzip) have been generated for the stock-open gate; acceptance remains pending until the reference run reports actual stock results.
    - Open Paint.R experimental Normal/BGRA output at 1×1, 3×3, and two layers in stock 5.1.12; capture exact success/failure, names/attributes, and per-layer BGRA after stock resave.
    - Test both raw and gzip writer variants only if stock has a defined path for the selected chunk version.
    - Until these checks pass, writer status remains experimental/self-round-trip-tested only.

@@ -13,6 +13,8 @@ This crate implements a bounded PDN3 subset over the canonical `paint_document` 
 
 The writer is **experimental and self-round-trip-tested only**; stock Paint.NET 5.1.12 acceptance is unverified. Independently authored wire fixtures test the reader and implementation semantics, not the writer's Paint.NET acceptance. Fresh writing does not automatically copy the preservation payload from `DecodedPdn` and has no atomic-file API.
 
+One authentic signed Paint.NET 5.1.12 reader fixture is committed at `tests/fixtures/paintnet-5.1.12-invert-2x2.pdn` (SHA-256 `86736d36d886e08943fe57d3045a092051c83ad7f919aa6f21b177c84007c09b`). The `stock_5_1_12` integration test verifies its one Normal Background layer and exact four opaque-black BGRA pixels, then compares the clone composite with stock's own reopened PNG. Its adjacent manifest records provenance and the narrow evidence boundary. This is authentic reader evidence, not writer acceptance or a complete semantic corpus.
+
 ### Preservation, reports, and explicit exclusions
 
 `DecodedPdn` retains the original header XML and complete parsed NRBF graph. It reports nonempty document/layer metadata counts, unmapped known-class members, unreachable objects, padded/shared layers, and retains/reports trailing bytes. This is a preservation payload, not a promise that every metadata field has a canonical semantic equivalent.
@@ -29,6 +31,6 @@ Defaults include 512 MiB input/output and total canonical surface limits, 256 Mi
 
 A third-party pypdn 4.21 sample (`Untitled3.pdn`, 8,773 bytes, SHA-256 `a4cb06a92bba14c56123651530a442bba42ed81c37dfe52bca5f82b7891c92f2`) was inspected locally. Its second Additive layer is rejected as unsupported. A temporary derived probe retaining only its original first Normal layer and original gzip chunks decoded 800×600/480,000 pixels. Neither the source nor derived file is committed, and neither is a stock Paint.NET 5.1.12 compatibility oracle.
 
-No dependency or manifest changes were made. The crate uses the workspace-approved existing `flate2`, `quick-xml`, `thiserror`, `proptest` (development), `paint-core`, and `paint-document` dependencies.
+No new external or production dependency was introduced. The crate uses the workspace-approved existing `flate2`, `quick-xml`, `thiserror`, `paint-core`, and `paint-document` dependencies; development tests use `proptest`, `tempfile`, and the existing `paint-image-io`/`paint-raster` crates for authentic stock-versus-clone acceptance.
 
 See [REFERENCE_FIXTURES.md](REFERENCE_FIXTURES.md) for the evidence still required from authentic stock Paint.NET 5.1.12.
