@@ -164,9 +164,10 @@ no network access, uses validated in-memory bytes, and verifies every emitted fi
 again. Package-source texts take precedence; a failed identity match produces no supplemented
 text and leaves the package incomplete.
 
-The current curated bundle is deliberately limited to 17 packages: the eight AccessKit package
+The current curated bundle is deliberately limited to 20 packages: the eight AccessKit package
 versions; the three listed egui-family 0.37.0 packages (`eframe`, `egui_kittest`, and
-`egui_system_font_provider`); and these six Android-related packages:
+`egui_system_font_provider`); these six Android-related packages; and the three additional packages
+in the second table:
 
 | Package | Declared Cargo repository | Exact `.cargo_vcs_info` commit | Package path in that commit |
 |---|---|---|---|
@@ -177,13 +178,29 @@ versions; the three listed egui-family 0.37.0 packages (`eframe`, `egui_kittest`
 | `ndk-context` 0.1.1 | `https://github.com/rust-windowing/android-ndk-rs` | `10f2ba388fca20f7349996ebae26ccda7a6fda5c` | `ndk-context` |
 | `ndk-sys` 0.6.0+11769913 | `https://github.com/rust-mobile/ndk` | `49bbbba16c58ff63cb8a0ad0eca5a9fb7ecaec25` | `ndk-sys` |
 
-Their two repository-root license files were retrieved separately from the exact package-specific
-commit URLs recorded in the manifest and hash-verified before being checked in. For the six
-Android-related packages, curation also matched real locked Cargo metadata and registry sources,
-verified each cached `.crate` archive SHA-256 against `Cargo.lock`, and matched the archive and
-extracted `.cargo_vcs_info.json` commit and package path. Exact-commit Git trees established the
-root `LICENSE-APACHE` and `LICENSE-MIT` paths before retrieval; no package subdirectory, moving
-branch, latest revision, release tag, SPDX expression, or other commit supplied substitute text.
+| Package | Declared Cargo repository | Exact `.cargo_vcs_info` commit | Package path | Exact root resources |
+|---|---|---|---|---|
+| `block2` 0.5.1 | `https://github.com/madsmtm/objc2` | `4fc083f1c6d6784577e38b0ee8dbd344481e2fd2` | `crates/block2` | `LICENSE.txt` |
+| `block2` 0.6.2 | `https://github.com/madsmtm/objc2` | `b4167b582b2f75f9a1be75495c41b765344fd03c` | `crates/block2` | `LICENSE.md` |
+| `profiling` 1.0.18 | `https://github.com/aclysma/profiling` | `8271551172eb6fa4cba47369aedd93790c623df9` | `profiling` | `LICENSE-APACHE`, `LICENSE-MIT` |
+
+All 17 pre-existing bindings are unchanged. Every curated resource was retrieved separately from
+the exact package-specific full-commit URL recorded in the manifest and hash-verified before being
+checked in. For the six Android-related packages and three additional packages, curation also
+matched real locked Cargo metadata and registry sources, verified each cached `.crate` archive
+SHA-256 against `Cargo.lock`, and matched the archived and extracted `.cargo_vcs_info.json` commit
+and package path. Exact-commit Git trees established every root resource path before retrieval;
+the newly retrieved bytes also matched the corresponding exact-tree Git blob IDs. No package
+subdirectory, moving branch, latest revision, release tag, SPDX expression, or other commit supplied
+substitute text.
+
+The requested `dispatch` 0.2.0 and `r-efi` 5.3.0/6.0.0 archives and extracted sources passed those
+same lock-checksum and archived/extracted VCS checks but remain uncovered. Real Cargo metadata
+declares the `dispatch` repository as `http://github.com/SSheldon/rust-dispatch`, which fails closed
+against the loader's exact HTTPS-repository requirement; it was not rewritten to HTTPS. Neither
+exact `r-efi` commit (`97b55bed1c2c91dcbf787674849f05337ff80b33` and
+`7e1b0322d31d625f81a5656096330934f9cd835d`) has a root license/notice resource, so no other path
+or revision supplied substitute text.
 
 The seven other locked egui-family 0.37.0 packages remain uncovered because exact commit-pinned
 upstream license content for their recorded VCS commit `7c0b40402271e8d40cda69f87cf3c2617c2e4382`
@@ -201,7 +218,7 @@ python3 -m unittest discover -s tools/package/tests -p 'test_*.py' -v
 Tests use clearly named temporary, disposable non-product fixtures. They cover ZIP and
 tar.gz byte determinism, timestamps/modes/order, exact SHA-256 manifests and sidecars,
 SBOM path independence, font notice extraction and gap reporting, offline curated-notice
-identity/hash/provenance checks, the checked-in AccessKit, scoped egui, and Android bundles, platform layouts,
+identity/hash/provenance checks, the checked-in AccessKit, scoped egui, Android, block2, and profiling bundles, platform layouts,
 PE/Mach-O/ELF architecture acceptance and rejection, exact smoke-run validation,
 public-release refusal, and mandatory-smoke failure handling. A complete `package_release`
 integration test additionally compares two deterministic archives, sidecars, binary

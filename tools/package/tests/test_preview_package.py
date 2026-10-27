@@ -569,6 +569,41 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                 "rust-mobile/ndk",
             ),
         }
+        additional = {
+            ("block2", "0.5.1"): (
+                "2c132eebf10f5cad5289222520a4a058514204aed6d791f1cf4fe8088b82d15f",
+                "https://github.com/madsmtm/objc2",
+                "4fc083f1c6d6784577e38b0ee8dbd344481e2fd2",
+                "crates/block2",
+                "madsmtm/objc2",
+            ),
+            ("block2", "0.6.2"): (
+                "cdeb9d870516001442e364c5220d3574d2da8dc765554b4a617230d33fa58ef5",
+                "https://github.com/madsmtm/objc2",
+                "b4167b582b2f75f9a1be75495c41b765344fd03c",
+                "crates/block2",
+                "madsmtm/objc2",
+            ),
+            ("profiling", "1.0.18"): (
+                "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5",
+                "https://github.com/aclysma/profiling",
+                "8271551172eb6fa4cba47369aedd93790c623df9",
+                "profiling",
+                "aclysma/profiling",
+            ),
+        }
+        additional_hashes = {
+            ("block2", "0.5.1"): {
+                "LICENSE.txt": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+            },
+            ("block2", "0.6.2"): {
+                "LICENSE.md": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+            },
+            ("profiling", "1.0.18"): {
+                "LICENSE-APACHE": "10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551",
+                "LICENSE-MIT": "c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333",
+            },
+        }
         accesskit_hashes = {
             "LICENSE-APACHE": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
             "LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
@@ -601,7 +636,8 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
         }
 
         self.assertEqual(
-            {identity[:2] for identity in supplement.packages}, set(accesskit) | set(egui) | set(android)
+            {identity[:2] for identity in supplement.packages},
+            set(accesskit) | set(egui) | set(android) | set(additional),
         )
         for identity, curated in supplement.packages.items():
             with self.subTest(package=identity[:2]):
@@ -617,6 +653,10 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                     repository, commit, path_in_vcs = egui[identity[:2]]
                     raw_repository = "emilk/egui"
                     expected_hashes = egui_hashes
+                elif identity[:2] in additional:
+                    expected_checksum, repository, commit, path_in_vcs, raw_repository = additional[identity[:2]]
+                    self.assertEqual(curated.checksum, expected_checksum)
+                    expected_hashes = additional_hashes[identity[:2]]
                 else:
                     expected_checksum, repository, commit, path_in_vcs, raw_repository = android[identity[:2]]
                     self.assertEqual(curated.checksum, expected_checksum)
@@ -624,10 +664,10 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                 self.assertEqual(curated.repository, repository)
                 self.assertEqual(curated.vcs_commit, commit)
                 self.assertEqual(curated.path_in_vcs, path_in_vcs)
-                self.assertEqual(len(curated.files), 2)
+                self.assertEqual(len(curated.files), len(expected_hashes))
                 self.assertEqual(
                     {resource.source_path.as_posix() for resource in curated.files},
-                    {"LICENSE-APACHE", "LICENSE-MIT"},
+                    set(expected_hashes),
                 )
                 for resource in curated.files:
                     source_path = resource.source_path.as_posix()
