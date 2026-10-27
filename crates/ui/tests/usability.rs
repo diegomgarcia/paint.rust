@@ -301,6 +301,31 @@ fn open_dialog_previews_a_valid_png_without_changing_the_session() {
 }
 
 #[test]
+fn png_browser_navigates_and_previews_without_mutating_the_session() {
+    let root = TempDir::new().expect("temp dir");
+    let nested = root.path().join("nested");
+    fs::create_dir(&nested).expect("nested directory");
+    let image = nested.join("image.png");
+    write_input_png(&image);
+    let mut harness = app();
+    let before = harness.state().session().document().clone();
+
+    menu_item(&mut harness, "File", "Open PNG…");
+    enter_path(&mut harness, root.path());
+    click(&mut harness, "Browse folder");
+    click(&mut harness, "Folder: nested");
+    click(&mut harness, "PNG: image.png");
+    harness.run();
+
+    assert_eq!(
+        harness.get_by_label("PNG file path").value().as_deref(),
+        image.to_str()
+    );
+    harness.get_by_label_contains("PNG preview: 2×1 PNG");
+    assert_eq!(harness.state().session().document(), &before);
+}
+
+#[test]
 fn layer_add_opacity_active_selection_and_visibility_change_composition() {
     let mut harness = app();
     click(&mut harness, "Add Layer");

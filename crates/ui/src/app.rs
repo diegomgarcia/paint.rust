@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use paint_app::{AppSession, Command};
 use paint_core::{Bgra, Rect, Size};
@@ -15,6 +15,7 @@ const MAX_PREVIEW_FILE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_PREVIEW_DECODED_BYTES: usize = 64 * 1024 * 1024;
 const PREVIEW_WIDTH: f32 = 180.0;
 const PREVIEW_HEIGHT: f32 = 140.0;
+const MAX_BROWSER_ENTRIES: usize = 200;
 
 /// Original development-preview shell. `AppSession` remains the only document writer.
 pub struct PaintApp {
@@ -500,6 +501,15 @@ impl PaintApp {
                 .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
         let mut confirm = enter_in_path && !dialog.path.trim().is_empty();
         let mut preview_requested = false;
+        let mut browse_from_path = false;
+        let mut browser_navigation =
+            if matches!(kind, PathDialogKind::Open) && !dialog.browser_loaded {
+                dialog.browser_loaded = true;
+                Some(dialog.browser_dir.clone())
+            } else {
+                None
+            };
+        let mut selected_image = None;
         let mut cancel = ui
             .ctx()
             .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
@@ -554,8 +564,85 @@ impl PaintApp {
                 if let Some(error) = &dialog.preview_error {
                     ui.colored_label(egui::Color32::LIGHT_RED, format!("Preview failed: {error}"));
                 }
+                if matches!(kind, PathDialogKind::Open) {
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        ui.strong("PNG browser");
+                        if ui.button("Browse folder").clicked() {
+                            browse_from_path = true;
+                        }
+                    });
+                    ui.label(format!("Folder: {}", dialog.browser_dir.display()));
+                    if dialog.browser_truncated {
+                        ui.label(format!(
+                            "Showing the first {MAX_BROWSER_ENTRIES} folders and PNG files."
+                        ));
+                    }
+                    if let Some(error) = &dialog.browser_error {
+                        ui.colored_label(
+                            egui::Color32::LIGHT_RED,
+                            format!("Folder unavailable: {error}"),
+                        );
+                    }
+                    egui::ScrollArea::vertical()
+                        .id_salt("paint-r-png-browser")
+                        .max_height(150.0)
+                        .show(ui, |ui| {
+                            for entry in &dialog.browser_entries {
+                                let label = if entry.is_dir {
+                                    format!("Folder: {}", entry.name)
+                                } else {
+                                    format!("PNG: {}", entry.name)
+                                };
+                                if ui.selectable_label(false, label).clicked() {
+                                    if entry.is_dir {
+                                        browser_navigation = Some(entry.path.clone());
+                                    } else {
+                                        selected_image = Some(entry.path.clone());
+                                    }
+                                }
+                            }
+                        });
+                }
             });
 
+        if browse_from_path {
+            let candidate = PathBuf::from(dialog.path.trim());
+            let directory = if candidate.is_dir() {
+                candidate
+            } else {
+                candidate
+                    .parent()
+                    .filter(|parent| parent.is_dir())
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| dialog.browser_dir.clone())
+            };
+            browser_navigation = Some(directory);
+        }
+        if let Some(directory) = browser_navigation {
+            match list_png_directory(&directory) {
+                Ok(listing) => {
+                    dialog.browser_dir = directory;
+                    dialog.browser_entries = listing.entries;
+                    dialog.browser_truncated = listing.truncated;
+                    dialog.browser_error = None;
+                }
+                Err(error) => {
+                    dialog.browser_dir = directory;
+                    dialog.browser_entries.clear();
+                    dialog.browser_truncated = false;
+                    dialog.browser_error = Some(error);
+                }
+            }
+            ui.ctx().request_repaint();
+        }
+        if let Some(image) = selected_image {
+            dialog.path = image.display().to_string();
+            dialog.preview = None;
+            dialog.preview_error = None;
+            preview_requested = true;
+            ui.ctx().request_repaint();
+        }
         if preview_requested {
             let path = PathBuf::from(dialog.path.trim());
             match kind {
@@ -847,11 +934,27 @@ struct PathDialog {
     focus_path: bool,
     preview: Option<DialogPreview>,
     preview_error: Option<String>,
+    browser_dir: PathBuf,
+    browser_entries: Vec<BrowserEntry>,
+    browser_truncated: bool,
+    browser_error: Option<String>,
+    browser_loaded: bool,
 }
 
 struct DialogPreview {
     label: String,
     texture: egui::TextureHandle,
+}
+
+struct BrowserEntry {
+    name: String,
+    path: PathBuf,
+    is_dir: bool,
+}
+
+struct DirectoryListing {
+    entries: Vec<BrowserEntry>,
+    truncated: bool,
 }
 
 impl PathDialog {
@@ -860,12 +963,18 @@ impl PathDialog {
     }
 
     fn with_path(kind: PathDialogKind, path: String) -> Self {
+        let browser_dir = browser_start_dir(&path);
         Self {
             kind,
             path,
             focus_path: true,
             preview: None,
             preview_error: None,
+            browser_dir,
+            browser_entries: Vec::new(),
+            browser_truncated: false,
+            browser_error: None,
+            browser_loaded: false,
         }
     }
 }
@@ -936,6 +1045,58 @@ fn surface_thumbnail_texture(
         &rgba,
     );
     context.load_texture(name, image, egui::TextureOptions::NEAREST)
+}
+
+fn browser_start_dir(path_text: &str) -> PathBuf {
+    let candidate = PathBuf::from(path_text.trim());
+    if candidate.is_dir() {
+        return candidate;
+    }
+    if let Some(parent) = candidate.parent()
+        && parent.is_dir()
+    {
+        return parent.to_path_buf();
+    }
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn list_png_directory(directory: &Path) -> Result<DirectoryListing, String> {
+    let mut entries = Vec::new();
+    let read_dir = std::fs::read_dir(directory)
+        .map_err(|error| format!("cannot read {}: {error}", directory.display()))?;
+    for result in read_dir.take(MAX_BROWSER_ENTRIES + 1) {
+        let entry = result.map_err(|error| format!("cannot read folder entry: {error}"))?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("cannot inspect {name}: {error}"))?;
+        let is_dir = file_type.is_dir();
+        let is_png = file_type.is_file()
+            && entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("png"));
+        if !is_dir && !is_png {
+            continue;
+        }
+        entries.push(BrowserEntry {
+            name,
+            path: entry.path(),
+            is_dir,
+        });
+    }
+    entries.sort_by(|left, right| {
+        right
+            .is_dir
+            .cmp(&left.is_dir)
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+    let truncated = entries.len() > MAX_BROWSER_ENTRIES;
+    entries.truncate(MAX_BROWSER_ENTRIES);
+    Ok(DirectoryListing { entries, truncated })
 }
 
 fn open_png_preview(
