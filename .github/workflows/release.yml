@@ -50,9 +50,20 @@ jobs:
       - name: Check formatting
         run: bash ./tools/cargo-pinned.sh fmt --all -- --check
       - name: Strict Clippy
-        run: bash ./tools/cargo-pinned.sh clippy --workspace --all-targets --locked -- -D warnings
+        run: bash ./tools/cargo-pinned.sh clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Unit, property, integration, and usability tests
         run: bash ./tools/cargo-pinned.sh test --workspace --all-features --locked
+      - name: Stub and suspicious-test scan
+        run: bash ./tools/cargo-pinned.sh run --locked -p xtask -- scan-stubs
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.201
+      - name: Restore locked .NET dependencies
+        run: dotnet restore plugin-host/Paint.PluginHost.sln --locked-mode
+      - name: .NET host and protocol tests
+        run: dotnet test plugin-host/Paint.PluginHost.sln --configuration Release --no-restore
+      - name: Real Rust to .NET plugin conformance
+        run: bash plugin-host/test-cross-language.sh
       - name: Independent PNG oracle tests
         run: python3 -m unittest discover -s tests/e2e -p 'test_*.py' -v
       - name: Build actual paint-ui release binary

@@ -28,6 +28,11 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("tools/package/preview_package.py", self.workflow)
         self.assertIn("actions/upload-artifact@v4", self.workflow)
         self.assertIn("if-no-files-found: error", self.workflow)
+        self.assertIn("scan-stubs", self.workflow)
+        self.assertIn("actions/setup-dotnet@v4", self.workflow)
+        self.assertIn("dotnet restore plugin-host/Paint.PluginHost.sln --locked-mode", self.workflow)
+        self.assertIn("dotnet test plugin-host/Paint.PluginHost.sln", self.workflow)
+        self.assertIn("plugin-host/test-cross-language.sh", self.workflow)
 
     def test_workflow_has_no_release_or_publish_capability(self) -> None:
         self.assertIn("contents: read", self.workflow)

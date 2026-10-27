@@ -22,15 +22,18 @@ writer-accepted, or compatible with arbitrary Paint.NET plugins.
 | `macos-14` | `macos-aarch64` | macOS ARM64 |
 | `ubuntu-24.04` | `linux-x86_64` | Linux x86_64 |
 
-Each lane installs Rust 1.95.0 and Python 3.12, uses `tools/cargo-pinned.sh`, fetches with
-`--locked`, runs packaging tests, formatting, strict Clippy, all workspace tests, and the
-independent PNG tests. It then builds only the actual `paint-ui` release package and calls
-the packager. The packager must run the real trace smoke successfully before creating its
-archive. `actions/upload-artifact` uploads `dist/` with a seven-day retention period and
-`if-no-files-found: error`; no GitHub release is created.
+Each lane installs Rust 1.95.0, Python 3.12, and .NET 10.0.201, uses
+`tools/cargo-pinned.sh`, fetches with `--locked`, runs packaging tests, formatting, strict
+all-feature Clippy, all workspace tests, the stub scan, locked .NET tests, real
+Rust-to-.NET conformance, and the independent PNG tests. It then builds only the actual
+`paint-ui` release package and calls the packager. The packager must run the real trace
+smoke successfully before creating its archive. `actions/upload-artifact` uploads `dist/`
+with a seven-day retention period and `if-no-files-found: error`; no GitHub release is
+created.
 
-The only third-party actions are the official checkout, Python setup, and artifact-upload
-actions. Cross-compilation is not used as evidence for another OS/architecture lane.
+The only third-party actions are the official checkout, Python setup, .NET setup, and
+artifact-upload actions. Cross-compilation is not used as evidence for another
+OS/architecture lane.
 
 ## Artifact acceptance checklist
 
