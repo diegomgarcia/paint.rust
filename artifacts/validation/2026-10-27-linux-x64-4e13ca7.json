@@ -1,0 +1,97 @@
+{
+  "archive": {
+    "bytes": 9153392,
+    "name": "paint-r-0.1.0-linux-x86_64.tar.gz",
+    "sha256": "30f7d2782b7f7f28368b43ea1a50bcb2dc5e4b37ece42be5801c6343a221083a",
+    "sidecar_sha256": "b844d4ad7109205c08392c7277cf9399b00c1c6ff860cfa6cbe672058d40c72a",
+    "verification_sha256": "728b805a9817a044457b9b93c1d0ea56e1790b19d37f7c59eb00e0c1a2fdaa3f"
+  },
+  "archive_promoted_path": "artifacts/preview/linux-x64-4e13ca7/paint-r-0.1.0-linux-x86_64.tar.gz",
+  "binary": {
+    "bytes": 22875920,
+    "executable_after_independent_extract": true,
+    "format": "ELF 64",
+    "machine": "0x003e",
+    "sha256": "0955868d2d6e7e79c8ddb913349b21fc050a98096617992bb19754885f337999"
+  },
+  "binary_reproduction": {
+    "bytes": 22875920,
+    "kind": "file",
+    "sha256": "0955868d2d6e7e79c8ddb913349b21fc050a98096617992bb19754885f337999",
+    "status": "pass"
+  },
+  "environment": {
+    "build_targets": [
+      "fresh clean target-a",
+      "independent warmed target-b"
+    ],
+    "container": "rust:1.95.0 linux/amd64",
+    "host": "Apple Silicon macOS",
+    "native_x86_64_hardware": false,
+    "userspace": "x86_64 Linux",
+    "vm": "Lima VZ ARM64 with Rosetta"
+  },
+  "format": "paint.r.linux-x64-emulated-artifact",
+  "limitations": [
+    "Emulated x86_64 userspace under Rosetta, not native Linux x86_64 hardware.",
+    "Headless/package gates only; no native Linux window/input acceptance.",
+    "Hosted three-OS CI remains unexecuted.",
+    "Unsigned internal preview; ten notice/legal gaps and public distribution remain blocked."
+  ],
+  "package_output_tree": {
+    "entries": 3,
+    "files": [
+      {
+        "bytes": 9153392,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz",
+        "sha256": "30f7d2782b7f7f28368b43ea1a50bcb2dc5e4b37ece42be5801c6343a221083a"
+      },
+      {
+        "bytes": 100,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz.sha256",
+        "sha256": "b844d4ad7109205c08392c7277cf9399b00c1c6ff860cfa6cbe672058d40c72a"
+      },
+      {
+        "bytes": 573,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz.verification.json",
+        "sha256": "728b805a9817a044457b9b93c1d0ea56e1790b19d37f7c59eb00e0c1a2fdaa3f"
+      }
+    ],
+    "kind": "directory",
+    "status": "pass",
+    "tree_sha256": "1efe024610ebb4562c56dcd4a42abd71143abda0d53cc86ee713f86484c034bf"
+  },
+  "package_source_commit": "c955883bdabbda3c7851177aabe85ed0c52e2e63",
+  "payload": {
+    "all_hashes_verified": true,
+    "entries": 822,
+    "hex_color_input": true,
+    "manifest_hash_records": 821,
+    "notices": {
+      "curated_supplements": 50,
+      "packages_with_texts": 447,
+      "remaining_gaps": 10
+    },
+    "updated_ledger_embedded": true
+  },
+  "post_extract_smoke": {
+    "repeat": 2,
+    "status": "pass",
+    "trace_count": 2
+  },
+  "product_source_commit": "4e13ca7eb73120f9442eaa4b5294b52482d460da",
+  "public_release": false,
+  "status": "PASS_CURRENT_LINUX_X64_EMULATED_BUILD_PACKAGE_AND_STRICT_WORKSPACE_GATE",
+  "strict_gate": {
+    "clippy_deny_warnings": "pass",
+    "failed": 0,
+    "fmt": "pass",
+    "log": {
+      "path": "artifacts/reference-local/linux-x64-round17/linux-strict-gate.log",
+      "sha256": "74d7d82543becc31934d8d0d3f8fd5ee660d6a0c50cd9c3e49f3edb042160cae"
+    },
+    "test_result_records": 40,
+    "workspace_tests_passed": 214
+  },
+  "version": 1
+}
