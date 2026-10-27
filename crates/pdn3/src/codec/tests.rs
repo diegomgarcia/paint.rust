@@ -109,6 +109,8 @@ fn add_array(
     );
 }
 
+const METADATA_ENTRY: &str = "System.Collections.Generic.KeyValuePair`2[[System.String, mscorlib],[System.String, mscorlib]]";
+
 fn metadata_type() -> BinaryType {
     system_class(
         "System.Collections.Generic.KeyValuePair`2[[System.String, mscorlib],[System.String, mscorlib]][]",
@@ -120,6 +122,7 @@ struct FixtureConfig {
     shared_layers: bool,
     blend_mode: i32,
     stride: i32,
+    metadata: bool,
 }
 
 impl Default for FixtureConfig {
@@ -129,6 +132,7 @@ impl Default for FixtureConfig {
             shared_layers: false,
             blend_mode: 0,
             stride: 12,
+            metadata: false,
         }
     }
 }
@@ -227,7 +231,11 @@ fn semantic_fixture(config: &FixtureConfig) -> Fixture {
         5,
         ArrayEncoding::Binary(BinaryArrayType::Single),
         metadata_type(),
-        vec![],
+        if config.metadata {
+            vec![reference(60)]
+        } else {
+            vec![]
+        },
     );
     add_array(
         &mut stream,
@@ -384,7 +392,11 @@ fn semantic_fixture(config: &FixtureConfig) -> Fixture {
         32,
         ArrayEncoding::Binary(BinaryArrayType::Single),
         metadata_type(),
-        vec![],
+        if config.metadata {
+            vec![reference(63)]
+        } else {
+            vec![]
+        },
     );
     add_class(
         &mut stream,
@@ -411,6 +423,23 @@ fn semantic_fixture(config: &FixtureConfig) -> Fixture {
                 reference(25),
             ],
         );
+    }
+    if config.metadata {
+        add_class(
+            &mut stream,
+            60,
+            METADATA_ENTRY,
+            None,
+            vec![
+                ("key", BinaryType::String, reference(61)),
+                ("value", BinaryType::String, reference(62)),
+            ],
+        );
+        add_string(&mut stream, 61, "DocumentKey");
+        add_string(&mut stream, 62, "DocumentValue");
+        add_instance(&mut stream, 63, 60, vec![reference(64), reference(65)]);
+        add_string(&mut stream, 64, "LayerKey");
+        add_string(&mut stream, 65, "LayerValue");
     }
     let nrbf = write_nrbf(&stream, &NrbfLimits::default()).expect("write independent graph");
 
@@ -451,6 +480,43 @@ fn semantic_fixture(config: &FixtureConfig) -> Fixture {
     }
 }
 
+fn fixture_with_first_gzip_chunk(payload: &[u8], trailing: &[u8]) -> Vec<u8> {
+    let fixture = semantic_fixture(&FixtureConfig::default());
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(payload).expect("gzip payload");
+    let mut compressed = encoder.finish().expect("gzip payload finish");
+    compressed.extend_from_slice(trailing);
+    let mut bytes = fixture.bytes[..fixture.chunks_offset].to_vec();
+    bytes.push(0);
+    bytes.extend_from_slice(&5u32.to_be_bytes());
+    bytes.extend_from_slice(&0u32.to_be_bytes());
+    bytes.extend_from_slice(&(compressed.len() as u32).to_be_bytes());
+    bytes.extend_from_slice(&compressed);
+    bytes
+}
+
+fn out_of_order_raw_fixture() -> Vec<u8> {
+    let fixture = semantic_fixture(&FixtureConfig::default());
+    let mut records = Vec::new();
+    let mut position = fixture.chunks_offset + 5;
+    while position < fixture.bytes.len() {
+        let stored_size = u32::from_be_bytes(
+            fixture.bytes[position + 4..position + 8]
+                .try_into()
+                .expect("chunk size"),
+        ) as usize;
+        let end = position + 8 + stored_size;
+        records.push(fixture.bytes[position..end].to_vec());
+        position = end;
+    }
+    assert_eq!(records.len(), 5);
+    let mut bytes = fixture.bytes[..fixture.chunks_offset + 5].to_vec();
+    for index in [2, 0, 4, 1, 3] {
+        bytes.extend_from_slice(&records[index]);
+    }
+    bytes
+}
+
 fn expected_document() -> Document {
     let pixels = PIXELS
         .chunks_exact(4)
@@ -486,6 +552,21 @@ fn independent_raw_and_gzip_fixtures_decode_exact_semantics() {
 }
 
 #[test]
+fn metadata_is_reported_and_original_objects_are_preserved() {
+    let fixture = semantic_fixture(&FixtureConfig {
+        metadata: true,
+        ..FixtureConfig::default()
+    });
+    let decoded = decode_pdn(&fixture.bytes).expect("decode metadata fixture");
+    assert_eq!(decoded.report.document_metadata_entries, 1);
+    assert_eq!(decoded.report.layer_metadata_entries, [1]);
+    assert!(decoded.report.unmapped_objects.is_empty());
+    assert!(decoded.nrbf.objects.contains_key(&60));
+    assert!(decoded.nrbf.objects.contains_key(&63));
+    assert_eq!(decoded.document, expected_document());
+}
+
+#[test]
 fn normal_writer_emits_real_container_and_raw_or_gzip_chunks() {
     for compression in [PdnChunkCompression::Raw, PdnChunkCompression::Gzip] {
         let options = PdnWriteOptions {
@@ -505,6 +586,48 @@ fn normal_writer_emits_real_container_and_raw_or_gzip_chunks() {
             }
         );
     }
+}
+
+#[test]
+fn writer_enforces_output_and_chunk_limits() {
+    let document = expected_document();
+    let options = PdnWriteOptions {
+        compression: PdnChunkCompression::Gzip,
+        chunk_size: 5,
+    };
+    let output = PdnLimits {
+        max_output_bytes: 64,
+        ..PdnLimits::default()
+    };
+    assert!(matches!(
+        encode_pdn_with_options_and_limits(&document, &options, &output),
+        Err(PdnError::ResourceLimit {
+            resource: "output bytes",
+            ..
+        })
+    ));
+    let compressed = PdnLimits {
+        max_compressed_chunk_bytes: 1,
+        ..PdnLimits::default()
+    };
+    assert!(matches!(
+        encode_pdn_with_options_and_limits(&document, &options, &compressed),
+        Err(PdnError::ResourceLimit {
+            resource: "compressed chunk bytes",
+            ..
+        })
+    ));
+    let chunks = PdnLimits {
+        max_chunks_per_surface: 3,
+        ..PdnLimits::default()
+    };
+    assert!(matches!(
+        encode_pdn_with_options_and_limits(&document, &options, &chunks),
+        Err(PdnError::ResourceLimit {
+            resource: "chunks per surface",
+            ..
+        })
+    ));
 }
 
 #[test]
@@ -541,6 +664,23 @@ fn trailing_data_is_preserved_and_reported() {
     let decoded = decode_pdn(&fixture.bytes).expect("decode with trailing data");
     assert_eq!(decoded.trailing_bytes, [9, 8, 7]);
     assert_eq!(decoded.report.trailing_bytes, 3);
+}
+
+#[test]
+fn out_of_order_chunks_restore_exact_pixel_offsets() {
+    let decoded = decode_pdn(&out_of_order_raw_fixture()).expect("decode reordered chunks");
+    assert_eq!(decoded.document, expected_document());
+}
+
+#[test]
+fn gzip_output_length_and_compressed_consumption_are_exact() {
+    for payload in [vec![0; 4], vec![0; 6]] {
+        assert!(decode_pdn(&fixture_with_first_gzip_chunk(&payload, &[])).is_err());
+    }
+    assert!(
+        decode_pdn(&fixture_with_first_gzip_chunk(&[0; 5], &[0xaa])).is_err(),
+        "gzip member trailing byte was accepted"
+    );
 }
 
 #[test]

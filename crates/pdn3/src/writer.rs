@@ -413,9 +413,7 @@ pub(crate) fn encode(
             limits.max_header_bytes.min(0x00ff_ffff),
         ));
     }
-    let mut nrbf_limits = limits.nrbf.clone();
-    nrbf_limits.max_output_bytes = nrbf_limits.max_output_bytes.min(limits.max_output_bytes);
-    let nrbf = write_nrbf(&graph.stream, &nrbf_limits)?;
+    let nrbf = write_nrbf(&graph.stream, &limits.nrbf)?;
     let mut output = Vec::new();
     append(&mut output, b"PDN3", limits)?;
     let xml_length = (xml.len() as u32).to_le_bytes();

@@ -358,6 +358,65 @@ mod tests {
     }
 
     #[test]
+    fn writer_can_define_a_schema_on_an_instance_before_its_source_owner() {
+        let mut stream = NrbfStream::new(1, -1);
+        stream.schemas.insert(
+            1,
+            ClassSchema {
+                name: "Root".into(),
+                member_names: vec!["entry".into()],
+                member_types: Some(vec![BinaryType::SystemClass("Entry".into())]),
+                library_id: None,
+            },
+        );
+        stream.schemas.insert(
+            20,
+            ClassSchema {
+                name: "Entry".into(),
+                member_names: vec!["value".into()],
+                member_types: Some(vec![BinaryType::String]),
+                library_id: None,
+            },
+        );
+        stream.objects.insert(
+            1,
+            NrbfObject::Class(NrbfClass {
+                object_id: 1,
+                schema_id: 1,
+                members: vec![NrbfValue::Reference(30)],
+            }),
+        );
+        for (id, string_id, value) in [(20, 21, "owner"), (30, 31, "instance")] {
+            stream.objects.insert(
+                id,
+                NrbfObject::Class(NrbfClass {
+                    object_id: id,
+                    schema_id: 20,
+                    members: vec![NrbfValue::Reference(string_id)],
+                }),
+            );
+            stream
+                .objects
+                .insert(string_id, NrbfObject::String(value.into()));
+        }
+
+        let encoded = write_nrbf(&stream, &NrbfLimits::default()).expect("write reordered schema");
+        let parsed = parse_nrbf_prefix(&encoded, &NrbfLimits::default())
+            .expect("parse reordered schema")
+            .stream;
+        let NrbfObject::Class(instance) = &parsed.objects[&30] else {
+            panic!("missing instance")
+        };
+        let NrbfObject::Class(owner) = &parsed.objects[&20] else {
+            panic!("missing owner")
+        };
+        assert_eq!(instance.schema_id, 30);
+        assert_eq!(owner.schema_id, 30);
+        assert_eq!(parsed.objects[&31], NrbfObject::String("instance".into()));
+        assert_eq!(parsed.objects[&21], NrbfObject::String("owner".into()));
+    }
+
+    #[test]
     fn writer_round_trip_preserves_the_independent_fixture_graph() {
         let fixture = class_fixture();
         let first = parse_nrbf_prefix(&fixture, &NrbfLimits::default()).expect("parse fixture");

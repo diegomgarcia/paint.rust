@@ -59,6 +59,15 @@ pub(crate) fn parse_header(xml: &str, limits: &PdnLimits) -> Result<RootXml, Pdn
                     .checked_sub(1)
                     .ok_or_else(|| malformed_xml("unbalanced XML end element"))?;
             }
+            Event::Text(text) if depth == 0 && !xml_whitespace(text.as_ref()) => {
+                return Err(malformed_xml("non-whitespace text outside the XML root"));
+            }
+            Event::CData(text) if depth == 0 && !xml_whitespace(text.as_ref()) => {
+                return Err(malformed_xml("CDATA outside the XML root"));
+            }
+            Event::GeneralRef(_) if depth == 0 => {
+                return Err(malformed_xml("entity reference outside the XML root"));
+            }
             Event::DocType(_) => {
                 return Err(malformed_xml(
                     "DTD and entity declarations are not supported",
@@ -124,4 +133,70 @@ fn parse_number<T: std::str::FromStr>(value: &str, reason: &'static str) -> Resu
 
 fn malformed_xml(reason: &'static str) -> PdnError {
     PdnError::Malformed { offset: 0, reason }
+}
+
+fn xml_whitespace(bytes: &[u8]) -> bool {
+    bytes
+        .iter()
+        .all(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn header(contents: &str) -> String {
+        format!(
+            "<pdnImage width=\"2\" height=\"2\" layers=\"1\" savedWithVersion=\"1.0.0.0\">{contents}</pdnImage>"
+        )
+    }
+
+    #[test]
+    fn valid_empty_and_nested_custom_elements_are_accepted() {
+        let parsed = parse_header(
+            &header("<custom><future /></custom>"),
+            &PdnLimits::default(),
+        )
+        .expect("valid XML");
+        assert_eq!((parsed.width, parsed.height, parsed.layers), (2, 2, 1));
+        assert_eq!(parsed.saved_with, "1.0.0.0");
+    }
+
+    #[test]
+    fn dtd_duplicate_attributes_and_outside_text_are_rejected() {
+        assert!(parse_header("<!DOCTYPE pdnImage><pdnImage />", &PdnLimits::default()).is_err());
+        assert!(parse_header(
+            "<pdnImage width=\"1\" width=\"2\" height=\"1\" layers=\"1\" savedWithVersion=\"1\" />",
+            &PdnLimits::default()
+        )
+        .is_err());
+        assert!(parse_header(&format!("{}trailing", header("")), &PdnLimits::default()).is_err());
+    }
+
+    #[test]
+    fn depth_and_element_limits_are_typed() {
+        let xml = header("<a><b /></a>");
+        let depth = PdnLimits {
+            max_xml_depth: 1,
+            ..PdnLimits::default()
+        };
+        assert!(matches!(
+            parse_header(&xml, &depth),
+            Err(PdnError::ResourceLimit {
+                resource: "XML depth",
+                ..
+            })
+        ));
+        let elements = PdnLimits {
+            max_xml_elements: 2,
+            ..PdnLimits::default()
+        };
+        assert!(matches!(
+            parse_header(&xml, &elements),
+            Err(PdnError::ResourceLimit {
+                resource: "XML elements",
+                ..
+            })
+        ));
+    }
 }
