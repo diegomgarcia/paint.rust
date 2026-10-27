@@ -48,6 +48,9 @@ jobs:
         run: rustup toolchain install 1.95.0 --profile minimal --component clippy,rustfmt
       - name: Fetch locked dependencies
         run: bash ./tools/cargo-pinned.sh fetch --locked
+      - name: ShellCheck build and plugin launchers
+        if: matrix.os == 'ubuntu-24.04'
+        run: shellcheck tools/cargo-pinned.sh plugin-host/test-cross-language.sh
       - name: Check formatting
         run: bash ./tools/cargo-pinned.sh fmt --all -- --check
       - name: Clippy

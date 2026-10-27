@@ -45,6 +45,9 @@ jobs:
         run: rustup toolchain install 1.95.0 --profile minimal --component clippy,rustfmt
       - name: Fetch locked dependencies
         run: bash ./tools/cargo-pinned.sh fetch --locked
+      - name: ShellCheck build and plugin launchers
+        if: matrix.os == 'ubuntu-24.04'
+        run: shellcheck tools/cargo-pinned.sh plugin-host/test-cross-language.sh
       - name: Test standard-library packaging tool
         run: python3 -m unittest discover -s tools/package/tests -p 'test_*.py' -v
       - name: Check formatting
