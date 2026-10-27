@@ -199,6 +199,8 @@ fn forward_and_inverse_patches_validate_and_restore_exact_pixels() {
     assert_eq!(inverse.expected_revision(), Revision::new(1));
     assert_eq!(inverse.before(), after);
     assert_eq!(inverse.after(), before);
+    let consuming_inverse = patch.clone().into_inverse().expect("consuming inverse");
+    assert_eq!(consuming_inverse, inverse);
 
     assert_eq!(document.apply_patch(&patch), Ok(Revision::new(1)));
     assert!(
@@ -211,7 +213,7 @@ fn forward_and_inverse_patches_validate_and_restore_exact_pixels() {
     assert_eq!(document.active_layer().revision(), Revision::new(1));
     assert_eq!(document.revision(), Revision::new(1));
 
-    assert_eq!(document.apply_patch(&inverse), Ok(Revision::new(2)));
+    assert_eq!(document.apply_inverse(&patch), Ok(Revision::new(2)));
     assert_eq!(document.active_layer().surface().pixels(), original);
     assert_eq!(document.active_layer().revision(), Revision::new(2));
     let forward_again = inverse.inverse().expect("forward again");

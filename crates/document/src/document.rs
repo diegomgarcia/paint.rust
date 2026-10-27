@@ -404,3 +404,51 @@ impl Document {
         Ok((document, layer))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use paint_core::{Bgra, Rect, Size};
+
+    use super::*;
+
+    fn one_pixel_document() -> Document {
+        Document::new(Size::new(1, 1).expect("nonzero test size")).expect("default document")
+    }
+
+    fn white_to_black(expected_revision: Revision) -> PixelPatch {
+        PixelPatch::new(
+            LayerId::new(1),
+            expected_revision,
+            Rect::new(0, 0, 1, 1).expect("one-pixel rectangle"),
+            vec![Bgra::WHITE],
+            vec![Bgra::BLACK],
+        )
+        .expect("valid one-pixel patch")
+    }
+
+    #[test]
+    fn document_revision_overflow_rejects_patch_without_mutation() {
+        let mut document = one_pixel_document();
+        document.revision = Revision::MAX;
+        let snapshot = document.clone();
+        assert_eq!(
+            document.apply_patch(&white_to_black(Revision::ZERO)),
+            Err(DocumentError::DocumentRevisionOverflow)
+        );
+        assert_eq!(document, snapshot);
+    }
+
+    #[test]
+    fn layer_revision_overflow_rejects_patch_without_mutation() {
+        let mut document = one_pixel_document();
+        document.layers[0].revision = Revision::MAX;
+        let snapshot = document.clone();
+        assert_eq!(
+            document.apply_patch(&white_to_black(Revision::MAX)),
+            Err(DocumentError::LayerRevisionOverflow {
+                layer_id: LayerId::new(1),
+            })
+        );
+        assert_eq!(document, snapshot);
+    }
+}
