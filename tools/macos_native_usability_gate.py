@@ -612,7 +612,7 @@ class NativeUsabilityGate:
             "before/after native screenshot RGBA pixels are identical; visual modification is inconclusive",
         )
 
-        self.evidence.record("native_input", action="AXPress", title="AXCloseButton", result=self._native("press native window close button", lambda: self.backend.close_window(pid, WINDOW_TITLE)))
+        self.evidence.record("native_input", action="key", key="q", modifiers=["command"], result=self._native("send Command-Q", lambda: self.backend.key(pid, "q", ("command",))))
         self._wait_window(
             "dirty_close_confirmation_observed",
             self.config.observation_timeout,

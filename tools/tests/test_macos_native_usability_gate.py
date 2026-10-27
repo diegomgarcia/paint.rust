@@ -302,7 +302,7 @@ class NativeGateTests(unittest.TestCase):
             native_actions,
             [
                 ("key", 4242, "i", ("command",)),
-                ("close_window", 4242),
+                ("key", 4242, "q", ("command",)),
                 ("key", 4242, "escape", ()),
                 ("close_window", 4242),
                 ("press", 4242, "Discard"),

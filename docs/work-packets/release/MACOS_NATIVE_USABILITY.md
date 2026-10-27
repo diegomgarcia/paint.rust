@@ -85,19 +85,18 @@ necessary.
 2. Capture the window, send Command-I through `CGEvent`, and require Modified state, the
    exact invert status, and the same native window.
 3. Capture again and require different decoded RGBA pixels.
-4. AXPress the exact root window’s `AXCloseButton` and require the exact dirty-close
-   title/explanation, enabled Discard, and enabled **focused Cancel** while the modified
-   session remains open.
+4. Send Command-Q and require the exact dirty-close title/explanation, enabled Discard,
+   and enabled **focused Cancel** while the modified session remains open.
 5. Send Escape and require the dialog to disappear without losing the modified document.
    The complete accessible text set must equal the pre-close modified observation, not merely
    retain the required Modified/invert/canvas labels.
-6. AXPress that close button again, confirm the same protections, then explicitly AXPress
-   Discard and require process exit status zero.
+6. AXPress the exact root window’s `AXCloseButton`, confirm the same protections, then
+   explicitly AXPress Discard and require process exit status zero.
 
-Command shortcuts are not used for the acceptance close. Live runs confirmed that pinned
-eframe/winit on macOS sends Command-Q directly to `Event::LoopExiting`, bypassing the app’s
-`CloseRequested` guard, while Command-W was ignored. Those native shortcut behaviors remain
-separate platform limitations; failure cleanup may still use Command-Q.
+The native default menu is disabled so Command-Q reaches the app instead of terminating
+directly through `Event::LoopExiting`; the app routes it through the same dirty guard.
+The acceptance covers both Command-Q and the native window close button. Command-W remains
+outside the verified shortcut surface.
 
 ## Evidence and pixel oracle
 
