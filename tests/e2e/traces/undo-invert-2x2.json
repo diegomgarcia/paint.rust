@@ -1,0 +1,23 @@
+{
+  "format": "paint.r.command-trace",
+  "version": 1,
+  "initial": {
+    "width": 2,
+    "height": 2,
+    "background": { "bgra": [255, 255, 255, 255] }
+  },
+  "commands": [
+    { "op": "invert" },
+    { "op": "undo" }
+  ],
+  "expect": {
+    "width": 2,
+    "height": 2,
+    "decoded_rgba_sha256": "5ac6a5945f16500911219129984ba8b387a06f24fe383ce4e81a73294065461b",
+    "layer_count": 1,
+    "active_layer_index": 0,
+    "dirty": true,
+    "can_undo": false,
+    "can_redo": true
+  }
+}

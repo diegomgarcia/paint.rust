@@ -38,7 +38,7 @@ All agents follow `ENGINEERING_CONTRACT.md`. The integrator owns everything not 
 ## F — application session and UI (starts from A’s early API commit)
 
 - **Paths:** `crates/app`, `crates/ui`
-- **Scope:** single-writer session, command replay, undo/redo and dirty state; real desktop interactions for the preview; semantic usability tests and headless smoke.
+- **Scope:** single-writer session, command replay, undo/redo and dirty state; real desktop interactions for the preview; semantic usability tests and headless smoke. Implement `TRACE_PROTOCOL.md` and the versioned command-trace schema exactly.
 - **Not accepted as complete:** a second mutation model inside the UI, static mock screens, pointer-only workflows, or usability tests that do not execute the UI.
 
 ## Integration queue
