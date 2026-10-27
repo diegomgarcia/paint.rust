@@ -3,8 +3,8 @@ set -eu
 
 # CROSS-LANGUAGE INTEGRATION LANE: builds the real .NET console host and runs
 # the Rust broker against it. Failure is fatal; there are no skip fallbacks.
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
 cd "$REPO_ROOT"
 
 # Native .NET processes need Windows paths when this POSIX script runs in
