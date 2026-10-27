@@ -59,6 +59,11 @@ impl PaintApp {
         &self.status
     }
 
+    #[doc(hidden)]
+    pub const fn close_approved(&self) -> bool {
+        self.close_approved
+    }
+
     fn new_document(&mut self) {
         self.session = default_session();
         self.selection_input = SelectionInput::default();
@@ -86,6 +91,15 @@ impl PaintApp {
             self.request_discard(DiscardAction::NewDocument);
         } else {
             self.new_document();
+        }
+    }
+
+    fn request_quit(&mut self, context: &egui::Context) {
+        if self.session.dirty() {
+            self.request_discard(DiscardAction::CloseViewport);
+        } else {
+            self.close_approved = true;
+            context.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
 
@@ -228,6 +242,11 @@ impl PaintApp {
                     }
                     if ui.button("Export PNG…").clicked() {
                         self.show_path_dialog(PathDialogKind::Export);
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Quit").clicked() {
+                        self.request_quit(ui.ctx());
                         ui.close();
                     }
                 });
@@ -611,6 +630,10 @@ impl PaintApp {
         let command = egui::Modifiers::COMMAND;
         let command_shift = command | egui::Modifiers::SHIFT;
 
+        if shortcut_pressed(context, command, egui::Key::Q) {
+            self.request_quit(context);
+            return;
+        }
         if shortcut_pressed(context, command_shift, egui::Key::Z) {
             self.execute(Command::Redo, "Redid the next edit");
             return;

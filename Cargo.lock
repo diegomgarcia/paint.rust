@@ -2558,6 +2558,7 @@ dependencies = [
  "paint-raster",
  "serde_json",
  "tempfile",
+ "winit",
 ]
 
 [[package]]

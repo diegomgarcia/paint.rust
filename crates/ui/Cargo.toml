@@ -17,6 +17,9 @@ eframe.workspace = true
 egui.workspace = true
 serde_json.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+winit.workspace = true
+
 [dev-dependencies]
 egui_kittest = { workspace = true, features = ["eframe"] }
 tempfile.workspace = true
