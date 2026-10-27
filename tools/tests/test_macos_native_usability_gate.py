@@ -29,19 +29,16 @@ INVERTED = "Inverted colors on the active layer"
 CLOSE_EXPLANATION = "Closing Paint.R will discard the modified document and its undo history."
 
 
-def png_bytes(red: int, green: int, blue: int) -> bytes:
+def png_bytes(red: int, green: int, blue: int, *, metadata: int = 0) -> bytes:
     def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
 
     header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
-    return b"".join(
-        [
-            b"\x89PNG\r\n\x1a\n",
-            chunk(b"IHDR", header),
-            chunk(b"IDAT", zlib.compress(bytes([0, red, green, blue]))),
-            chunk(b"IEND", b""),
-        ]
-    )
+    chunks = [b"\x89PNG\r\n\x1a\n", chunk(b"IHDR", header)]
+    if metadata:
+        chunks.append(chunk(b"tEXt", f"paint-r\0capture-{metadata}".encode("ascii")))
+    chunks.extend([chunk(b"IDAT", zlib.compress(bytes([0, red, green, blue]))), chunk(b"IEND", b"")])
+    return b"".join(chunks)
 
 
 def preflight(**changes: object) -> dict[str, object]:
@@ -148,6 +145,9 @@ class FakeBackend:
         self.ignore_discard = False
         self.fail_cleanup = False
         self.blank_screenshots = False
+        self.metadata_only_screenshots = False
+        self.metadata_only_close_screenshots = False
+        self.capture_sequence = 0
         self.fail_screenshots = False
         self.truncated_ax = False
         self.cancel_unfocused = False
@@ -218,9 +218,14 @@ class FakeBackend:
 
     def capture(self, observed: dict[str, object], output: Path) -> None:
         self.actions.append(("capture", observed["windows"][0]["id"], output.name))
+        self.capture_sequence += 1
         if self.fail_screenshots:
             raise gate.NativeCommandError("SCREENSHOT_FAILED", "simulated capture failure")
-        if self.blank_screenshots:
+        metadata = self.capture_sequence if self.metadata_only_screenshots else 0
+        if self.metadata_only_close_screenshots and self.capture_sequence >= 3:
+            color = (128, 128, 128)
+            metadata = self.capture_sequence
+        elif self.metadata_only_screenshots or self.blank_screenshots:
             color = (0, 0, 0)
         elif observed["ax"]["nodes"][-1]["title"] == "Discard" if observed["ax"]["nodes"][-1].get("title") else False:
             color = (128, 128, 128)
@@ -230,7 +235,7 @@ class FakeBackend:
             color = (255, 255, 255)
         else:
             color = (0, 0, 0)
-        output.write_bytes(png_bytes(*color))
+        output.write_bytes(png_bytes(*color, metadata=metadata))
 
 
 class NativeGateTests(unittest.TestCase):
@@ -283,6 +288,8 @@ class NativeGateTests(unittest.TestCase):
         self.assertEqual(len(result["observations"]), 5)
         self.assertTrue(all(path.is_file() for path in (self.root / "evidence").rglob("*.png")))
         self.assertNotEqual(result["screenshots"][0]["sha256"], result["screenshots"][1]["sha256"])
+        self.assertNotEqual(result["screenshots"][0]["rgba_sha256"], result["screenshots"][1]["rgba_sha256"])
+        self.assertTrue(all(len(screenshot["rgba_sha256"]) == 64 for screenshot in result["screenshots"]))
         assertion_names = {item["name"] for item in result["assertions"] if item["passed"]}
         self.assertTrue(
             {
@@ -387,6 +394,27 @@ class NativeGateTests(unittest.TestCase):
                 result = self.run_gate()
                 self.assertEqual(result["outcome"], "FAIL")
                 self.assertIn(result["error"]["code"], {"SCREENSHOT_NOT_DISTINCT", "NATIVE_COMMAND_FAILED"})
+
+    def test_metadata_only_png_changes_are_not_visual_changes(self) -> None:
+        self.backend.metadata_only_screenshots = True
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(result["error"]["code"], "SCREENSHOT_NOT_DISTINCT")
+        self.assertNotEqual(result["screenshots"][0]["sha256"], result["screenshots"][1]["sha256"])
+        self.assertFalse(any(item["name"] == "before_after_screenshots_differ" and item["passed"] for item in result["assertions"]))
+
+    def test_close_and_cancel_require_different_pixels_not_metadata(self) -> None:
+        self.backend.metadata_only_close_screenshots = True
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(result["error"]["code"], "SCREENSHOT_NOT_DISTINCT")
+        self.assertTrue(any(item["name"] == "before_after_screenshots_differ" and item["passed"] for item in result["assertions"]))
+        self.assertFalse(any(item["name"] == "cancel_screenshot_differs_from_confirmation" and item["passed"] for item in result["assertions"]))
+        self.assertNotEqual(result["screenshots"][2]["sha256"], result["screenshots"][3]["sha256"])
 
     def test_truncated_ax_evidence_is_inconclusive(self) -> None:
         self.backend.truncated_ax = True

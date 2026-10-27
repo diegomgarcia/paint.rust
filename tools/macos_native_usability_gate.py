@@ -12,6 +12,7 @@ import argparse
 import dataclasses
 import datetime as dt
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -40,6 +41,7 @@ MAX_OVERALL_TIMEOUT = 180.0
 MAX_CONFIRMATION_HOLD = 3.0
 MAX_NATIVE_OUTPUT = 1024 * 1024
 MAX_SCREENSHOT_BYTES = 64 * 1024 * 1024
+MAX_SCREENSHOT_PIXELS = 100_000_000
 MAX_BINARY_BYTES = 512 * 1024 * 1024
 MAX_AX_NODES = 512
 BLOCKED_CODES = {
@@ -51,6 +53,29 @@ BLOCKED_CODES = {
     "UNSUPPORTED_PLATFORM",
     "HELPER_BUILD_FAILED",
 }
+
+
+_PNG_ORACLE: Any | None = None
+
+
+def _png_oracle() -> Any:
+    """Load the repository's independent bounded PNG-to-RGBA test oracle lazily."""
+    global _PNG_ORACLE
+    if _PNG_ORACLE is not None:
+        return _PNG_ORACLE
+    source = Path(__file__).resolve().parent.parent / "tests/e2e/png_rgba.py"
+    spec = importlib.util.spec_from_file_location("_paint_r_native_png_oracle", source)
+    if spec is None or spec.loader is None:
+        raise GateError("SCREENSHOT_DECODER_UNAVAILABLE", f"cannot load PNG oracle: {source}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        sys.modules.pop(spec.name, None)
+        raise GateError("SCREENSHOT_DECODER_UNAVAILABLE", f"cannot load PNG oracle: {error}") from error
+    _PNG_ORACLE = module
+    return module
 
 
 class NativeCommandError(Exception):
@@ -289,13 +314,24 @@ def validate_screenshot(path: Path, observation: ObservedWindow) -> dict[str, An
                 raise GateError("SCREENSHOT_INVALID", "invalid PNG IEND")
             saw_iend = True
         offset = end
-    if not width or not height or width > 16384 or height > 16384 or width * height > 100_000_000:
+    if not width or not height or width > 16384 or height > 16384 or width * height > MAX_SCREENSHOT_PIXELS:
         raise GateError("SCREENSHOT_INVALID", "PNG dimensions are absent or outside the evidence bound")
     if not saw_idat or not saw_iend:
         raise GateError("SCREENSHOT_INVALID", "PNG lacks image data or IEND")
+    oracle = _png_oracle()
+    try:
+        decoded = oracle.decode_png(
+            data,
+            limits=oracle.Limits(max_pixels=MAX_SCREENSHOT_PIXELS, max_compressed_bytes=MAX_SCREENSHOT_BYTES),
+        )
+    except (ValueError, struct.error, zlib.error) as error:
+        raise GateError("SCREENSHOT_INVALID", f"PNG pixel decoding failed: {error}") from error
+    if (decoded.width, decoded.height) != (width, height) or len(decoded.pixels) != width * height * 4:
+        raise GateError("SCREENSHOT_INVALID", "decoded PNG dimensions or RGBA length are inconsistent")
     return {
         "path": path.name,
         "sha256": digest,
+        "rgba_sha256": sha256_bytes(decoded.pixels),
         "bytes": size,
         "width": width,
         "height": height,
@@ -479,10 +515,10 @@ class NativeUsabilityGate:
         self.evidence.observation("modified", modified)
         after = self._capture("01-modified.png", modified)
         self._require(
-            before["sha256"] != after["sha256"],
+            before["rgba_sha256"] != after["rgba_sha256"],
             "before_after_screenshots_differ",
             "SCREENSHOT_NOT_DISTINCT",
-            "before/after native screenshots are identical; visual modification is inconclusive",
+            "before/after native screenshot RGBA pixels are identical; visual modification is inconclusive",
         )
 
         self.evidence.record("native_input", action="key", key="q", modifiers=["command"], result=self._native("send first Command-Q", lambda: self.backend.key(pid, "q", ("command",))))
@@ -514,10 +550,10 @@ class NativeUsabilityGate:
         self.evidence.observation("canceled", canceled)
         canceled_image = self._capture("03-canceled.png", canceled)
         self._require(
-            confirmation_image["sha256"] != canceled_image["sha256"],
+            confirmation_image["rgba_sha256"] != canceled_image["rgba_sha256"],
             "cancel_screenshot_differs_from_confirmation",
             "SCREENSHOT_NOT_DISTINCT",
-            "confirmation and canceled screenshots are identical",
+            "confirmation and canceled screenshot RGBA pixels are identical",
         )
 
         self.evidence.record("native_input", action="key", key="q", modifiers=["command"], result=self._native("send second Command-Q", lambda: self.backend.key(pid, "q", ("command",))))
@@ -638,7 +674,7 @@ class NativeUsabilityGate:
             "cleanup": self.cleanup,
             "limits": dataclasses.asdict(self.config),
             "max_screenshots": 5,
-            "native_acceptance": "PASS requires real CGEvent/AX/screencapture evidence; semantic/headless tests are not substitutes.",
+            "native_acceptance": "PASS requires real CGEvent/AX/screencapture evidence with decoded RGBA comparison; semantic/headless tests are not substitutes.",
         }
         log_path = self.evidence.root / "paint-ui.log"
         if log_path.is_file():
