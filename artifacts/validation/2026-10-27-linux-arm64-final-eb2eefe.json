@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-27T05:28:52.002410Z",
+  "source_commit": "eb2eefe0596a176d177f3a80c6801117fa5c024d",
+  "archive_tree_commit": "ec7440ab7c4078656a669eee3b6bced1f63ea151",
+  "archive_tree_documentation_only_delta": [
+    "docs/PARITY_LEDGER.md"
+  ],
+  "runtime": "linux/arm64 Docker container on the macOS host; aarch64-unknown-linux-gnu; not Linux x86_64",
+  "toolchain": "rust:1.95.0 container image; rustc 1.95.0 (59807616e 2026-04-14)",
+  "source_mount": "read-only /src",
+  "target": "isolated /tmp/paint-r-target",
+  "gates": {
+    "format_strict_clippy_locked_metadata": "pass",
+    "rust_tests": {
+      "passed": 203,
+      "failed": 0,
+      "ignored": 0
+    },
+    "stub_scan": {
+      "rust_files": 70,
+      "violations": 0,
+      "allowlisted": 0
+    },
+    "python_tests": {
+      "passed": 44,
+      "suites": {
+        "e2e_oracle": 16,
+        "packaging": 18,
+        "reference_harness": 10
+      }
+    },
+    "release_build": "pass"
+  },
+  "release_smoke": {
+    "status": "pass",
+    "repeat_per_trace": 2,
+    "negative_paths_per_trace": [
+      "invalid_rect",
+      "unknown_command"
+    ],
+    "traces": [
+      {
+        "trace": "tests/e2e/traces/invert-800x600.json",
+        "width": 800,
+        "height": 600,
+        "decoded_rgba_sha256": "a7aff0f8e3f44663c369e1e75a981b90b66949586d71035771921871d67e334e",
+        "png_sha256": "bd5970d91acacd7986f92910031ef1c5603a3f9c1bbe76dc6ae8c8a58412ad86",
+        "snapshot_sha256": "be0967b692341d2f64b52b8b61a6abde03fa0f3813d9a343922014536b21e8e8",
+        "snapshot": {
+          "active_layer_index": 0,
+          "can_redo": false,
+          "can_undo": true,
+          "dirty": true,
+          "layer_count": 1
+        }
+      },
+      {
+        "trace": "tests/e2e/traces/undo-invert-2x2.json",
+        "width": 2,
+        "height": 2,
+        "decoded_rgba_sha256": "5ac6a5945f16500911219129984ba8b387a06f24fe383ce4e81a73294065461b",
+        "png_sha256": "0e1b9e7bd2807f635cd181104a48802b177ee3f4fe7992626eb484bce2d33473",
+        "snapshot_sha256": "cff067e619eb2cb4d682c224e47674c5002f10e5ae098e0899c9d26546aeec0c",
+        "snapshot": {
+          "active_layer_index": 0,
+          "can_redo": true,
+          "can_undo": false,
+          "dirty": false,
+          "layer_count": 1
+        }
+      }
+    ]
+  },
+  "scope_limits": [
+    "ARM64 container execution only; no Linux x86_64 pass is claimed.",
+    "No native Linux window, OS keyboard, or accessibility observation.",
+    "Local Linux x86_64 QEMU attempts faulted in rustc before project code and are not product results."
+  ]
+}
