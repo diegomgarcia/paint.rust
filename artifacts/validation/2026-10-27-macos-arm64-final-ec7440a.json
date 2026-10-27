@@ -69,7 +69,18 @@
     "extractor": "macOS ditto -x -k",
     "extracted_executable_mode": "0755",
     "payload_manifest_entries_checked": 758,
-    "extracted_smoke_repeat_per_trace": 2
+    "extracted_smoke_repeat_per_trace": 2,
+    "independent_acceptance_review": {
+      "status": "pass",
+      "reviewer": "independent packaging lane",
+      "scope": "read-only; no edits, builds, native-window run, or slow suites",
+      "zip_crc_order_and_payload_coverage": "pass",
+      "payload_entries_independently_verified": 758,
+      "extractors_verified": ["/usr/bin/unzip", "macOS ditto -x -k"],
+      "smoke_reports_and_negative_diagnostics_match": true,
+      "commit_deltas_and_internal_only_disclosures_match": true,
+      "discrepancies": 0
+    }
   },
   "traces": [
     {
