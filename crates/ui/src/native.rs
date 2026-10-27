@@ -3,24 +3,38 @@
 use crate::PaintApp;
 
 pub fn run() -> eframe::Result<()> {
-    let mut options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
+    eframe::run_native(
+        "Paint.R Development Preview",
+        native_options(),
+        Box::new(|creation_context| Ok(Box::new(PaintApp::new(creation_context)))),
+    )
+}
+
+fn native_options() -> eframe::NativeOptions {
+    let viewport = || {
+        egui::ViewportBuilder::default()
             .with_inner_size([1_280.0, 900.0])
-            .with_min_inner_size([960.0, 700.0]),
-        ..eframe::NativeOptions::default()
+            .with_min_inner_size([960.0, 700.0])
     };
     #[cfg(target_os = "macos")]
     {
         use winit::platform::macos::EventLoopBuilderExtMacOS as _;
+        let mut options = eframe::NativeOptions {
+            viewport: viewport(),
+            ..eframe::NativeOptions::default()
+        };
+        // The default native menu terminates directly on Command-Q, bypassing
+        // eframe's CloseRequested path and the document's dirty guard.
         options.event_loop_builder = Some(Box::new(|builder| {
-            // The default native menu terminates directly on Command-Q, bypassing
-            // eframe's CloseRequested path and the document's dirty guard.
             builder.with_default_menu(false);
         }));
+        options
     }
-    eframe::run_native(
-        "Paint.R Development Preview",
-        options,
-        Box::new(|creation_context| Ok(Box::new(PaintApp::new(creation_context)))),
-    )
+    #[cfg(not(target_os = "macos"))]
+    {
+        eframe::NativeOptions {
+            viewport: viewport(),
+            ..eframe::NativeOptions::default()
+        }
+    }
 }
