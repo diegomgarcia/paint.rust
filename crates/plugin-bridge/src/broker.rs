@@ -523,6 +523,10 @@ impl PluginHost {
     }
 
     fn handle_disconnect(&mut self) -> HostError {
+        self.resolve_disconnect(HostError::TransportDisconnected)
+    }
+
+    fn resolve_disconnect(&mut self, running_error: HostError) -> HostError {
         // Pipe closure and waitable child status are not synchronized on every OS.
         // Give an exiting child a bounded grace period, but never wait forever for
         // a process that closed its protocol stream and continued running.
@@ -554,7 +558,7 @@ impl PluginHost {
                 code: self.exit_code,
             }
         } else {
-            HostError::TransportDisconnected
+            running_error
         }
     }
 
@@ -579,18 +583,30 @@ impl PluginHost {
             message,
             result: result_sender,
         }) {
+            let disconnected = matches!(&error, TrySendError::Disconnected(_));
             let message = match error {
                 TrySendError::Full(_) => "plugin writer queue is full",
                 TrySendError::Disconnected(_) => "plugin writer disconnected",
             };
-            return Err(self.fail_with(HostError::Io(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                message,
-            ))));
+            let failure = HostError::Io(io::Error::new(io::ErrorKind::BrokenPipe, message));
+            return Err(if disconnected {
+                self.resolve_disconnect(failure)
+            } else {
+                self.fail_with(failure)
+            });
         }
         match result_receiver.recv_timeout(self.request_timeout) {
             Ok(Ok(())) => Ok(()),
-            Ok(Err(error)) => Err(self.fail_with(HostError::Protocol(error))),
+            Ok(Err(error)) => {
+                let failure = HostError::Protocol(error);
+                Err(
+                    if matches!(&failure, HostError::Protocol(ProtocolError::Io(_))) {
+                        self.resolve_disconnect(failure)
+                    } else {
+                        self.fail_with(failure)
+                    },
+                )
+            }
             Err(RecvTimeoutError::Timeout) => Err(self.fail_with(HostError::Timeout {
                 request_id,
                 timeout: self.request_timeout,
