@@ -21,6 +21,7 @@ import re
 import struct
 import subprocess
 import sys
+import threading
 import time
 import zlib
 from pathlib import Path
@@ -139,23 +140,93 @@ def run_native_command(
     max_output_bytes: int = MAX_NATIVE_OUTPUT,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    """Run one native command with time/output bounds and without a shell."""
+    """Run one native command with streaming time/output bounds and no shell."""
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             arguments,
             stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             env=env,
         )
-    except subprocess.TimeoutExpired as error:
-        raise NativeCommandError("COMMAND_TIMEOUT", f"native command timed out: {arguments[0]}") from error
     except OSError as error:
         raise NativeCommandError("COMMAND_EXEC_FAILED", f"cannot execute {arguments[0]}: {error}") from error
-    if len(result.stdout) + len(result.stderr) > max_output_bytes:
+
+    assert process.stdout is not None and process.stderr is not None
+    stdout = bytearray()
+    stderr = bytearray()
+    total_read = 0
+    output_overflow = False
+    kill_started = False
+    reader_errors: list[Exception] = []
+    lock = threading.Lock()
+
+    def read_output(stream: Any, destination: bytearray) -> None:
+        nonlocal total_read, output_overflow, kill_started
+        try:
+            while chunk := stream.read(65536):
+                should_kill = False
+                with lock:
+                    total_read += len(chunk)
+                    remaining = max_output_bytes - len(stdout) - len(stderr)
+                    if remaining > 0:
+                        destination.extend(chunk[:remaining])
+                    if total_read > max_output_bytes:
+                        output_overflow = True
+                        if not kill_started:
+                            kill_started = True
+                            should_kill = True
+                if should_kill:
+                    try:
+                        process.kill()
+                    except OSError:
+                        # The process may have exited between the read and kill.
+                        pass
+        except Exception as error:  # Reader failure must fail the command closed.
+            with lock:
+                reader_errors.append(error)
+        finally:
+            stream.close()
+
+    readers = [
+        threading.Thread(target=read_output, args=(process.stdout, stdout), daemon=True),
+        threading.Thread(target=read_output, args=(process.stderr, stderr), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
+
+    timeout_error: subprocess.TimeoutExpired | None = None
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        timeout_error = error
+        try:
+            process.kill()
+        except OSError:
+            pass
+        process.wait()
+    except OSError as error:
+        try:
+            process.kill()
+        except OSError:
+            pass
+        process.wait()
+        for reader in readers:
+            reader.join(timeout=1)
+        raise NativeCommandError("COMMAND_EXEC_FAILED", f"cannot execute {arguments[0]}: {error}") from error
+
+    for reader in readers:
+        reader.join(timeout=1)
+    if any(reader.is_alive() for reader in readers):
+        raise NativeCommandError("COMMAND_OUTPUT_REAP_FAILED", "native command output readers did not finish")
+    if output_overflow:
         raise NativeCommandError("COMMAND_OUTPUT_LIMIT", f"native command output exceeded {max_output_bytes} bytes")
-    return result
+    if timeout_error is not None:
+        raise NativeCommandError("COMMAND_TIMEOUT", f"native command timed out: {arguments[0]}") from timeout_error
+    if reader_errors:
+        raise NativeCommandError("COMMAND_OUTPUT_READ_FAILED", "native command output could not be read") from reader_errors[0]
+    assert process.returncode is not None
+    return subprocess.CompletedProcess(arguments, process.returncode, bytes(stdout), bytes(stderr))
 
 
 def sha256_bytes(data: bytes) -> str:

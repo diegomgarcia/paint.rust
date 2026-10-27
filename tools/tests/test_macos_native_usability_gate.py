@@ -14,6 +14,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import zlib
 from pathlib import Path
@@ -481,26 +482,55 @@ class NativeGateTests(unittest.TestCase):
                     gate.GateConfig(**changes).validate()
 
     def test_native_command_wrapper_is_bounded_and_does_not_use_a_shell(self) -> None:
-        completed = subprocess.CompletedProcess(["helper"], 0, stdout=b"{}\n", stderr=b"")
-        with mock.patch.object(gate.subprocess, "run", return_value=completed) as run:
-            result = gate.run_native_command(["/helper", "preflight"], timeout=1.25)
+        real_popen = subprocess.Popen
+        with mock.patch.object(gate.subprocess, "Popen", side_effect=real_popen) as popen:
+            result = gate.run_native_command(
+                [sys.executable, "-c", "import os; os.write(1,b'{}\\n')"],
+                timeout=2,
+                max_output_bytes=3,
+            )
 
         self.assertEqual(result.stdout, b"{}\n")
-        self.assertEqual(run.call_args.kwargs["timeout"], 1.25)
-        self.assertEqual(run.call_args.kwargs["check"], False)
-        self.assertNotIn("shell", run.call_args.kwargs)
+        self.assertNotIn("shell", popen.call_args.kwargs)
+        self.assertEqual(popen.call_args.kwargs["stdin"], subprocess.DEVNULL)
+        self.assertEqual(popen.call_args.kwargs["stdout"], subprocess.PIPE)
+        self.assertEqual(popen.call_args.kwargs["stderr"], subprocess.PIPE)
 
     def test_native_command_wrapper_rejects_timeout_and_oversized_output(self) -> None:
-        with mock.patch.object(gate.subprocess, "run", side_effect=subprocess.TimeoutExpired("helper", 1)):
-            with self.assertRaisesRegex(gate.NativeCommandError, "timed out") as caught:
-                gate.run_native_command(["/helper"], timeout=1)
+        with self.assertRaisesRegex(gate.NativeCommandError, "timed out") as caught:
+            gate.run_native_command(
+                [sys.executable, "-c", "import time; time.sleep(30)"],
+                timeout=0.2,
+            )
         self.assertEqual(caught.exception.code, "COMMAND_TIMEOUT")
 
-        completed = subprocess.CompletedProcess(["helper"], 0, stdout=b"x" * 20, stderr=b"")
-        with mock.patch.object(gate.subprocess, "run", return_value=completed):
-            with self.assertRaisesRegex(gate.NativeCommandError, "output exceeded") as caught:
-                gate.run_native_command(["/helper"], timeout=1, max_output_bytes=10)
+        with self.assertRaisesRegex(gate.NativeCommandError, "output exceeded") as caught:
+            gate.run_native_command(
+                [sys.executable, "-c", "import os; os.write(1,b'x'*20)"],
+                timeout=2,
+                max_output_bytes=10,
+            )
         self.assertEqual(caught.exception.code, "COMMAND_OUTPUT_LIMIT")
+
+        with self.assertRaisesRegex(gate.NativeCommandError, "output exceeded") as caught:
+            gate.run_native_command(
+                [sys.executable, "-c", "import os; os.write(1,b'x'*6); os.write(2,b'y'*6)"],
+                timeout=2,
+                max_output_bytes=10,
+            )
+        self.assertEqual(caught.exception.code, "COMMAND_OUTPUT_LIMIT")
+
+    def test_native_command_stops_streaming_output_at_limit(self) -> None:
+        script = "import os,time; [os.write(1,b'x'*65536) for _ in range(32)]; time.sleep(30)"
+        started = time.monotonic()
+        with self.assertRaisesRegex(gate.NativeCommandError, "output exceeded") as caught:
+            gate.run_native_command(
+                [sys.executable, "-c", script],
+                timeout=5,
+                max_output_bytes=1024,
+            )
+        self.assertEqual(caught.exception.code, "COMMAND_OUTPUT_LIMIT")
+        self.assertLess(time.monotonic() - started, 2.0)
 
     def test_manifest_and_binary_identity_are_structured(self) -> None:
         result = self.run_gate()

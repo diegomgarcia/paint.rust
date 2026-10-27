@@ -39,10 +39,11 @@ PYTHONDONTWRITEBYTECODE=1 \
 swiftc -typecheck -swift-version 5 tools/macos_native_usability_gate.swift
 ```
 
-These tests use a deterministic fake backend. They cover lock/permission failures, process
-exit and timeout failures, exact-PID cleanup, dirty-close cancellation, focused Cancel,
-explicit Discard, bounded native commands, and pixel-evidence failures. They never launch
-Paint.R or post native input.
+Native transport uses a deterministic fake backend; process-wrapper tests also launch real,
+short-lived Python children. They cover lock/permission failures, process exit and timeout
+failures, exact-PID cleanup, dirty-close cancellation, focused Cancel, explicit Discard,
+exact-limit output, combined stdout/stderr overflow, early termination of a continuing
+oversized stream, and pixel-evidence failures. They never launch Paint.R or post native input.
 
 ## Live acceptance command
 
@@ -55,7 +56,10 @@ python3 tools/macos_native_usability_gate.py \
 Optional `--startup-timeout`, `--observation-timeout`, `--quit-timeout`,
 `--cleanup-timeout`, `--command-timeout`, `--overall-timeout`, and
 `--confirmation-hold` values have enforced upper bounds. The default overall deadline is
-120 seconds and its maximum is 180 seconds.
+120 seconds and its maximum is 180 seconds. Helper stdout and stderr are consumed concurrently
+with a combined retained-output cap. Crossing that cap terminates the exact spawned process
+immediately instead of buffering the complete stream; timeout cleanup also kills and reaps
+that process without a shell.
 
 Exit statuses are:
 
