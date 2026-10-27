@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Read;
 use std::path::PathBuf;
 
 use paint_app::{AppSession, Command};
@@ -9,6 +11,10 @@ use crate::icons::{Icon, icon_button};
 
 const DEFAULT_WIDTH: u32 = 800;
 const DEFAULT_HEIGHT: u32 = 600;
+const MAX_PREVIEW_FILE_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_PREVIEW_DECODED_BYTES: usize = 64 * 1024 * 1024;
+const PREVIEW_WIDTH: f32 = 180.0;
+const PREVIEW_HEIGHT: f32 = 140.0;
 
 /// Original development-preview shell. `AppSession` remains the only document writer.
 pub struct PaintApp {
@@ -493,6 +499,7 @@ impl PaintApp {
                 .ctx()
                 .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
         let mut confirm = enter_in_path && !dialog.path.trim().is_empty();
+        let mut preview_requested = false;
         let mut cancel = ui
             .ctx()
             .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
@@ -510,6 +517,10 @@ impl PaintApp {
                     response.request_focus();
                     dialog.focus_path = false;
                 }
+                if response.changed() {
+                    dialog.preview = None;
+                    dialog.preview_error = None;
+                }
                 ui.horizontal(|ui| {
                     if ui
                         .add_enabled(
@@ -520,12 +531,71 @@ impl PaintApp {
                     {
                         confirm = true;
                     }
+                    if ui
+                        .add_enabled(!dialog.path.trim().is_empty(), egui::Button::new("Preview"))
+                        .clicked()
+                    {
+                        preview_requested = true;
+                    }
                     if ui.button("Cancel").clicked() {
                         cancel = true;
                     }
                 });
+                if let Some(preview) = &dialog.preview {
+                    ui.separator();
+                    ui.label(format!("PNG preview: {}", preview.label));
+                    ui.add(
+                        egui::Image::from_texture(&preview.texture)
+                            .maintain_aspect_ratio(true)
+                            .fit_to_exact_size(egui::vec2(PREVIEW_WIDTH, PREVIEW_HEIGHT))
+                            .alt_text(format!("PNG preview image: {}", preview.label)),
+                    );
+                }
+                if let Some(error) = &dialog.preview_error {
+                    ui.colored_label(egui::Color32::LIGHT_RED, format!("Preview failed: {error}"));
+                }
             });
 
+        if preview_requested {
+            let path = PathBuf::from(dialog.path.trim());
+            match kind {
+                PathDialogKind::Open => match open_png_preview(ui.ctx(), &path) {
+                    Ok(preview) => {
+                        dialog.preview = Some(preview);
+                        dialog.preview_error = None;
+                    }
+                    Err(error) => {
+                        dialog.preview = None;
+                        dialog.preview_error = Some(error);
+                    }
+                },
+                PathDialogKind::Export => match self.session.compose() {
+                    Ok(surface) => {
+                        let label = format!(
+                            "current composition {}×{}",
+                            surface.width(),
+                            surface.height()
+                        );
+                        dialog.preview = Some(DialogPreview {
+                            label,
+                            texture: surface_thumbnail_texture(
+                                ui.ctx(),
+                                "paint-r-export-preview",
+                                &surface,
+                                PREVIEW_WIDTH,
+                                PREVIEW_HEIGHT,
+                            ),
+                        });
+                        dialog.preview_error = None;
+                    }
+                    Err(error) => {
+                        dialog.preview = None;
+                        dialog.preview_error = Some(error.to_string());
+                    }
+                },
+            }
+            ui.ctx().request_repaint();
+        }
         if cancel {
             self.path_dialog = None;
             return;
@@ -775,6 +845,13 @@ struct PathDialog {
     kind: PathDialogKind,
     path: String,
     focus_path: bool,
+    preview: Option<DialogPreview>,
+    preview_error: Option<String>,
+}
+
+struct DialogPreview {
+    label: String,
+    texture: egui::TextureHandle,
 }
 
 impl PathDialog {
@@ -787,6 +864,8 @@ impl PathDialog {
             kind,
             path,
             focus_path: true,
+            preview: None,
+            preview_error: None,
         }
     }
 }
@@ -818,10 +897,29 @@ fn layer_thumbnail_texture(
     context: &egui::Context,
     layer: &paint_document::Layer,
 ) -> egui::TextureHandle {
-    let surface = layer.surface();
+    surface_thumbnail_texture(
+        context,
+        format!(
+            "paint-r-layer-{}-{}",
+            layer.id().get(),
+            layer.revision().get()
+        ),
+        layer.surface(),
+        48.0,
+        38.0,
+    )
+}
+
+fn surface_thumbnail_texture(
+    context: &egui::Context,
+    name: impl Into<String>,
+    surface: &paint_core::Surface,
+    max_width: f32,
+    max_height: f32,
+) -> egui::TextureHandle {
     let width = surface.width().max(1);
     let height = surface.height().max(1);
-    let scale = (48.0 / width as f32).min(38.0 / height as f32);
+    let scale = (max_width / width as f32).min(max_height / height as f32);
     let thumbnail_width = ((width as f32 * scale).round() as u32).max(1);
     let thumbnail_height = ((height as f32 * scale).round() as u32).max(1);
     let mut rgba = Vec::with_capacity((thumbnail_width * thumbnail_height * 4) as usize);
@@ -837,15 +935,52 @@ fn layer_thumbnail_texture(
         [thumbnail_width as usize, thumbnail_height as usize],
         &rgba,
     );
-    context.load_texture(
-        format!(
-            "paint-r-layer-{}-{}",
-            layer.id().get(),
-            layer.revision().get()
-        ),
-        image,
-        egui::TextureOptions::NEAREST,
-    )
+    context.load_texture(name, image, egui::TextureOptions::NEAREST)
+}
+
+fn open_png_preview(
+    context: &egui::Context,
+    path: &std::path::Path,
+) -> Result<DialogPreview, String> {
+    let metadata = path
+        .metadata()
+        .map_err(|error| format!("cannot inspect file: {error}"))?;
+    if !metadata.is_file() {
+        return Err("path is not a regular file".to_owned());
+    }
+    if metadata.len() > MAX_PREVIEW_FILE_BYTES {
+        return Err(format!(
+            "file is larger than the {MAX_PREVIEW_FILE_BYTES}-byte preview limit"
+        ));
+    }
+    let mut bytes = Vec::new();
+    File::open(path)
+        .and_then(|file| {
+            file.take(MAX_PREVIEW_FILE_BYTES + 1)
+                .read_to_end(&mut bytes)
+        })
+        .map_err(|error| format!("cannot read file: {error}"))?;
+    if bytes.len() as u64 > MAX_PREVIEW_FILE_BYTES {
+        return Err(format!(
+            "file grew beyond the {MAX_PREVIEW_FILE_BYTES}-byte preview limit"
+        ));
+    }
+    let limits = paint_image_io::PngLimits {
+        max_decoded_bytes: MAX_PREVIEW_DECODED_BYTES,
+        max_decoder_bytes: MAX_PREVIEW_FILE_BYTES as usize,
+        ..paint_image_io::PngLimits::default()
+    };
+    let surface = paint_image_io::decode_png_with_limits(&bytes, &limits)
+        .map_err(|error| format!("invalid PNG: {error}"))?;
+    let label = format!("{}×{} PNG", surface.width(), surface.height());
+    let texture = surface_thumbnail_texture(
+        context,
+        "paint-r-open-preview",
+        &surface,
+        PREVIEW_WIDTH,
+        PREVIEW_HEIGHT,
+    );
+    Ok(DialogPreview { label, texture })
 }
 
 fn color_preview(ui: &mut egui::Ui, color: Bgra) {

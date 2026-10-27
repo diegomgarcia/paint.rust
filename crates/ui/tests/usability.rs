@@ -274,6 +274,33 @@ fn layer_panel_exposes_color_and_layer_previews() {
 }
 
 #[test]
+fn open_dialog_previews_a_valid_png_without_changing_the_session() {
+    let root = TempDir::new().expect("temp dir");
+    let path = root.path().join("preview.png");
+    write_input_png(&path);
+    let mut harness = app();
+    let before = harness.state().session().document().clone();
+
+    menu_item(&mut harness, "File", "Open PNG…");
+    enter_path(&mut harness, &path);
+    click(&mut harness, "Preview");
+    harness.run();
+
+    harness.get_by_label_contains("PNG preview: 2×1 PNG");
+    assert_eq!(harness.state().session().document(), &before);
+
+    click(&mut harness, "Cancel");
+    let invalid = root.path().join("invalid.png");
+    fs::write(&invalid, b"not a PNG").expect("invalid preview file");
+    menu_item(&mut harness, "File", "Open PNG…");
+    enter_path(&mut harness, &invalid);
+    click(&mut harness, "Preview");
+    harness.run();
+    harness.get_by_label_contains("Preview failed:");
+    assert_eq!(harness.state().session().document(), &before);
+}
+
+#[test]
 fn layer_add_opacity_active_selection_and_visibility_change_composition() {
     let mut harness = app();
     click(&mut harness, "Add Layer");
