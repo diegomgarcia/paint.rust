@@ -183,6 +183,20 @@
       "source_path": "LICENSE.md",
       "source_url": "https://raw.githubusercontent.com/madsmtm/objc2/8d214f5477365ffcbcbb7de058c86ed9a518efb7/LICENSE.md",
       "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+    },
+    {
+      "id": "objc2-e282-license",
+      "path": "files/objc2/e282618be4c3a3b9542957e0c8540e9588472ce8/LICENSE.txt",
+      "source_path": "LICENSE.txt",
+      "source_url": "https://raw.githubusercontent.com/madsmtm/objc2/e282618be4c3a3b9542957e0c8540e9588472ce8/LICENSE.txt",
+      "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5"
+    },
+    {
+      "id": "objc2-7b1a-license",
+      "path": "files/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+      "source_path": "LICENSE.md",
+      "source_url": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+      "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
     }
   ],
   "packages": [
@@ -514,6 +528,78 @@
       "path_in_vcs": "crates/objc2-encode",
       "file_ids": [
         "objc2-encode-8d21-license"
+      ]
+    },
+    {
+      "name": "objc2-app-kit",
+      "version": "0.2.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "e4e89ad9e3d7d297152b17d39ed92cd50ca8063a89a9fa569046d41568891eff",
+      "repository": "https://github.com/madsmtm/objc2",
+      "vcs_commit": "e282618be4c3a3b9542957e0c8540e9588472ce8",
+      "path_in_vcs": "framework-crates/objc2-app-kit",
+      "file_ids": [
+        "objc2-e282-license"
+      ]
+    },
+    {
+      "name": "objc2-app-kit",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c",
+      "repository": "https://github.com/madsmtm/objc2",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "path_in_vcs": "framework-crates/objc2-app-kit",
+      "file_ids": [
+        "objc2-7b1a-license"
+      ]
+    },
+    {
+      "name": "objc2-core-foundation",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536",
+      "repository": "https://github.com/madsmtm/objc2",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "path_in_vcs": "framework-crates/objc2-core-foundation",
+      "file_ids": [
+        "objc2-7b1a-license"
+      ]
+    },
+    {
+      "name": "objc2-core-graphics",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807",
+      "repository": "https://github.com/madsmtm/objc2",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "path_in_vcs": "framework-crates/objc2-core-graphics",
+      "file_ids": [
+        "objc2-7b1a-license"
+      ]
+    },
+    {
+      "name": "objc2-metal",
+      "version": "0.2.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "dd0cba1276f6023976a406a14ffa85e1fdd19df6b0f737b063b95f6c8c7aadd6",
+      "repository": "https://github.com/madsmtm/objc2",
+      "vcs_commit": "e282618be4c3a3b9542957e0c8540e9588472ce8",
+      "path_in_vcs": "framework-crates/objc2-metal",
+      "file_ids": [
+        "objc2-e282-license"
+      ]
+    },
+    {
+      "name": "objc2-metal",
+      "version": "0.3.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "a0125f776a10d00af4152d74616409f0d4a2053a6f57fa5b7d6aa2854ac04794",
+      "repository": "https://github.com/madsmtm/objc2",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "path_in_vcs": "framework-crates/objc2-metal",
+      "file_ids": [
+        "objc2-7b1a-license"
       ]
     }
   ]

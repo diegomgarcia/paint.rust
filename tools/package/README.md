@@ -164,10 +164,11 @@ no network access, uses validated in-memory bytes, and verifies every emitted fi
 again. Package-source texts take precedence; a failed identity match produces no supplemented
 text and leaves the package incomplete.
 
-The current curated bundle is deliberately limited to 26 packages: the eight AccessKit package
+The current curated bundle is deliberately limited to 32 packages: the eight AccessKit package
 versions; the three listed egui-family 0.37.0 packages (`eframe`, `egui_kittest`, and
 `egui_system_font_provider`); these six Android-related packages; the three additional packages
-in the second table; and the six GPU/core packages in the third table:
+in the second table; the six GPU/core packages in the third table; and the six objc2 framework
+packages in the fourth table:
 
 | Package | Declared Cargo repository | Exact `.cargo_vcs_info` commit | Package path in that commit |
 |---|---|---|---|
@@ -193,13 +194,23 @@ in the second table; and the six GPU/core packages in the third table:
 | `objc2` 0.6.5 | `https://github.com/madsmtm/objc2` | `d7d2fa23ceaa5e6096c923b081040e5d81b3b9df` | `crates/objc2` | `LICENSE.md` |
 | `objc2-encode` 4.1.0 | `https://github.com/madsmtm/objc2` | `8d214f5477365ffcbcbb7de058c86ed9a518efb7` | `crates/objc2-encode` | `LICENSE.md` |
 
-All 20 pre-existing bindings are unchanged. Every curated resource was retrieved separately from
+| Package | Declared Cargo repository | Exact `.cargo_vcs_info` commit | Package path | Exact root resources |
+|---|---|---|---|---|
+| `objc2-app-kit` 0.2.2 | `https://github.com/madsmtm/objc2` | `e282618be4c3a3b9542957e0c8540e9588472ce8` | `framework-crates/objc2-app-kit` | `LICENSE.txt` |
+| `objc2-metal` 0.2.2 | `https://github.com/madsmtm/objc2` | `e282618be4c3a3b9542957e0c8540e9588472ce8` | `framework-crates/objc2-metal` | `LICENSE.txt` |
+| `objc2-app-kit` 0.3.2 | `https://github.com/madsmtm/objc2` | `7b1abfd750a2cacaea71d6a56ecfb83cb7de560b` | `framework-crates/objc2-app-kit` | `LICENSE.md` |
+| `objc2-core-foundation` 0.3.2 | `https://github.com/madsmtm/objc2` | `7b1abfd750a2cacaea71d6a56ecfb83cb7de560b` | `framework-crates/objc2-core-foundation` | `LICENSE.md` |
+| `objc2-core-graphics` 0.3.2 | `https://github.com/madsmtm/objc2` | `7b1abfd750a2cacaea71d6a56ecfb83cb7de560b` | `framework-crates/objc2-core-graphics` | `LICENSE.md` |
+| `objc2-metal` 0.3.2 | `https://github.com/madsmtm/objc2` | `7b1abfd750a2cacaea71d6a56ecfb83cb7de560b` | `framework-crates/objc2-metal` | `LICENSE.md` |
+
+All 26 pre-existing bindings are unchanged. Every curated resource was retrieved separately from
 the exact package-specific full-commit URL recorded in the manifest and hash-verified before being
-checked in. For the six Android-related packages, three additional packages, and six GPU/core
-packages, curation also matched real locked Cargo metadata and registry sources, verified each
-cached `.crate` archive SHA-256 against `Cargo.lock`, and matched the archived and extracted
-`.cargo_vcs_info.json` commit and package path. The absent path fields in both older `gl-rs` VCS
-records were retained as the repository root, not rewritten to a package subdirectory. Exact-commit
+checked in. For the six Android-related packages, three additional packages, six GPU/core
+packages, and six objc2 framework packages, curation also matched real locked Cargo metadata and
+registry sources, verified each cached `.crate` archive SHA-256 against `Cargo.lock`, and matched
+the archived and extracted `.cargo_vcs_info.json` commit and package path. The absent path
+fields in both older `gl-rs` VCS records were retained as the repository root, not rewritten
+to a package subdirectory. Exact-commit
 Git trees established every root resource path before retrieval; the newly retrieved bytes also
 matched the corresponding exact-tree Git blob IDs. No package subdirectory, moving branch, latest
 revision, release tag, SPDX expression, or other commit supplied substitute text.
@@ -229,7 +240,7 @@ Tests use clearly named temporary, disposable non-product fixtures. They cover Z
 tar.gz byte determinism, timestamps/modes/order, exact SHA-256 manifests and sidecars,
 SBOM path independence, font notice extraction and gap reporting, offline curated-notice
 identity/hash/provenance checks, the checked-in AccessKit, scoped egui, Android, block2, profiling,
-and per-name/version GPU/core bundles, platform layouts,
+per-name/version GPU/core and objc2 framework bundles, platform layouts,
 PE/Mach-O/ELF architecture acceptance and rejection, exact smoke-run validation,
 public-release refusal, and mandatory-smoke failure handling. A complete `package_release`
 integration test additionally compares two deterministic archives, sidecars, binary
