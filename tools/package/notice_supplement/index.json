@@ -1,0 +1,126 @@
+{
+  "format": "paint.r.notice-provenance-supplement",
+  "version": 1,
+  "files": [
+    {
+      "id": "accesskit-f302-apache",
+      "path": "files/accesskit/f3026222559c7f5f46d8f25cb7404de68eb149f0/LICENSE-APACHE",
+      "source_path": "LICENSE-APACHE",
+      "source_url": "https://raw.githubusercontent.com/AccessKit/accesskit/f3026222559c7f5f46d8f25cb7404de68eb149f0/LICENSE-APACHE",
+      "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+    },
+    {
+      "id": "accesskit-f302-mit",
+      "path": "files/accesskit/f3026222559c7f5f46d8f25cb7404de68eb149f0/LICENSE-MIT",
+      "source_path": "LICENSE-MIT",
+      "source_url": "https://raw.githubusercontent.com/AccessKit/accesskit/f3026222559c7f5f46d8f25cb7404de68eb149f0/LICENSE-MIT",
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+    }
+  ],
+  "packages": [
+    {
+      "name": "accesskit",
+      "version": "0.25.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "4e883d1d28c5fd5568c79ed2d2bd48d9f2fd3945c8974ed0f53690ceddb051be",
+      "repository": "https://github.com/AccessKit/accesskit",
+      "vcs_commit": "f3026222559c7f5f46d8f25cb7404de68eb149f0",
+      "path_in_vcs": "accesskit",
+      "file_ids": [
+        "accesskit-f302-apache",
+        "accesskit-f302-mit"
+      ]
+    },
+    {
+      "name": "accesskit_atspi_common",
+      "version": "0.21.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "24f5baf62e34a4a6c30e3d697e4782f821a7337049c44c3b40576a27dfbb580d",
+      "repository": "https://github.com/AccessKit/accesskit",
+      "vcs_commit": "f3026222559c7f5f46d8f25cb7404de68eb149f0",
+      "path_in_vcs": "adapters/atspi-common",
+      "file_ids": [
+        "accesskit-f302-apache",
+        "accesskit-f302-mit"
+      ]
+    },
+    {
+      "name": "accesskit_consumer",
+      "version": "0.39.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "f3da8f27636015191b2264ee1df681503170a632cafd832fdc1edfdd4e3a2fd3",
+      "repository": "https://github.com/AccessKit/accesskit",
+      "vcs_commit": "f3026222559c7f5f46d8f25cb7404de68eb149f0",
+      "path_in_vcs": "accesskit_consumer",
+      "file_ids": [
+        "accesskit-f302-apache",
+        "accesskit-f302-mit"
+      ]
+    },
+    {
+      "name": "accesskit_ios",
+      "version": "0.2.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "a5280724673bbfa8b30a838c013500b719392989be3b97c5a9964062c252c232",
+      "repository": "https://github.com/AccessKit/accesskit",
+      "vcs_commit": "f3026222559c7f5f46d8f25cb7404de68eb149f0",
+      "path_in_vcs": "adapters/ios",
+      "file_ids": [
+        "accesskit-f302-apache",
+        "accesskit-f302-mit"
+      ]
+    },
+    {
+      "name": "accesskit_macos",
+      "version": "0.27.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "123828ceeec755b05255e3976cb0852993202de98a0626c97dd8d34246991f84",
+      "repository": "https://github.com/AccessKit/accesskit",
+      "vcs_commit": "f3026222559c7f5f46d8f25cb7404de68eb149f0",
+      "path_in_vcs": "adapters/macos",
+      "file_ids": [
+        "accesskit-f302-apache",
+        "accesskit-f302-mit"
+      ]
+    },
+    {
+      "name": "accesskit_unix",
+      "version": "0.24.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "30d5192871228c54f1b0fb4a85cef000e11a3804f25d2165f14afa0daa67f3f6",
+      "repository": "https://github.com/AccessKit/accesskit",
+      "vcs_commit": "f3026222559c7f5f46d8f25cb7404de68eb149f0",
+      "path_in_vcs": "adapters/unix",
+      "file_ids": [
+        "accesskit-f302-apache",
+        "accesskit-f302-mit"
+      ]
+    },
+    {
+      "name": "accesskit_windows",
+      "version": "0.35.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "498668b90da9995302a0055aaecad4756932333da2ddef6baee1c00844c430fc",
+      "repository": "https://github.com/AccessKit/accesskit",
+      "vcs_commit": "f3026222559c7f5f46d8f25cb7404de68eb149f0",
+      "path_in_vcs": "adapters/windows",
+      "file_ids": [
+        "accesskit-f302-apache",
+        "accesskit-f302-mit"
+      ]
+    },
+    {
+      "name": "accesskit_winit",
+      "version": "0.34.2",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "cd4ab4437b520ff03088fbe48676a11e7d44a929535e64b31432c1073e48dbcc",
+      "repository": "https://github.com/AccessKit/accesskit",
+      "vcs_commit": "f3026222559c7f5f46d8f25cb7404de68eb149f0",
+      "path_in_vcs": "adapters/winit",
+      "file_ids": [
+        "accesskit-f302-apache",
+        "accesskit-f302-mit"
+      ]
+    }
+  ]
+}
