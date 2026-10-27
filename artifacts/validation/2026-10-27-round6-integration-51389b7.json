@@ -1,0 +1,152 @@
+{
+  "external_gates": {
+    "hosted_three_os_ci": "NOT_RUN",
+    "native_windows_linux_window_usability": "NOT_RUN",
+    "paintnet_5_1_12_full_parity": "OPEN",
+    "real_macos_window_keyboard": "NOT_RUN_HOST_LOCKED; current Cancel-state revision not executed live",
+    "remaining_notice_legal_asset_font_review": "OPEN",
+    "signing_notarization_installer": "OPEN",
+    "stock_writer_open": "NOT_RUN",
+    "windows_qga_round6_probe": "NOT_REPEATED; last bounded probe failed with UTM RPC -2700",
+    "windows_x64_product_execution": "NOT_RUN"
+  },
+  "failed": 0,
+  "format": "paint.r.round6-integration",
+  "goal_complete": false,
+  "ignored": 0,
+  "integrated_log": {
+    "path": "artifacts/reference-local/round6-5ab0ec2/integrated-final.log",
+    "sha256": "007685f59a6f2603a5816756c351f173244f968546d0abcd41425e99f49a0cb9"
+  },
+  "native_cancel_commit": "ed966d6a2082220c0921d17e5e46f76a6d91fd66",
+  "native_cancel_state": {
+    "accessible_text_equality_required": true,
+    "expected_red_old_behavior": "Unexpected accessible document replacement during Cancel still produced PASS",
+    "new_failure_code": "CANCEL_CHANGED_DOCUMENT_STATE",
+    "not_a_canvas_pixel_oracle": true,
+    "orchestration_passed": 23,
+    "receipt": "artifacts/validation/2026-10-27-native-cancel-state-ed966d6.json",
+    "round6_native_execution": "NOT_RUN"
+  },
+  "native_devmode_resource_warnings": 0,
+  "native_process_lifecycle": {
+    "current_real_child_stress_passed": 50,
+    "devmode_log": {
+      "path": "artifacts/reference-local/round6-5ab0ec2/native-devmode.log",
+      "sha256": "66fb702698577de4db96f30160456c5cfed0a1e0ec9e177c345a240847401716"
+    },
+    "devmode_passed": 23,
+    "resource_warnings": 0
+  },
+  "notice_merge_commit": "dbbc76ba381fc42b391c16d60f57624ab16947be",
+  "notice_provenance": {
+    "archived_and_unpacked_vcs_match": true,
+    "curated_emitted_files": 38,
+    "curated_supplements": 20,
+    "deterministic_tree_entries": 785,
+    "deterministic_tree_sha256": "f108ab11b9891ac76748960a5b5d3b2d3fa20b3af68d879c1dc4ee335e4f4790",
+    "extraction_complete": false,
+    "fallback_or_moving_license_used": false,
+    "included_packages": 3,
+    "independent_upstream_files_verified": 4,
+    "new_package_identities": [
+      "block2@0.5.1",
+      "block2@0.6.2",
+      "profiling@1.0.18"
+    ],
+    "package_count": 457,
+    "public_packaging": "REFUSED",
+    "receipt": "artifacts/validation/2026-10-27-system-notices-dbbc76b.json",
+    "remaining_gaps": 40,
+    "requested_six_package_target_achieved": false,
+    "skipped_packages": [
+      {
+        "name": "dispatch",
+        "reason": "Locked Cargo repository is HTTP; exact HTTPS-only supplement validation rejects it and the metadata was not rewritten.",
+        "version": "0.2.0"
+      },
+      {
+        "name": "r-efi",
+        "reason": "Exact recorded VCS root tree has no license/notice resource.",
+        "version": "5.3.0"
+      },
+      {
+        "name": "r-efi",
+        "reason": "Exact recorded VCS root tree has no license/notice resource.",
+        "version": "6.0.0"
+      }
+    ],
+    "with_texts": 417
+  },
+  "package_logs": [
+    {
+      "path": "artifacts/reference-local/round6-5ab0ec2/package-a.log",
+      "sha256": "f117ac1f65043026ecf2f949c0b122180abb92eb88e7277619a3cba9162a8094"
+    },
+    {
+      "path": "artifacts/reference-local/round6-5ab0ec2/package-b.log",
+      "sha256": "c9c10c25417284ab0330dc2b66729c893a55b89eef7419dcadc6adfef8309565"
+    }
+  ],
+  "property_stress": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 93,
+    "proptest_cases": 8192,
+    "scope": [
+      "paint-core",
+      "paint-document",
+      "paint-raster",
+      "paint-pdn3",
+      "paint-plugin-bridge"
+    ],
+    "source_commit": "00d8819ca662afb20e24c375503aef37839d4617",
+    "suite_records": 21
+  },
+  "real_package_integration": {
+    "archive": {
+      "bytes": 7219699,
+      "path": "artifacts/preview/round6-51389b7-a/paint-r-0.1.0-macos-aarch64.zip",
+      "sha256": "068b9d3d3025b254e70d36af078a7c45edab5305d00b11bf0ae58f4339746602"
+    },
+    "binary_sha256": "ad69dcd9dbbe22d9fef3bc8e31265fcd87220a1764ee8fbff3b5eedb86e1d922",
+    "curated_files_verified_inside_archive": 38,
+    "embedded_ledger_matches_source": true,
+    "embedded_ledger_sha256": "461f0c1b8d74771536bce99a6fc56910703b03a8b76f260eecfc60f42e3e78d2",
+    "fresh_binary_reproduction": "NOT_RUN_IN_THIS_INTEGRATION",
+    "native_window": "NOT_RUN_HOST_LOCKED",
+    "package_output_tree_sha256": "0db6e9612aa7f9b0df73cbbf0d1ecaf31956f55d328cec199a469db6d57b12f5",
+    "post_extract_smoke": {
+      "repeat": 2,
+      "status": "pass",
+      "trace_count": 2
+    },
+    "public_release": false
+  },
+  "rust_full_gate": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 205,
+    "product_tree_unchanged_at_round6_head": true,
+    "source_commit": "01dcbb8f4a99d50115f26747acf1ddb509d1bedc",
+    "suite_records": 40
+  },
+  "source_commit": "51389b7493fd2d58098d23894f48527425ee8d74",
+  "static_checks": {
+    "actionlint": "pass",
+    "launcher_shellcheck": "pass",
+    "swift_typecheck": "pass"
+  },
+  "status": "PASS_ENGINEERING_ROUND_NOT_A_PUBLIC_RELEASE",
+  "tests": {
+    "cross_language_live": 8,
+    "dotnet": 12,
+    "native_devmode": 23,
+    "native_orchestration": 23,
+    "native_real_child_stress": 50,
+    "package_workflow": 46,
+    "python_end_to_end": 18,
+    "reference_tools": 30
+  },
+  "version": 1
+}
