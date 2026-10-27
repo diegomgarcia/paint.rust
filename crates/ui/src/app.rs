@@ -4,7 +4,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use paint_app::{AppSession, Command};
-use paint_core::{Bgra, Rect, Size};
+use paint_core::{Bgra, Point, Rect, Size};
 use paint_document::{Document, LayerId, Revision};
 
 use crate::icons::{Icon, icon_button};
@@ -34,6 +34,7 @@ const PRESET_COLORS: &[(&str, Bgra)] = &[
 pub struct PaintApp {
     session: AppSession,
     fill_color: Bgra,
+    picking_color: bool,
     hex_input: String,
     hex_error: Option<String>,
     selection_input: SelectionInput,
@@ -54,6 +55,7 @@ impl PaintApp {
         let mut app = Self {
             session: default_session(),
             fill_color: Bgra::BLACK,
+            picking_color: false,
             hex_input: String::new(),
             hex_error: None,
             selection_input: SelectionInput::default(),
@@ -367,6 +369,14 @@ impl PaintApp {
                     let color = self.fill_color;
                     self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
                 }
+                if icon_button(ui, Icon::EyeDropper, "Pick color from canvas", true).clicked() {
+                    self.picking_color = !self.picking_color;
+                    self.status = if self.picking_color {
+                        "Pick a composed canvas color".to_owned()
+                    } else {
+                        "Color picker canceled".to_owned()
+                    };
+                }
                 ui.add_space(5.0);
                 ui.separator();
                 ui.add_space(5.0);
@@ -580,23 +590,79 @@ impl PaintApp {
                     .clamp(0.05, 8.0);
             }
             ui.label("Actual composed session surface");
+            let texture = self.texture.clone();
+            let zoom = self.zoom;
+            let picking = self.picking_color;
+            let mut picked = None;
             egui::ScrollArea::both()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    if let Some(texture) = &self.texture {
-                        ui.add(
-                            egui::Image::from_texture(texture)
-                                .fit_to_exact_size(egui::vec2(
-                                    size.width() as f32 * self.zoom,
-                                    size.height() as f32 * self.zoom,
-                                ))
-                                .alt_text("Composed document canvas"),
-                        );
+                    if let Some(texture) = texture {
+                        let display =
+                            egui::vec2(size.width() as f32 * zoom, size.height() as f32 * zoom);
+                        let sense = if picking {
+                            egui::Sense::click()
+                        } else {
+                            egui::Sense::hover()
+                        };
+                        let (rect, response) = ui.allocate_exact_size(display, sense);
+                        response.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::Role::Image,
+                                true,
+                                "Composed document canvas",
+                            )
+                        });
+                        let response = if picking {
+                            response.on_hover_cursor(egui::CursorIcon::Crosshair)
+                        } else {
+                            response
+                        };
+                        if ui.is_rect_visible(rect) {
+                            egui::Image::from_texture(&texture).paint_at(ui, rect);
+                        }
+                        if picking
+                            && response.clicked()
+                            && let Some(position) = response.interact_pointer_pos()
+                        {
+                            let x = ((position.x - rect.left()) / zoom).floor();
+                            let y = ((position.y - rect.top()) / zoom).floor();
+                            if x >= 0.0
+                                && y >= 0.0
+                                && x < size.width() as f32
+                                && y < size.height() as f32
+                            {
+                                picked = Some(Point::new(x as u32, y as u32));
+                            }
+                        }
                     } else {
                         ui.label("Canvas texture is unavailable; see the status message.");
                     }
                 });
+            if let Some(point) = picked {
+                self.pick_color_at(point);
+            }
         });
+    }
+
+    fn pick_color_at(&mut self, point: Point) {
+        match self.session.compose() {
+            Ok(surface) => {
+                let Ok(color) = surface.pixel(point) else {
+                    self.status = "The picked canvas position is outside the document".to_owned();
+                    return;
+                };
+                self.fill_color = *color;
+                self.hex_input = format_hex_color(*color);
+                self.hex_error = None;
+                self.picking_color = false;
+                self.status = format!(
+                    "Picked #{:02X}{:02X}{:02X} at ({}, {})",
+                    color.r, color.g, color.b, point.x, point.y
+                );
+            }
+            Err(error) => self.status = format!("Could not sample the canvas: {error}"),
+        }
     }
 
     fn path_dialog(&mut self, ui: &mut egui::Ui) {

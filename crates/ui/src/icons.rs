@@ -13,6 +13,7 @@ pub(crate) enum Icon {
     SelectRectangle,
     ClearSelection,
     Fill,
+    EyeDropper,
     AddLayer,
 }
 
@@ -211,6 +212,20 @@ fn paint_icon(painter: &Painter, rect: egui::Rect, icon: Icon, color: Color32) {
                 Stroke::new(1.3, color),
             );
             painter.circle_filled(point(rect, 0.8, 0.7), rect.width() * 0.08, color);
+        }
+        Icon::EyeDropper => {
+            painter.circle_stroke(point(rect, 0.72, 0.26), rect.width() * 0.14, stroke);
+            painter.line_segment([point(rect, 0.62, 0.37), point(rect, 0.3, 0.69)], stroke);
+            painter.add(Shape::convex_polygon(
+                vec![
+                    point(rect, 0.28, 0.7),
+                    point(rect, 0.36, 0.78),
+                    point(rect, 0.16, 0.86),
+                ],
+                color.gamma_multiply(0.3),
+                stroke,
+            ));
+            painter.circle_filled(point(rect, 0.46, 0.78), rect.width() * 0.06, color);
         }
         Icon::AddLayer => {
             painter.rect_stroke(

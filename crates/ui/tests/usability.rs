@@ -301,6 +301,22 @@ fn open_dialog_previews_a_valid_png_without_changing_the_session() {
 }
 
 #[test]
+fn canvas_color_picker_samples_composed_pixels_without_editing() {
+    let mut harness = app();
+    let before = harness.state().session().document().clone();
+    click(&mut harness, "Pick color from canvas");
+    harness
+        .get_by_role_and_label(Role::Image, "Composed document canvas")
+        .click();
+    harness.run();
+
+    assert_eq!(harness.state().fill_color(), Bgra::WHITE);
+    harness.get_by_role_and_label(Role::Button, "Pick color from canvas");
+    assert_eq!(harness.state().session().document(), &before);
+    assert!(!harness.state().session().dirty());
+}
+
+#[test]
 fn layer_menu_exposes_both_active_layer_flips() {
     let mut harness = app();
     harness.get_by_role_and_label(Role::Button, "Layer").click();
