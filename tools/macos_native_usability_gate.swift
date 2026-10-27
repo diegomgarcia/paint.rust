@@ -51,12 +51,18 @@ private func number(_ value: Any?) -> Double? {
 private func nativePreflight() -> [String: Any] {
     let session = CGSessionCopyCurrentDictionary() as? [String: Any]
     let console = boolean(session?[kCGSessionOnConsoleKey as String])
-    let locked = boolean(session?["CGSSessionScreenIsLocked"])
+    let lockValue = session?["CGSSessionScreenIsLocked"]
+    let lockKeyPresent = lockValue != nil
+    let locked = boolean(lockValue)
+    // macOS omits the lock key while the active console is unlocked. A present
+    // key still has to be a strict boolean or the state remains inconclusive.
+    let lockStateKnown = session != nil && (!lockKeyPresent || locked != nil)
     return [
         "console_session": console ?? false,
         "session_dictionary_available": session != nil,
         "screen_locked": locked ?? false,
-        "screen_lock_state_known": locked != nil,
+        "screen_lock_state_known": lockStateKnown,
+        "screen_lock_key_present": lockKeyPresent,
         "accessibility_trusted": AXIsProcessTrusted(),
         "screen_recording": CGPreflightScreenCaptureAccess(),
     ]
