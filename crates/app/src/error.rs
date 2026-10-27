@@ -35,6 +35,19 @@ pub enum SessionError {
     #[error(transparent)]
     Surface(#[from] SurfaceError),
     #[error(transparent)]
+    Png(#[from] paint_image_io::PngError),
+    #[error(transparent)]
+    AtomicWrite(#[from] paint_image_io::AtomicWriteError),
+    #[error("failed to {action} {path}: {source}")]
+    Io {
+        action: &'static str,
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to serialize semantic snapshot: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error(transparent)]
     ResourceLimit(#[from] ResourceLimitError),
     #[error("layer names must contain at least one character")]
     EmptyLayerName,
@@ -119,6 +132,8 @@ pub enum TraceError {
     EmptyLayerName { index: usize },
     #[error("invalid trace expectation: {message}")]
     InvalidExpectation { message: String },
+    #[error("failed to allocate a command buffer for {commands} commands")]
+    CommandAllocation { commands: usize },
     #[error(transparent)]
     ResourceLimit(#[from] ResourceLimitError),
     #[error("resource limit in trace command {index}: {source}")]
