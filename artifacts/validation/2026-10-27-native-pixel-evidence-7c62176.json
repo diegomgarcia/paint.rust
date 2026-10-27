@@ -1,0 +1,72 @@
+{
+  "decoded_pixel_evidence": {
+    "before_after_compares_rgba": true,
+    "confirmation_cancel_compares_rgba": true,
+    "max_encoded_bytes": 67108864,
+    "max_pixels": 100000000,
+    "oracle": "tests/e2e/png_rgba.py",
+    "oracle_sha256": "a6fddfa6b6d3ce0c05c5758aaf8c7eece75d84069cf8bcfbed958a65df453c30",
+    "rgba_sha256_added": true,
+    "screenshot_png_sha256_retained": true
+  },
+  "format": "paint.r.native-pixel-evidence",
+  "limitations": [
+    "Fake orchestration, PNG decoding, and mutation tests are not native window evidence.",
+    "The current pixel-evidence revision still requires a real unlocked-console acceptance run.",
+    "No hosted CI, public release, or Paint.NET parity claim is made."
+  ],
+  "live_acceptance": {
+    "current_pixel_changes_executed_against_real_window": false,
+    "permission_or_unlock_bypass_attempted": false,
+    "previous_real_locked_host_source": "97fc6073a4c8f998e69b47e3fcaef1119c6d9812",
+    "previous_real_outcome": "BLOCKED_SCREEN_LOCKED_NOT_RUN",
+    "round_four_native_execution": "NOT_RUN"
+  },
+  "native_orchestration": {
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round4-4798c28/native-pixel-final.log",
+      "sha256": "b538bda629302a2e57327aff4eb9d90f42b3499705d1aeacb791b0a258d64fb7"
+    },
+    "native_input_or_product_launch": false,
+    "passed": 21
+  },
+  "oracle_regressions": {
+    "end_to_end_passed": 18,
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round4-4798c28/native-pixel-green.log",
+      "sha256": "77df6bce96c03a95513f2160f62f8cd9ace084a0a48d749235c57325cf9e795c"
+    },
+    "reference_tools_passed": 30
+  },
+  "red_and_mutation_evidence": {
+    "initial_red": "20 tests: one metadata-only acceptance failure and one missing RGBA identity error",
+    "mutation_log": {
+      "path": "artifacts/reference-local/round4-4798c28/mutation-second-file-hash.log",
+      "sha256": "554b3eead1813cdb21592895f5da9dbc7a1cf63fe906e7e794c7f62f4dd73ce0"
+    },
+    "red_log": {
+      "path": "artifacts/reference-local/round4-4798c28/native-pixel-red.log",
+      "sha256": "2d2f57553ad448c577b70f0a72d821580daf5ce1827d31c03f2534f9fb8ba1e0"
+    },
+    "second_comparison_mutation": "Disposable copy reverted only confirmation/cancel to file hashes; exactly one targeted test failed"
+  },
+  "relocated_fake_suite": {
+    "cwd": "/tmp",
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round4-4798c28/native-pixel-relocated.log",
+      "sha256": "b33c51d6ba5c42fd1fc59f8a1b99410391afd511e74d0ca8ac31327bd62624ab"
+    },
+    "passed": 21
+  },
+  "runbook": "docs/work-packets/release/MACOS_NATIVE_USABILITY.md",
+  "source_commit": "7c62176f432bd6884105ba33ffbac4a0946c1b0e",
+  "static_checks": {
+    "python_compile": "pass",
+    "swift_5_typecheck": "pass"
+  },
+  "status": "PASS_FAKE_ORCHESTRATION_AND_MUTATION_NOT_LIVE_NATIVE_ACCEPTANCE",
+  "version": 1
+}

@@ -115,9 +115,11 @@ claim was invented.
   actionlint/GitHub schema validation and native artifact/desktop smoke remain CI gates.
 - Complete reference, usability, PDN, and other parity-ledger gates as applicable.
   Packaging does not change any parity-ledger status.
-- Resolve public project/asset/font licensing and perform legal notice review. Sixty Cargo
-  packages currently lack discovered notice texts; non-Cargo/native assets also need audit.
-  Keep public packaging refused while coverage or obligations remain unverified.
+- Resolve public project/asset/font licensing and perform legal notice review. The 60-package
+  figure above is the original lane's historical result; current exact coverage and gap counts
+  live in the latest notice-validation receipts and `docs/PARITY_LEDGER.md`. Non-Cargo/native
+  assets also need audit. Keep public packaging refused while coverage or obligations remain
+  unverified.
 - The SBOM is a locked-workspace superset, not an exact linked-binary/native dependency SBOM.
 - Installers, AppImage/AppDir runtime, distro/desktop integration, signing, notarization,
   updater, provenance/attestation, and store distribution remain separate scoped work.
