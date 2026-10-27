@@ -22,7 +22,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/host_ui.py build
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/reference/tests -v
 ```
 
-The Swift binary and module caches are written only below `artifacts/reference-local`. The Python suite covers known RGBA decoding, packed palette/transparency, PNG filters, malformed input, LOGFONT decoding, A/A mismatch rejection, bounded PDN filename OCR matching, stock-writer accept/reject ambiguity and stale-title refusal, safe guest paths, secret-like environment rejection, and native gate command construction.
+The Swift binary and module caches are written only below `artifacts/reference-local`. The Python suite covers known RGBA decoding, packed palette/transparency, PNG filters, malformed input, LOGFONT decoding, reviewed Paint.NET identity preflight and forged-evidence rejection, A/A mismatch rejection, bounded PDN filename OCR matching, stock-writer accept/reject ambiguity and stale-title refusal, safe guest paths, secret-like environment rejection, and native gate command construction.
 
 ## Durable command building blocks
 
@@ -100,6 +100,12 @@ PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/collect_environment.py \
 ```
 
 The JSON contains host/UTM versions and display configuration, guest OS/build/hotfixes, native-versus-QGA process architecture, Paint.NET executable version/signature/hash, CIM display data, per-user DPI/text/theme/color/locale/keyboard registry values, decoded LOGFONT structures, selected font and color-profile hashes, source-tool hashes, and an explicit `unpinned_fields` list. It intentionally does not collect product keys, license identifiers, user name/SID, recent-file databases, clipboard contents, or hardware serials. CIM architecture identifies native ARM64; the QGA PowerShell runtime is separately identified as x64-emulated.
+
+### Reviewed executable identity preflight
+
+`paintnet_identity.py` is the shared preflight for all three observation runners and both independent validators. It requires the reviewed Paint.NET 5.1.12 executable evidence: file version `5.112.9563.32325`, product version `5.112.9563.32325`, signature status `Valid`, and executable SHA-256 `17b27aee8eb0d18e7b39964e6c1c43b1dac5705f23727af550f2cde7fe737e2e`. These values come from the authentic passing run inventories, not from display-title text. Any mismatch stops observation before UI automation and fails validation even when a manifest and its collected evidence are internally consistent.
+
+Manifest display/title version is decoded from the observed file-version fields (`5.112…` represents display `5.1.12`), not assigned from a separate constant. The independent validators also recompute the referenced `environment.json` SHA-256 before applying the preflight. The PDN validator compares every manifest product identity field with the validated observation; the Invert validator checks every recorded window-title version against it.
 
 ## Three-run Invert A/A observation
 

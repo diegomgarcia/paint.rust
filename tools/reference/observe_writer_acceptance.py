@@ -18,6 +18,7 @@ from collect_environment import collect_environment, write_json_new
 from host_ui import LOCAL_ROOT, capture_window
 from observe_invert import GUEST_DOCUMENTS, guest_absent, independent_ffmpeg, utc_now
 from observe_pdn_fixture import OPEN_ITEM, edit_distance, require_open_filename, save_as
+from paintnet_identity import require_reviewed_paintnet
 from paintnet_ui import FILE_MENU, _capture, _click_relative, _require_ocr, localize_capture
 from host_ui import key, type_text
 from png_evidence import decode_png, png_file_evidence
@@ -98,6 +99,8 @@ def main(argv: list[str] | None = None) -> int:
         stage = "environment"
         environment = collect_environment(args.vm)
         write_json_new(output_root / "environment.json", environment)
+        stage = "paintnet-preflight"
+        paintnet_identity = require_reviewed_paintnet(environment)
         stage = "normalize"
         key("escape")
         time.sleep(0.2)
@@ -145,11 +148,8 @@ def main(argv: list[str] | None = None) -> int:
             "command": command,
             "stock_open_accepted": accepted,
             "product": {
-                "display_version": "5.1.12",
-                "file_version": environment["guest"]["paintnet"]["file_version"],
-                "source_sha256": environment["guest"]["paintnet"]["sha256"],
-                "signature_status": environment["guest"]["paintnet"]["signature_status"],
-                "signer_subject": environment["guest"]["paintnet"]["signer_subject"],
+                "name": "Paint.NET",
+                **paintnet_identity,
                 "native_windows_architecture": environment["guest"]["os"]["native_system_type"],
             },
             "environment": {"path": "environment.json", "sha256": sha256_file(output_root / "environment.json")},

@@ -12,6 +12,7 @@ from typing import Any
 
 from collect_environment import write_json_new
 from observe_invert import independent_ffmpeg
+from paintnet_identity import require_reviewed_paintnet
 from png_evidence import decode_png, png_file_evidence
 from utm import ReferenceCommandError, sha256_file
 
@@ -48,13 +49,18 @@ def validate_pdn_fixture(manifest_path: Path, *, check_ffmpeg: bool = True) -> d
     environment_path = artifact(root, manifest["environment"]["path"])
     require(sha256_file(environment_path) == manifest["environment"]["sha256"], "environment hash mismatch")
     environment = json.loads(environment_path.read_text(encoding="utf-8"))
+    paintnet_identity = require_reviewed_paintnet(environment)
     product = manifest["product"]
-    guest_product = environment["guest"]["paintnet"]
-    require(product["display_version"] == "5.1.12", "unexpected Paint.NET display version")
-    for field in ("file_version", "product_version", "path", "sha256", "signature_status", "signer_subject"):
-        target = {"path": "executable_path", "sha256": "source_sha256"}.get(field, field)
-        require(product[target] == guest_product[field], f"product/environment mismatch: {field}")
-    require(product["signature_status"] == "Valid", "Paint.NET signature is not recorded Valid")
+    for field in (
+        "display_version",
+        "file_version",
+        "product_version",
+        "executable_path",
+        "source_sha256",
+        "signature_status",
+        "signer_subject",
+    ):
+        require(product.get(field) == paintnet_identity[field], f"product/environment mismatch: {field}")
 
     pdn_path = artifact(root, manifest["pdn"]["host_path"])
     pdn_bytes = pdn_path.read_bytes()

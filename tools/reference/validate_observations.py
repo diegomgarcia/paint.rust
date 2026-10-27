@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from paintnet_identity import PaintNetIdentityError, require_reviewed_paintnet
+
 
 class ValidationError(ValueError):
     """One or more A/A evidence invariants failed."""
@@ -22,8 +24,18 @@ def _sha256(value: Any, label: str, errors: list[str]) -> str:
     return value
 
 
-def validate_manifest(manifest: dict[str, Any], minimum_runs: int = 3) -> dict[str, Any]:
+def validate_manifest(
+    manifest: dict[str, Any],
+    minimum_runs: int = 3,
+    *,
+    environment: dict[str, Any],
+) -> dict[str, Any]:
     errors: list[str] = []
+    try:
+        paintnet_identity = require_reviewed_paintnet(environment)
+    except PaintNetIdentityError as error:
+        paintnet_identity = None
+        errors.append(str(error))
     if minimum_runs < 2:
         raise ValueError("minimum_runs must be at least two")
     if manifest.get("schema_version") != 1:
@@ -52,6 +64,13 @@ def validate_manifest(manifest: dict[str, Any], minimum_runs: int = 3) -> dict[s
             errors.append(f"{label} does not identify Invert Colors")
         if document.get("source") != "new document":
             errors.append(f"{label} does not establish a new-document source")
+        if paintnet_identity is not None:
+            observed_title = document.get("paintnet_window_title_version")
+            if observed_title != paintnet_identity["display_version"]:
+                errors.append(
+                    f"{label} paintnet_window_title_version is {observed_title!r}; "
+                    f"expected observed {paintnet_identity['display_version']!r}"
+                )
         guest = observation.get("guest", {})
         host = observation.get("host", {})
         guest_encoded = _sha256(guest.get("sha256"), f"{label} guest.sha256", errors)
@@ -112,6 +131,23 @@ def validate_manifest(manifest: dict[str, Any], minimum_runs: int = 3) -> dict[s
     return result
 
 
+def _manifest_environment(manifest_path: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    record = manifest.get("environment")
+    if not isinstance(record, dict) or not isinstance(record.get("path"), str):
+        raise ValidationError("environment.path must identify the collected environment JSON")
+    root = manifest_path.resolve().parent
+    environment_path = (root / record["path"]).resolve()
+    if not environment_path.is_relative_to(root):
+        raise ValidationError("environment artifact escapes the run directory")
+    environment_bytes = environment_path.read_bytes()
+    observed_hash = hashlib.sha256(environment_bytes).hexdigest()
+    if record.get("sha256") != observed_hash:
+        raise ValidationError(
+            f"environment.sha256 is {record.get('sha256')!r}; recomputed {observed_hash!r}"
+        )
+    return json.loads(environment_bytes)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
@@ -120,7 +156,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-        result = validate_manifest(manifest, args.minimum_runs)
+        environment = _manifest_environment(args.manifest, manifest)
+        result = validate_manifest(manifest, args.minimum_runs, environment=environment)
     except (OSError, json.JSONDecodeError, ValueError) as error:
         print(f"validation failed: {error}", file=sys.stderr)
         return 2
