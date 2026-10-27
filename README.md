@@ -56,7 +56,9 @@ python3 tools/macos_native_usability_gate.py target/release/paint-ui \
 
 The output directory must not exist. See
 [MACOS_NATIVE_USABILITY.md](docs/work-packets/release/MACOS_NATIVE_USABILITY.md) for the full
-preflight, limitations, and evidence requirements.
+preflight, limitations, and evidence requirements. The current unsigned internal macOS
+package was also reproduced deterministically, extracted independently, and its `.app`
+executable passed the same live gate; this is still not a signed or public release.
 
 ## Run
 

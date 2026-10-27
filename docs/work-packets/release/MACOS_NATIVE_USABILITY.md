@@ -16,8 +16,11 @@ before != modified, modified == canceled, and first confirmation == second confi
 The evidence is recorded in
 [`2026-10-27-png-browser-bbb6bea.json`](../../../artifacts/validation/2026-10-27-png-browser-bbb6bea.json).
 This proves only this macOS native keyboard/window slice on the recorded host; it is not
-Paint.NET parity, a packaged `.app` smoke, or a public-release claim. Earlier locked-host
-runs remain fail-closed `BLOCKED`/`NOT_RUN` evidence.
+Paint.NET parity or a public-release claim. A separately reproduced internal package from
+source `de30ca9e7663266cc3455efe173d802e641d23df` was independently extracted, its recorded
+executable mode restored, and the packaged `.app` passed the same full live gate. See
+[`2026-10-27-packaged-app-de30ca9.json`](../../../artifacts/validation/2026-10-27-packaged-app-de30ca9.json).
+Earlier locked-host runs remain fail-closed `BLOCKED`/`NOT_RUN` evidence.
 
 ## Prerequisites
 
