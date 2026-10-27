@@ -164,10 +164,10 @@ no network access, uses validated in-memory bytes, and verifies every emitted fi
 again. Package-source texts take precedence; a failed identity match produces no supplemented
 text and leaves the package incomplete.
 
-The current curated bundle is deliberately limited to 20 packages: the eight AccessKit package
+The current curated bundle is deliberately limited to 26 packages: the eight AccessKit package
 versions; the three listed egui-family 0.37.0 packages (`eframe`, `egui_kittest`, and
-`egui_system_font_provider`); these six Android-related packages; and the three additional packages
-in the second table:
+`egui_system_font_provider`); these six Android-related packages; the three additional packages
+in the second table; and the six GPU/core packages in the third table:
 
 | Package | Declared Cargo repository | Exact `.cargo_vcs_info` commit | Package path in that commit |
 |---|---|---|---|
@@ -184,15 +184,25 @@ in the second table:
 | `block2` 0.6.2 | `https://github.com/madsmtm/objc2` | `b4167b582b2f75f9a1be75495c41b765344fd03c` | `crates/block2` | `LICENSE.md` |
 | `profiling` 1.0.18 | `https://github.com/aclysma/profiling` | `8271551172eb6fa4cba47369aedd93790c623df9` | `profiling` | `LICENSE-APACHE`, `LICENSE-MIT` |
 
-All 17 pre-existing bindings are unchanged. Every curated resource was retrieved separately from
+| Package | Declared Cargo repository | Exact `.cargo_vcs_info` commit | Package path | Exact root resources |
+|---|---|---|---|---|
+| `gl_generator` 0.14.0 | `https://github.com/brendanzab/gl-rs/` | `ea503e8d5fb6d73c6030e6191ce738cd3bf3433e` | Repository root; path field absent | `LICENSE` |
+| `khronos_api` 3.1.0 | `https://github.com/brendanzab/gl-rs/` | `f150967b1c44ae888e6676f93f639ebc82771bdc` | Repository root; path field absent | `LICENSE` |
+| `spirv` 0.4.0+sdk-1.4.341.0 | `https://github.com/gfx-rs/rspirv` | `8afc3d0ac8e158128cd1410bb2e4b4c26ab11bb4` | `spirv` | `LICENSE` |
+| `objc2` 0.5.3 | `https://github.com/madsmtm/objc2` | `5237cbf081d04ef75a1f6a207b4018e7c1ae7438` | `crates/objc2` | `LICENSE.txt` |
+| `objc2` 0.6.5 | `https://github.com/madsmtm/objc2` | `d7d2fa23ceaa5e6096c923b081040e5d81b3b9df` | `crates/objc2` | `LICENSE.md` |
+| `objc2-encode` 4.1.0 | `https://github.com/madsmtm/objc2` | `8d214f5477365ffcbcbb7de058c86ed9a518efb7` | `crates/objc2-encode` | `LICENSE.md` |
+
+All 20 pre-existing bindings are unchanged. Every curated resource was retrieved separately from
 the exact package-specific full-commit URL recorded in the manifest and hash-verified before being
-checked in. For the six Android-related packages and three additional packages, curation also
-matched real locked Cargo metadata and registry sources, verified each cached `.crate` archive
-SHA-256 against `Cargo.lock`, and matched the archived and extracted `.cargo_vcs_info.json` commit
-and package path. Exact-commit Git trees established every root resource path before retrieval;
-the newly retrieved bytes also matched the corresponding exact-tree Git blob IDs. No package
-subdirectory, moving branch, latest revision, release tag, SPDX expression, or other commit supplied
-substitute text.
+checked in. For the six Android-related packages, three additional packages, and six GPU/core
+packages, curation also matched real locked Cargo metadata and registry sources, verified each
+cached `.crate` archive SHA-256 against `Cargo.lock`, and matched the archived and extracted
+`.cargo_vcs_info.json` commit and package path. The absent path fields in both older `gl-rs` VCS
+records were retained as the repository root, not rewritten to a package subdirectory. Exact-commit
+Git trees established every root resource path before retrieval; the newly retrieved bytes also
+matched the corresponding exact-tree Git blob IDs. No package subdirectory, moving branch, latest
+revision, release tag, SPDX expression, or other commit supplied substitute text.
 
 The requested `dispatch` 0.2.0 and `r-efi` 5.3.0/6.0.0 archives and extracted sources passed those
 same lock-checksum and archived/extracted VCS checks but remain uncovered. Real Cargo metadata
@@ -218,7 +228,8 @@ python3 -m unittest discover -s tools/package/tests -p 'test_*.py' -v
 Tests use clearly named temporary, disposable non-product fixtures. They cover ZIP and
 tar.gz byte determinism, timestamps/modes/order, exact SHA-256 manifests and sidecars,
 SBOM path independence, font notice extraction and gap reporting, offline curated-notice
-identity/hash/provenance checks, the checked-in AccessKit, scoped egui, Android, block2, and profiling bundles, platform layouts,
+identity/hash/provenance checks, the checked-in AccessKit, scoped egui, Android, block2, profiling,
+and per-name/version GPU/core bundles, platform layouts,
 PE/Mach-O/ELF architecture acceptance and rejection, exact smoke-run validation,
 public-release refusal, and mandatory-smoke failure handling. A complete `package_release`
 integration test additionally compares two deterministic archives, sidecars, binary

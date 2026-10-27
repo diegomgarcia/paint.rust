@@ -592,6 +592,50 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                 "aclysma/profiling",
             ),
         }
+        gpu = {
+            ("gl_generator", "0.14.0"): (
+                "1a95dfc23a2b4a9a2f5ab41d194f8bfda3cabec42af4e39f08c339eb2a0c124d",
+                "https://github.com/brendanzab/gl-rs/",
+                "ea503e8d5fb6d73c6030e6191ce738cd3bf3433e",
+                "",
+                "brendanzab/gl-rs",
+            ),
+            ("khronos_api", "3.1.0"): (
+                "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc",
+                "https://github.com/brendanzab/gl-rs/",
+                "f150967b1c44ae888e6676f93f639ebc82771bdc",
+                "",
+                "brendanzab/gl-rs",
+            ),
+            ("spirv", "0.4.0+sdk-1.4.341.0"): (
+                "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f",
+                "https://github.com/gfx-rs/rspirv",
+                "8afc3d0ac8e158128cd1410bb2e4b4c26ab11bb4",
+                "spirv",
+                "gfx-rs/rspirv",
+            ),
+            ("objc2", "0.5.3"): (
+                "19d5490aaf8f1d7cf7688dfa9b0ce07900e168852c45cd2c03f534dfd27cfd0b",
+                "https://github.com/madsmtm/objc2",
+                "5237cbf081d04ef75a1f6a207b4018e7c1ae7438",
+                "crates/objc2",
+                "madsmtm/objc2",
+            ),
+            ("objc2", "0.6.5"): (
+                "08849bbd4767dfae9457696856ae1c84fe4e0281bbe4a7abff2d0e06fb7981f8",
+                "https://github.com/madsmtm/objc2",
+                "d7d2fa23ceaa5e6096c923b081040e5d81b3b9df",
+                "crates/objc2",
+                "madsmtm/objc2",
+            ),
+            ("objc2-encode", "4.1.0"): (
+                "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33",
+                "https://github.com/madsmtm/objc2",
+                "8d214f5477365ffcbcbb7de058c86ed9a518efb7",
+                "crates/objc2-encode",
+                "madsmtm/objc2",
+            ),
+        }
         additional_hashes = {
             ("block2", "0.5.1"): {
                 "LICENSE.txt": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
@@ -602,6 +646,26 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
             ("profiling", "1.0.18"): {
                 "LICENSE-APACHE": "10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551",
                 "LICENSE-MIT": "c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333",
+            },
+        }
+        gpu_hashes = {
+            ("gl_generator", "0.14.0"): {
+                "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+            },
+            ("khronos_api", "3.1.0"): {
+                "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+            },
+            ("spirv", "0.4.0+sdk-1.4.341.0"): {
+                "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+            },
+            ("objc2", "0.5.3"): {
+                "LICENSE.txt": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+            },
+            ("objc2", "0.6.5"): {
+                "LICENSE.md": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+            },
+            ("objc2-encode", "4.1.0"): {
+                "LICENSE.md": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
             },
         }
         accesskit_hashes = {
@@ -635,10 +699,13 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
             },
         }
 
+        preexisting = set(accesskit) | set(egui) | set(android) | set(additional)
+        self.assertEqual(len(preexisting), 20)
         self.assertEqual(
             {identity[:2] for identity in supplement.packages},
-            set(accesskit) | set(egui) | set(android) | set(additional),
+            preexisting | set(gpu),
         )
+        self.assertEqual(len(supplement.packages), 26)
         for identity, curated in supplement.packages.items():
             with self.subTest(package=identity[:2]):
                 self.assertEqual(identity[2], NoticeProvenanceSupplementTests.SOURCE)
@@ -657,6 +724,10 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                     expected_checksum, repository, commit, path_in_vcs, raw_repository = additional[identity[:2]]
                     self.assertEqual(curated.checksum, expected_checksum)
                     expected_hashes = additional_hashes[identity[:2]]
+                elif identity[:2] in gpu:
+                    expected_checksum, repository, commit, path_in_vcs, raw_repository = gpu[identity[:2]]
+                    self.assertEqual(curated.checksum, expected_checksum)
+                    expected_hashes = gpu_hashes[identity[:2]]
                 else:
                     expected_checksum, repository, commit, path_in_vcs, raw_repository = android[identity[:2]]
                     self.assertEqual(curated.checksum, expected_checksum)
@@ -677,6 +748,106 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                         resource.source_url,
                         f"https://raw.githubusercontent.com/{raw_repository}/{commit}/{source_path}",
                     )
+
+    def test_gpu_bindings_pin_each_name_version_and_exact_root_resource(self) -> None:
+        repo = Path(package.__file__).resolve().parents[2]
+        supplement = package.load_notice_supplement(repo / "tools/package/notice_supplement")
+        checksums = package.load_locked_package_checksums(repo / "Cargo.lock")
+        source = NoticeProvenanceSupplementTests.SOURCE
+        apache_hash = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        mit_hash = "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        expected = {
+            ("gl_generator", "0.14.0"): (
+                "1a95dfc23a2b4a9a2f5ab41d194f8bfda3cabec42af4e39f08c339eb2a0c124d",
+                "https://github.com/brendanzab/gl-rs/",
+                "ea503e8d5fb6d73c6030e6191ce738cd3bf3433e",
+                "",
+                "brendanzab/gl-rs",
+                "gl-rs",
+                "LICENSE",
+                apache_hash,
+            ),
+            ("khronos_api", "3.1.0"): (
+                "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc",
+                "https://github.com/brendanzab/gl-rs/",
+                "f150967b1c44ae888e6676f93f639ebc82771bdc",
+                "",
+                "brendanzab/gl-rs",
+                "gl-rs",
+                "LICENSE",
+                apache_hash,
+            ),
+            ("spirv", "0.4.0+sdk-1.4.341.0"): (
+                "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f",
+                "https://github.com/gfx-rs/rspirv",
+                "8afc3d0ac8e158128cd1410bb2e4b4c26ab11bb4",
+                "spirv",
+                "gfx-rs/rspirv",
+                "rspirv",
+                "LICENSE",
+                apache_hash,
+            ),
+            ("objc2", "0.5.3"): (
+                "19d5490aaf8f1d7cf7688dfa9b0ce07900e168852c45cd2c03f534dfd27cfd0b",
+                "https://github.com/madsmtm/objc2",
+                "5237cbf081d04ef75a1f6a207b4018e7c1ae7438",
+                "crates/objc2",
+                "madsmtm/objc2",
+                "objc2",
+                "LICENSE.txt",
+                "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+            ),
+            ("objc2", "0.6.5"): (
+                "08849bbd4767dfae9457696856ae1c84fe4e0281bbe4a7abff2d0e06fb7981f8",
+                "https://github.com/madsmtm/objc2",
+                "d7d2fa23ceaa5e6096c923b081040e5d81b3b9df",
+                "crates/objc2",
+                "madsmtm/objc2",
+                "objc2",
+                "LICENSE.md",
+                mit_hash,
+            ),
+            ("objc2-encode", "4.1.0"): (
+                "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33",
+                "https://github.com/madsmtm/objc2",
+                "8d214f5477365ffcbcbb7de058c86ed9a518efb7",
+                "crates/objc2-encode",
+                "madsmtm/objc2",
+                "objc2",
+                "LICENSE.md",
+                mit_hash,
+            ),
+        }
+        self.assertEqual(len(expected), 6)
+        for name_version, identity_expected in expected.items():
+            with self.subTest(package=name_version[0], version=name_version[1]):
+                identity = (*name_version, source)
+                curated = supplement.packages[identity]
+                checksum, repository, commit, path_in_vcs, raw_repo, local_repo, filename, digest = identity_expected
+                self.assertEqual(checksums[identity], checksum)
+                self.assertEqual(
+                    (curated.checksum, curated.repository, curated.vcs_commit, curated.path_in_vcs),
+                    (checksum, repository, commit, path_in_vcs),
+                )
+                self.assertEqual(len(curated.files), 1)
+                resource = curated.files[0]
+                self.assertEqual(resource.content, repo.joinpath("tools/package/notice_supplement", resource.path).read_bytes())
+                self.assertEqual(
+                    (
+                        resource.source_path.as_posix(),
+                        resource.path.as_posix(),
+                        resource.source_url,
+                        resource.sha256,
+                        hashlib.sha256(resource.content).hexdigest(),
+                    ),
+                    (
+                        filename,
+                        f"files/{local_repo}/{commit}/{filename}",
+                        f"https://raw.githubusercontent.com/{raw_repo}/{commit}/{filename}",
+                        digest,
+                        digest,
+                    ),
+                )
 
 
 class BinaryArchitectureTests(DisposableFixtureMixin):
