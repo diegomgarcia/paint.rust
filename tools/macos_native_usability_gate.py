@@ -192,6 +192,7 @@ class ObservedWindow:
             and CLOSE_EXPLANATION in self.texts
             and cancel is not None
             and cancel.get("enabled") is True
+            and cancel.get("focused") is True
             and discard is not None
             and discard.get("enabled") is True
         )

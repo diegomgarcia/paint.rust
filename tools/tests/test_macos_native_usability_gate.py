@@ -65,6 +65,7 @@ def observation(
     dialog: bool = False,
     window_id: int = 71,
     truncated: bool = False,
+    cancel_focused: bool = True,
 ) -> dict[str, object]:
     status = INVERTED if modified else "New 800×600 opaque-white document"
     nodes: list[dict[str, object]] = [
@@ -77,7 +78,7 @@ def observation(
             [
                 {"path": [3], "role": "AXWindow", "title": "Discard unsaved changes?"},
                 {"path": [4], "role": "AXStaticText", "value": CLOSE_EXPLANATION},
-                {"path": [5], "role": "AXButton", "title": "Cancel", "enabled": True, "focused": True},
+                {"path": [5], "role": "AXButton", "title": "Cancel", "enabled": True, "focused": cancel_focused},
                 {"path": [6], "role": "AXButton", "title": "Discard", "enabled": True, "focused": False},
             ]
         )
@@ -149,6 +150,7 @@ class FakeBackend:
         self.blank_screenshots = False
         self.fail_screenshots = False
         self.truncated_ax = False
+        self.cancel_unfocused = False
         self.window_id = 71
         self.lock_during_invert = False
 
@@ -175,6 +177,7 @@ class FakeBackend:
             dialog=self.dialog,
             window_id=self.window_id,
             truncated=self.truncated_ax,
+            cancel_focused=not self.cancel_unfocused,
         )
 
     def key(self, pid: int, name: str, modifiers: tuple[str, ...] = ()) -> dict[str, object]:
@@ -347,6 +350,16 @@ class NativeGateTests(unittest.TestCase):
         self.assertEqual(result["outcome"], "FAIL")
         self.assertEqual(result["error"]["code"], "OBSERVATION_TIMEOUT")
         self.assertFalse(any(item["name"] == "cancel_preserved_modified_session" and item["passed"] for item in result["assertions"]))
+
+    def test_cancel_must_be_focused_before_close_can_be_accepted(self) -> None:
+        self.backend.cancel_unfocused = True
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(result["error"]["code"], "OBSERVATION_TIMEOUT")
+        self.assertFalse(any(item["name"] == "dirty_close_confirmation_observed" and item["passed"] for item in result["assertions"]))
+        self.assertFalse(any(action[0] == "press" for action in self.backend.actions))
 
     def test_explicit_discard_must_exit_zero(self) -> None:
         self.backend.discard_exit_code = 7

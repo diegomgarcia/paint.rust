@@ -428,8 +428,9 @@ private func pressDiscard(pid: pid_t, title: String) throws -> [String: Any] {
     let discard = buttons.filter { $0.attributes["title"] as? String == "Discard" }
     guard cancel.count == 1, discard.count == 1,
           boolAttribute(cancel[0].element, kAXEnabledAttribute) == true,
+          boolAttribute(cancel[0].element, kAXFocusedAttribute) == true,
           boolAttribute(discard[0].element, kAXEnabledAttribute) == true else {
-        throw error("AX_ACTION_FAILED", "enabled Cancel/Discard buttons are not unambiguous")
+        throw error("AX_ACTION_FAILED", "enabled Cancel/Discard with focused Cancel are not unambiguous")
     }
     try requirePreflight() // Do not activate a destructive control if the session changed.
     let result = AXUIElementPerformAction(discard[0].element, kAXPressAction as CFString)
