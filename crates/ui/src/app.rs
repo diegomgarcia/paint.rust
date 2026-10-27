@@ -1,8 +1,11 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use paint_app::{AppSession, Command};
 use paint_core::{Bgra, Rect, Size};
-use paint_document::Document;
+use paint_document::{Document, LayerId, Revision};
+
+use crate::icons::{Icon, icon_button};
 
 const DEFAULT_WIDTH: u32 = 800;
 const DEFAULT_HEIGHT: u32 = 600;
@@ -14,6 +17,7 @@ pub struct PaintApp {
     selection_input: SelectionInput,
     texture: Option<egui::TextureHandle>,
     texture_dirty: bool,
+    layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
     next_layer_number: usize,
     status: String,
     path_dialog: Option<PathDialog>,
@@ -30,6 +34,7 @@ impl PaintApp {
             selection_input: SelectionInput::default(),
             texture: None,
             texture_dirty: true,
+            layer_thumbnails: HashMap::new(),
             next_layer_number: 1,
             status: "New 800×600 opaque-white document".to_owned(),
             path_dialog: None,
@@ -37,6 +42,7 @@ impl PaintApp {
             focus_discard_buttons: false,
             close_approved: false,
         };
+        configure_style(&creation_context.egui_ctx);
         app.refresh_texture(&creation_context.egui_ctx);
         app
     }
@@ -61,6 +67,7 @@ impl PaintApp {
         self.pending_discard = None;
         self.focus_discard_buttons = false;
         self.texture_dirty = true;
+        self.layer_thumbnails.clear();
         self.status = "New 800×600 opaque-white document".to_owned();
     }
 
@@ -98,6 +105,7 @@ impl PaintApp {
                 self.session = session;
                 self.next_layer_number = 1;
                 self.texture_dirty = true;
+                self.layer_thumbnails.clear();
                 self.path_dialog = None;
                 self.status = format!("Opened flattened PNG: {}", path_buffer.display());
             }
@@ -186,6 +194,24 @@ impl PaintApp {
         ));
     }
 
+    fn refresh_layer_thumbnails(&mut self, context: &egui::Context) {
+        let mut refreshed = HashMap::with_capacity(self.session.document().layers().len());
+        for layer in self.session.document().layers() {
+            let texture = match self.layer_thumbnails.get(&layer.id()) {
+                Some(existing) if existing.revision == layer.revision() => existing.texture.clone(),
+                _ => layer_thumbnail_texture(context, layer),
+            };
+            refreshed.insert(
+                layer.id(),
+                LayerThumbnail {
+                    revision: layer.revision(),
+                    texture,
+                },
+            );
+        }
+        self.layer_thumbnails = refreshed;
+    }
+
     fn menu_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::top("paint-r-menu").show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
@@ -230,41 +256,43 @@ impl PaintApp {
 
     fn toolbar_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::top("paint-r-toolbar").show(ui, |ui| {
+            ui.add_space(3.0);
             ui.horizontal_wrapped(|ui| {
-                if ui
-                    .add_enabled(self.session.can_undo(), egui::Button::new("Undo"))
-                    .clicked()
-                {
+                ui.spacing_mut().item_spacing.x = 3.0;
+                if icon_button(ui, Icon::Undo, "Undo", self.session.can_undo()).clicked() {
                     self.execute(Command::Undo, "Undid the last edit");
                 }
-                if ui
-                    .add_enabled(self.session.can_redo(), egui::Button::new("Redo"))
-                    .clicked()
-                {
+                if icon_button(ui, Icon::Redo, "Redo", self.session.can_redo()).clicked() {
                     self.execute(Command::Redo, "Redid the next edit");
                 }
+                ui.add_space(5.0);
                 ui.separator();
-                if ui.button("Select Rectangle").clicked() {
+                ui.add_space(5.0);
+                if icon_button(ui, Icon::SelectRectangle, "Select Rectangle", true).clicked() {
                     self.select_rectangle();
                 }
-                if ui
-                    .add_enabled(
-                        self.session.document().selection().is_some(),
-                        egui::Button::new("Clear Selection"),
-                    )
-                    .clicked()
+                if icon_button(
+                    ui,
+                    Icon::ClearSelection,
+                    "Clear Selection",
+                    self.session.document().selection().is_some(),
+                )
+                .clicked()
                 {
                     self.execute(Command::ClearSelection, "Selection cleared");
                 }
-                if ui.button("Fill").clicked() {
+                if icon_button(ui, Icon::Fill, "Fill", true).clicked() {
                     let color = self.fill_color;
                     self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
                 }
+                ui.add_space(5.0);
                 ui.separator();
-                if ui.button("Add Layer").clicked() {
+                ui.add_space(5.0);
+                if icon_button(ui, Icon::AddLayer, "Add Layer", true).clicked() {
                     self.add_layer();
                 }
             });
+            ui.add_space(2.0);
         });
     }
 
@@ -282,22 +310,44 @@ impl PaintApp {
                         let layer = &document.layers()[index];
                         let active = layer.id() == document.active_layer_id();
                         ui.group(|ui| {
-                            if ui
-                                .selectable_label(
-                                    active,
-                                    format!("Active layer {index}: {}", layer.name()),
-                                )
-                                .clicked()
-                            {
-                                pending = Some(Command::SetActiveLayer { index });
-                            }
-                            let mut visible = layer.is_visible();
-                            if ui
-                                .checkbox(&mut visible, format!("Layer {index} visible"))
-                                .changed()
-                            {
-                                pending = Some(Command::SetLayerVisibility { index, visible });
-                            }
+                            ui.horizontal_top(|ui| {
+                                if let Some(thumbnail) = self.layer_thumbnails.get(&layer.id()) {
+                                    egui::Frame::new()
+                                        .fill(egui::Color32::from_rgb(24, 24, 24))
+                                        .corner_radius(3)
+                                        .inner_margin(2)
+                                        .show(ui, |ui| {
+                                            ui.add(
+                                                egui::Image::from_texture(&thumbnail.texture)
+                                                    .maintain_aspect_ratio(true)
+                                                    .fit_to_exact_size(egui::vec2(48.0, 38.0))
+                                                    .alt_text(format!(
+                                                        "Layer {index} thumbnail: {}",
+                                                        layer.name()
+                                                    )),
+                                            );
+                                        });
+                                }
+                                ui.vertical(|ui| {
+                                    if ui
+                                        .selectable_label(
+                                            active,
+                                            format!("Active layer {index}: {}", layer.name()),
+                                        )
+                                        .clicked()
+                                    {
+                                        pending = Some(Command::SetActiveLayer { index });
+                                    }
+                                    let mut visible = layer.is_visible();
+                                    if ui
+                                        .checkbox(&mut visible, format!("Layer {index} visible"))
+                                        .changed()
+                                    {
+                                        pending =
+                                            Some(Command::SetLayerVisibility { index, visible });
+                                    }
+                                });
+                            });
                             let mut opacity = layer.opacity();
                             if ui
                                 .add(
@@ -323,7 +373,16 @@ impl PaintApp {
             .show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.heading("Colors");
-                    ui.label("Fill color in canonical BGRA channels:");
+                    let color = self.fill_color;
+                    color_preview(ui, color);
+                    ui.label(format!(
+                        "Primary color preview · #{:02X}{:02X}{:02X}",
+                        color.r, color.g, color.b
+                    ));
+                    ui.label(format!(
+                        "Alpha {}% · canonical BGRA channels",
+                        (u16::from(color.a) * 100 / 255)
+                    ));
                     color_slider(ui, "Fill blue", &mut self.fill_color.b);
                     color_slider(ui, "Fill green", &mut self.fill_color.g);
                     color_slider(ui, "Fill red", &mut self.fill_color.r);
@@ -604,6 +663,7 @@ impl eframe::App for PaintApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.refresh_texture(ui.ctx());
+        self.refresh_layer_thumbnails(ui.ctx());
         self.menu_panel(ui);
         self.toolbar_panel(ui);
         self.layers_panel(ui);
@@ -694,6 +754,103 @@ impl PathDialog {
             focus_path: true,
         }
     }
+}
+
+struct LayerThumbnail {
+    revision: Revision,
+    texture: egui::TextureHandle,
+}
+
+fn configure_style(context: &egui::Context) {
+    context.set_theme(egui::ThemePreference::Dark);
+    context.all_styles_mut(|style| {
+        style.visuals = egui::Visuals::dark();
+        style.visuals.panel_fill = egui::Color32::from_rgb(38, 38, 38);
+        style.visuals.window_fill = egui::Color32::from_rgb(45, 45, 45);
+        style.visuals.faint_bg_color = egui::Color32::from_rgb(32, 32, 32);
+        style.visuals.extreme_bg_color = egui::Color32::from_rgb(22, 22, 22);
+        style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(58, 58, 58);
+        style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(70, 70, 70);
+        style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(80, 80, 80);
+        style.visuals.selection.bg_fill = egui::Color32::from_rgb(0, 102, 184);
+        style.visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+        style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+        style.spacing.button_padding = egui::vec2(9.0, 5.0);
+    });
+}
+
+fn layer_thumbnail_texture(
+    context: &egui::Context,
+    layer: &paint_document::Layer,
+) -> egui::TextureHandle {
+    let surface = layer.surface();
+    let width = surface.width().max(1);
+    let height = surface.height().max(1);
+    let scale = (48.0 / width as f32).min(38.0 / height as f32);
+    let thumbnail_width = ((width as f32 * scale).round() as u32).max(1);
+    let thumbnail_height = ((height as f32 * scale).round() as u32).max(1);
+    let mut rgba = Vec::with_capacity((thumbnail_width * thumbnail_height * 4) as usize);
+    for y in 0..thumbnail_height {
+        let source_y = u64::from(y) * u64::from(height) / u64::from(thumbnail_height);
+        for x in 0..thumbnail_width {
+            let source_x = u64::from(x) * u64::from(width) / u64::from(thumbnail_width);
+            let pixel = surface.pixels()[(source_y * u64::from(width) + source_x) as usize];
+            rgba.extend_from_slice(&pixel.to_rgba_bytes());
+        }
+    }
+    let image = egui::ColorImage::from_rgba_unmultiplied(
+        [thumbnail_width as usize, thumbnail_height as usize],
+        &rgba,
+    );
+    context.load_texture(
+        format!(
+            "paint-r-layer-{}-{}",
+            layer.id().get(),
+            layer.revision().get()
+        ),
+        image,
+        egui::TextureOptions::NEAREST,
+    )
+}
+
+fn color_preview(ui: &mut egui::Ui, color: Bgra) {
+    let size = egui::vec2(ui.available_width().clamp(80.0, 184.0), 48.0);
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let painter = ui.painter();
+    let checker = 8.0;
+    let light = egui::Color32::from_rgb(190, 190, 190);
+    let dark = egui::Color32::from_rgb(120, 120, 120);
+    let mut y = rect.top();
+    let mut row = 0;
+    while y < rect.bottom() {
+        let mut x = rect.left();
+        let mut column = 0;
+        while x < rect.right() {
+            let cell = egui::Rect::from_min_max(
+                egui::pos2(x, y),
+                egui::pos2(
+                    (x + checker).min(rect.right()),
+                    (y + checker).min(rect.bottom()),
+                ),
+            );
+            painter.rect_filled(cell, 0, if (row + column) % 2 == 0 { light } else { dark });
+            x += checker;
+            column += 1;
+        }
+        y += checker;
+        row += 1;
+    }
+    painter.rect_filled(
+        rect,
+        4,
+        egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+    );
+    painter.rect_stroke(
+        rect,
+        4,
+        egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
+        egui::StrokeKind::Inside,
+    );
 }
 
 fn default_session() -> AppSession {

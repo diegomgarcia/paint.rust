@@ -260,6 +260,17 @@ fn rectangle_selection_chosen_bgra_fill_and_clear_selection_are_usable() {
 }
 
 #[test]
+fn layer_panel_exposes_color_and_layer_previews() {
+    let mut harness = app();
+
+    harness.get_by_label_contains("Primary color preview");
+    harness.get_by_label_contains("Layer 0 thumbnail: Background");
+
+    click(&mut harness, "Add Layer");
+    harness.get_by_label_contains("Layer 1 thumbnail: Layer 1");
+}
+
+#[test]
 fn layer_add_opacity_active_selection_and_visibility_change_composition() {
     let mut harness = app();
     click(&mut harness, "Add Layer");

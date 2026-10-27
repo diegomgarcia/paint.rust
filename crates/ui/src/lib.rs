@@ -2,6 +2,7 @@
 
 mod app;
 pub mod headless;
+mod icons;
 pub mod native;
 
 pub use app::PaintApp;
