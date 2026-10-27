@@ -643,6 +643,52 @@ fn shared_pixel_memory_is_reused_without_a_second_chunk_stream() {
 }
 
 #[test]
+fn unique_layer_surfaces_remain_independent() {
+    let size = Size::new(2, 2).expect("size");
+    let bottom = Layer::new(
+        LayerId::new(1),
+        "Bottom",
+        Surface::from_pixels(size, vec![Bgra::BLACK; 4]).expect("bottom surface"),
+    )
+    .with_background(true);
+    let top = Layer::new(
+        LayerId::new(2),
+        "Top",
+        Surface::from_pixels(size, vec![Bgra::WHITE; 4]).expect("top surface"),
+    )
+    .with_visibility(false)
+    .with_opacity(37);
+    let document = Document::from_layers(size, vec![bottom, top]).expect("document");
+    let encoded = encode_pdn(&document).expect("encode unique layers");
+
+    let decoded = decode_pdn(&encoded).expect("decode unique layers");
+
+    assert_eq!(decoded.document, document);
+    assert!(decoded.report.shared_layers.is_empty());
+}
+
+#[test]
+fn total_surface_limit_is_checked_before_pixel_chunk_decoding() {
+    let mut fixture = semantic_fixture(&FixtureConfig::default());
+    fixture.bytes[fixture.chunks_offset] = 9;
+    let limits = PdnLimits {
+        max_total_surface_bytes: 15,
+        ..PdnLimits::default()
+    };
+
+    let error = decode_pdn_with_limits(&fixture.bytes, &limits).expect_err("limit must reject");
+
+    assert!(matches!(
+        error,
+        PdnError::ResourceLimit {
+            resource: "total surface bytes",
+            requested: 16,
+            maximum: 15,
+        }
+    ));
+}
+
+#[test]
 fn trailing_data_is_preserved_and_reported() {
     let mut fixture = semantic_fixture(&FixtureConfig::default());
     fixture.bytes.extend_from_slice(&[9, 8, 7]);

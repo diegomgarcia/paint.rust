@@ -152,14 +152,15 @@ fn decode_document(
         return Err(malformed("PDN document has no layers"));
     }
     let mut chunk_reader = ChunkReader::new(chunk_bytes);
-    let mut surfaces = BTreeMap::<ObjectId, Surface>::new();
-    let mut canonical_layers = Vec::new();
+    let mut surface_layers = BTreeMap::<ObjectId, usize>::new();
+    let mut canonical_layers = Vec::<Layer>::new();
     canonical_layers
         .try_reserve_exact(layer_count)
         .map_err(|_| PdnError::Allocation {
             context: "layer table",
             requested: layer_count.saturating_mul(std::mem::size_of::<Layer>()),
         })?;
+    let canonical_bytes = size.checked_buffer_len()?;
     let mut total_surface_bytes = 0usize;
     for index in 0..layer_count {
         let value = items
@@ -291,24 +292,12 @@ fn decode_document(
         }
         let has_parent = boolean(member(stream, memory, "hasParent")?)?;
         let _deferred = boolean(member(stream, memory, "deferred")?)?;
-        let surface = if let Some(surface) = surfaces.get(&memory_id) {
-            report.shared_layers.push(index);
-            surface.clone()
-        } else {
-            if has_parent {
-                return Err(PdnError::Unsupported(
-                    PdnUnsupported::SharedSurfaceWithoutDecodedParent,
-                ));
-            }
-            let raw = decode_chunks(&mut chunk_reader, storage_length, limits)?;
-            let surface = surface_from_bgr_rows(size, raw, stride)?;
-            surfaces.insert(memory_id, surface.clone());
-            if stride != packed_stride {
-                report.padded_layers.push(index);
-            }
-            surface
-        };
-        let canonical_bytes = size.checked_buffer_len()?;
+        let shared_from = surface_layers.get(&memory_id).copied();
+        if shared_from.is_none() && has_parent {
+            return Err(PdnError::Unsupported(
+                PdnUnsupported::SharedSurfaceWithoutDecodedParent,
+            ));
+        }
         total_surface_bytes = total_surface_bytes
             .checked_add(canonical_bytes)
             .ok_or_else(|| malformed("total surface byte count overflow"))?;
@@ -319,6 +308,18 @@ fn decode_document(
                 limits.max_total_surface_bytes,
             ));
         }
+        let canonical_index = canonical_layers.len();
+        let surface = if let Some(canonical_index) = shared_from {
+            report.shared_layers.push(index);
+            canonical_layers[canonical_index].surface().clone()
+        } else {
+            let raw = decode_chunks(&mut chunk_reader, storage_length, limits)?;
+            let surface = surface_from_bgr_rows(size, raw, stride)?;
+            if stride != packed_stride {
+                report.padded_layers.push(index);
+            }
+            surface
+        };
         let id =
             LayerId::new(u64::try_from(index + 1).map_err(|_| malformed("layer id overflow"))?);
         canonical_layers.push(
@@ -327,6 +328,9 @@ fn decode_document(
                 .with_opacity(opacity)
                 .with_background(background),
         );
+        if shared_from.is_none() {
+            surface_layers.insert(memory_id, canonical_index);
+        }
     }
     let document = Document::from_layers(size, canonical_layers)?;
     debug_assert!(
