@@ -262,6 +262,71 @@ fn active_layer_and_selection_changes_do_not_dirty_a_clean_document() {
 }
 
 #[test]
+fn layer_flips_are_atomic_undoable_content_edits() {
+    let size = Size::new(3, 2).expect("dimensions");
+    let original = vec![
+        Bgra::new(1, 0, 0, 255),
+        Bgra::new(0, 2, 0, 255),
+        Bgra::new(0, 0, 3, 255),
+        Bgra::new(4, 0, 0, 255),
+        Bgra::new(0, 5, 0, 255),
+        Bgra::new(0, 0, 6, 255),
+    ];
+    let surface = Surface::from_pixels(size, original.clone()).expect("surface");
+    let document = Document::from_layers(size, vec![Layer::new(LayerId::new(1), "flip", surface)])
+        .expect("document");
+    let mut session = AppSession::new(document);
+
+    assert!(session.execute(Command::FlipLayerHorizontal).unwrap());
+    assert!(session.dirty());
+    assert!(session.can_undo());
+    assert_eq!(
+        session.document().active_layer().surface().pixels(),
+        &[
+            original[2],
+            original[1],
+            original[0],
+            original[5],
+            original[4],
+            original[3],
+        ]
+    );
+
+    assert!(session.execute(Command::FlipLayerVertical).unwrap());
+    assert_eq!(
+        session.document().active_layer().surface().pixels(),
+        &[
+            original[5],
+            original[4],
+            original[3],
+            original[2],
+            original[1],
+            original[0],
+        ]
+    );
+
+    assert!(session.undo().unwrap());
+    assert_eq!(
+        session.document().active_layer().surface().pixels(),
+        &[
+            original[2],
+            original[1],
+            original[0],
+            original[5],
+            original[4],
+            original[3],
+        ]
+    );
+    assert!(session.undo().unwrap());
+    assert_eq!(
+        session.document().active_layer().surface().pixels(),
+        &original
+    );
+    assert!(!session.dirty());
+    assert!(session.can_redo());
+}
+
+#[test]
 fn dirty_state_tracks_content_not_mutation_count() {
     let mut session = session_with_color(1, 1, Bgra::new(1, 2, 3, 99));
     session.execute(Command::Invert).unwrap();

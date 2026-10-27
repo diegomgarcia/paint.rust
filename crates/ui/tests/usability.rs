@@ -301,6 +301,15 @@ fn open_dialog_previews_a_valid_png_without_changing_the_session() {
 }
 
 #[test]
+fn layer_menu_exposes_both_active_layer_flips() {
+    let mut harness = app();
+    harness.get_by_role_and_label(Role::Button, "Layer").click();
+    harness.run();
+    harness.get_by_label("Flip Active Layer Horizontally");
+    harness.get_by_label("Flip Active Layer Vertically");
+}
+
+#[test]
 fn hex_color_input_applies_exact_rgb_and_alpha() {
     assert_eq!(
         paint_ui::color_from_hex("#FF0000").expect("red"),

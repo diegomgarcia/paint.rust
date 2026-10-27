@@ -282,6 +282,24 @@ impl PaintApp {
                         ui.close();
                     }
                 });
+                ui.menu_button("Layer", |ui| {
+                    let horizontal = ui.button("Flip Active Layer Horizontally");
+                    focus_first_menu_item_on_keyboard_open(ui, &horizontal);
+                    if horizontal.clicked() {
+                        self.execute(
+                            Command::FlipLayerHorizontal,
+                            "Flipped the active layer horizontally",
+                        );
+                        ui.close();
+                    }
+                    if ui.button("Flip Active Layer Vertically").clicked() {
+                        self.execute(
+                            Command::FlipLayerVertical,
+                            "Flipped the active layer vertically",
+                        );
+                        ui.close();
+                    }
+                });
                 ui.menu_button("Adjustments", |ui| {
                     let invert_response = ui.button("Invert Colors");
                     focus_first_menu_item_on_keyboard_open(ui, &invert_response);
@@ -294,6 +312,7 @@ impl PaintApp {
                     ui.label("Development-preview shortcuts (Cmd/Ctrl):");
                     ui.label("N New | O Open | Shift+E Export");
                     ui.label("I Invert | F Fill | R Rectangle selection");
+                    ui.label("Layer menu flips the complete active layer");
                     ui.label("Shift+L Add layer | Z Undo | Shift+Z Redo");
                     ui.separator();
                     ui.label("Tab / Shift+Tab move focus; Enter / Space activate");

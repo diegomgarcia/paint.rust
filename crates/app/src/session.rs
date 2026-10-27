@@ -106,6 +106,8 @@ impl AppSession {
             Command::ClearSelection => self.clear_selection(),
             Command::Fill(color) => self.fill(color),
             Command::Invert => self.invert(),
+            Command::FlipLayerHorizontal => self.flip_layer_horizontal(),
+            Command::FlipLayerVertical => self.flip_layer_vertical(),
             Command::AddLayer {
                 name,
                 opacity,
@@ -149,6 +151,22 @@ impl AppSession {
 
     pub fn invert(&mut self) -> Result<bool, SessionError> {
         let patch = paint_raster::invert(&self.document, self.document.active_layer_id())?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn flip_layer_horizontal(&mut self) -> Result<bool, SessionError> {
+        let patch = paint_raster::flip_horizontal(&self.document, self.document.active_layer_id())?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn flip_layer_vertical(&mut self) -> Result<bool, SessionError> {
+        let patch = paint_raster::flip_vertical(&self.document, self.document.active_layer_id())?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
             None => Ok(false),

@@ -60,6 +60,66 @@ pub fn invert_active(document: &Document) -> Result<Option<PixelPatch>, RasterEr
     invert(document, document.active_layer_id())
 }
 
+/// Flips every pixel in one layer left-to-right, ignoring the current selection.
+/// Returns `Ok(None)` when the layer is horizontally symmetric.
+pub fn flip_horizontal(
+    document: &Document,
+    layer_id: LayerId,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let rect = document.canvas_rect();
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let width = rect.size().width() as usize;
+    let height = rect.size().height() as usize;
+    for row in 0..height {
+        for column in 0..width {
+            after[row * width + column] = before[row * width + (width - 1 - column)];
+        }
+    }
+    if after == before {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+/// Flips every pixel in one layer top-to-bottom, ignoring the current selection.
+/// Returns `Ok(None)` when the layer is vertically symmetric.
+pub fn flip_vertical(
+    document: &Document,
+    layer_id: LayerId,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let rect = document.canvas_rect();
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let width = rect.size().width() as usize;
+    let height = rect.size().height() as usize;
+    for row in 0..height {
+        let source_row = height - 1 - row;
+        after[row * width..(row + 1) * width]
+            .copy_from_slice(&before[source_row * width..(source_row + 1) * width]);
+    }
+    if after == before {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
 fn layer(document: &Document, layer_id: LayerId) -> Result<&Layer, RasterError> {
     document
         .layer(layer_id)

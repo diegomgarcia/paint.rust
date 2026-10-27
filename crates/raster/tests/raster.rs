@@ -1,6 +1,6 @@
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId, Revision};
-use paint_raster::{compose, fill, invert, normal_over};
+use paint_raster::{compose, fill, flip_horizontal, flip_vertical, invert, normal_over};
 
 fn size(width: u32, height: u32) -> Size {
     Size::new(width, height).expect("test dimensions")
@@ -98,6 +98,84 @@ fn invert_changes_only_rgb_and_round_trips_through_new_patches() {
     assert_eq!(restore.expected_revision(), Revision::new(1));
     document.apply_patch(&restore).expect("restore");
     assert_eq!(document.active_layer().surface().pixels(), original);
+}
+
+#[test]
+fn flips_are_exact_full_layer_transforms_with_inverse_patches() {
+    let original = vec![
+        Bgra::new(1, 0, 0, 255),
+        Bgra::new(0, 2, 0, 255),
+        Bgra::new(0, 0, 3, 255),
+        Bgra::new(4, 0, 0, 255),
+        Bgra::new(0, 5, 0, 255),
+        Bgra::new(0, 0, 6, 255),
+    ];
+    let surface = Surface::from_pixels(size(3, 2), original.clone()).expect("surface");
+    let mut document = Document::from_layers(
+        size(3, 2),
+        vec![Layer::new(LayerId::new(9), "flip", surface)],
+    )
+    .expect("document");
+
+    let horizontal = flip_horizontal(&document, LayerId::new(9))
+        .expect("flip horizontal")
+        .expect("asymmetric pixels");
+    assert_eq!(
+        horizontal.after(),
+        &[
+            Bgra::new(0, 0, 3, 255),
+            Bgra::new(0, 2, 0, 255),
+            Bgra::new(1, 0, 0, 255),
+            Bgra::new(0, 0, 6, 255),
+            Bgra::new(0, 5, 0, 255),
+            Bgra::new(4, 0, 0, 255),
+        ]
+    );
+    document.apply_patch(&horizontal).expect("apply flip");
+
+    let vertical = flip_vertical(&document, LayerId::new(9))
+        .expect("flip vertical")
+        .expect("asymmetric pixels");
+    assert_eq!(
+        vertical.after(),
+        &[
+            Bgra::new(0, 0, 6, 255),
+            Bgra::new(0, 5, 0, 255),
+            Bgra::new(4, 0, 0, 255),
+            Bgra::new(0, 0, 3, 255),
+            Bgra::new(0, 2, 0, 255),
+            Bgra::new(1, 0, 0, 255),
+        ]
+    );
+    document
+        .apply_patch(&vertical)
+        .expect("apply vertical flip");
+
+    let horizontal_restore = flip_horizontal(&document, LayerId::new(9))
+        .expect("horizontal restore")
+        .expect("asymmetric pixels");
+    document
+        .apply_patch(&horizontal_restore)
+        .expect("restore horizontal");
+    let vertical_restore = flip_vertical(&document, LayerId::new(9))
+        .expect("vertical restore")
+        .expect("asymmetric pixels");
+    document
+        .apply_patch(&vertical_restore)
+        .expect("restore vertical");
+    assert_eq!(document.active_layer().surface().pixels(), original);
+}
+
+#[test]
+fn symmetric_surface_flips_are_explicit_noops() {
+    let surface = Surface::filled(size(2, 2), Bgra::new(3, 4, 5, 200)).expect("surface");
+    let document = Document::from_layers(
+        size(2, 2),
+        vec![Layer::new(LayerId::new(1), "symmetric", surface)],
+    )
+    .expect("document");
+    assert_eq!(flip_horizontal(&document, LayerId::new(1)), Ok(None));
+    assert_eq!(flip_vertical(&document, LayerId::new(1)), Ok(None));
 }
 
 #[test]

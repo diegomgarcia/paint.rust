@@ -8,7 +8,7 @@ use paint_document::{BlendMode, DocumentError, LayerId, PatchError};
 use thiserror::Error;
 
 pub use compose::{compose, normal_over};
-pub use operations::{fill, fill_active, invert, invert_active};
+pub use operations::{fill, fill_active, flip_horizontal, flip_vertical, invert, invert_active};
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum RasterError {

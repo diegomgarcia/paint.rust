@@ -10,6 +10,10 @@ pub enum Command {
     Fill(Bgra),
     /// Inverts RGB in the active layer and selection while preserving alpha.
     Invert,
+    /// Flips the complete active layer left-to-right, ignoring the selection.
+    FlipLayerHorizontal,
+    /// Flips the complete active layer top-to-bottom, ignoring the selection.
+    FlipLayerVertical,
     /// Adds a transparent layer at the top and makes it active.
     AddLayer {
         name: String,
