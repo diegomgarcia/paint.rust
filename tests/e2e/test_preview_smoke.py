@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import preview_smoke
 
@@ -87,6 +89,34 @@ class OutputEvidenceTests(unittest.TestCase):
                 write_case(root / "output", document)
                 with self.assertRaises(ValueError):
                     preview_smoke.verify_outputs({}, root / "output")
+
+
+class NegativePathTests(unittest.TestCase):
+    def rejection_result(self, returncode: int) -> str:
+        with tempfile.TemporaryDirectory(prefix="paint-r-negative-test-") as temporary:
+            root = Path(temporary)
+            completed = subprocess.CompletedProcess(
+                args=[], returncode=returncode, stdout="", stderr=f"diagnostic-{returncode}"
+            )
+            with mock.patch.object(preview_smoke, "run_product", return_value=completed):
+                result = preview_smoke.expect_rejection(
+                    root / "paint-ui",
+                    {"format": "paint.r.command-trace", "version": 1, "commands": []},
+                    root,
+                    1.0,
+                )
+            self.assertEqual((root / "output/composite.png").read_bytes(), b"previous-good-png")
+            self.assertEqual((root / "output/snapshot.json").read_bytes(), b"previous-good-snapshot")
+            return result
+
+    def test_normal_error_exit_preserves_outputs_and_returns_diagnostic(self) -> None:
+        self.assertEqual(self.rejection_result(1), "diagnostic-1")
+
+    def test_success_wrong_exit_panic_and_signal_are_not_negative_path_passes(self) -> None:
+        for returncode in (0, 2, 101, -11):
+            with self.subTest(returncode=returncode):
+                with self.assertRaisesRegex(ValueError, "normal error exit 1"):
+                    self.rejection_result(returncode)
 
 
 if __name__ == "__main__":

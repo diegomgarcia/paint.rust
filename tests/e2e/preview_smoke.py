@@ -144,8 +144,8 @@ def expect_rejection(binary: Path, trace: dict[str, object], directory: Path, ti
     (output / "composite.png").write_bytes(original_png)
     (output / "snapshot.json").write_bytes(original_snapshot)
     result = run_product(binary, bad_trace, output, timeout)
-    if result.returncode == 0:
-        raise ValueError("malformed trace returned success")
+    if result.returncode != 1:
+        raise ValueError(f"malformed trace did not use normal error exit 1 (got {result.returncode})")
     if (output / "composite.png").read_bytes() != original_png or (output / "snapshot.json").read_bytes() != original_snapshot:
         raise ValueError("rejected trace overwrote prior outputs")
     diagnostic = result.stderr.strip() or result.stdout.strip()
