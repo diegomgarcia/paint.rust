@@ -1,0 +1,87 @@
+name: development-preview-packaging
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-preview-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  RUST_BACKTRACE: "1"
+  SOURCE_DATE_EPOCH: "946684800"
+
+jobs:
+  preview:
+    name: Internal preview / ${{ matrix.platform }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows-x86_64
+            binary: target/release/paint-ui.exe
+          - os: macos-14
+            platform: macos-aarch64
+            binary: target/release/paint-ui
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+            binary: target/release/paint-ui
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal --component clippy,rustfmt
+      - name: Fetch locked dependencies
+        run: bash ./tools/cargo-pinned.sh fetch --locked
+      - name: Test standard-library packaging tool
+        run: python3 -m unittest discover -s tools/package/tests -p 'test_*.py' -v
+      - name: Check formatting
+        run: bash ./tools/cargo-pinned.sh fmt --all -- --check
+      - name: Strict Clippy
+        run: bash ./tools/cargo-pinned.sh clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Unit, property, integration, and usability tests
+        run: bash ./tools/cargo-pinned.sh test --workspace --all-features --locked
+      - name: Stub and suspicious-test scan
+        run: bash ./tools/cargo-pinned.sh run --locked -p xtask -- scan-stubs
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.201
+      - name: Restore locked .NET dependencies
+        run: dotnet restore plugin-host/Paint.PluginHost.sln --locked-mode
+      - name: .NET host and protocol tests
+        run: dotnet test plugin-host/Paint.PluginHost.sln --configuration Release --no-restore
+      - name: Real Rust to .NET plugin conformance
+        run: bash plugin-host/test-cross-language.sh
+      - name: Independent PNG oracle tests
+        run: python3 -m unittest discover -s tests/e2e -p 'test_*.py' -v
+      - name: Build actual paint-ui release binary
+        run: bash ./tools/cargo-pinned.sh build --release --locked --package paint-ui
+      - name: Run real trace smoke and package internal preview
+        run: |
+          python3 tools/package/preview_package.py \
+            --binary "${{ matrix.binary }}" \
+            --platform "${{ matrix.platform }}" \
+            --output-dir dist \
+            --repeat 2 \
+            --timeout 30 \
+            --distribution internal-preview \
+            --cargo-command bash ./tools/cargo-pinned.sh
+      - name: Upload internal CI artifact (never a GitHub release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: paint-r-internal-preview-${{ matrix.platform }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
