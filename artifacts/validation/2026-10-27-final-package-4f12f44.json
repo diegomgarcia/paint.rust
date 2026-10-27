@@ -1,0 +1,62 @@
+{
+  "archive": {
+    "bytes": 7116097,
+    "path": "artifacts/preview/final-4f12f44-a/paint-r-0.1.0-macos-aarch64.zip",
+    "sha256": "42069cc6c9cdc027790d824d169b45b0c3f3054de5f0c7434336570c91566f0e",
+    "sidecar_sha256": "1df09e7723fa6339e0ba4ebdb4c5e17c9d325135a447272c2425eb17971d8e30",
+    "verification_sha256": "e5aea8791f1a048fa0598c93108aeac8be3c181f223c163225378d05ad0d9fec"
+  },
+  "binary": {
+    "bytes": 12518832,
+    "format": "Mach-O 64",
+    "machine": "0x100000c",
+    "mode_after_ditto": "0755",
+    "sha256": "58eeda09fd027a6d19ab1dffa56d9bb4864721f3ce0ff6ec4afa97454b6f5321"
+  },
+  "binary_build_source_revision": "ae451813691cf8e03aebecfee6d676816e865a3e",
+  "format": "paint.r.internal-preview-acceptance",
+  "independent_ditto_smoke_matches_embedded": true,
+  "not_verified": [
+    "hosted three-OS Actions execution",
+    "Windows x64",
+    "Linux x86_64",
+    "native-window and OS keyboard/dirty-close at this revision",
+    "stock writer-open acceptance",
+    "signing/notarization",
+    "public redistribution rights"
+  ],
+  "payload": {
+    "all_hashes_verified": true,
+    "archive_entries": 761,
+    "manifest_hash_records": 760,
+    "updated_ledger_embedded": true
+  },
+  "pixel_oracles": {
+    "invert_decoded_rgba_sha256": "a7aff0f8e3f44663c369e1e75a981b90b66949586d71035771921871d67e334e",
+    "undo_decoded_rgba_sha256": "5ac6a5945f16500911219129984ba8b387a06f24fe383ce4e81a73294065461b"
+  },
+  "platform": "macos-aarch64",
+  "post_extract_smoke": {
+    "repeat": 2,
+    "status": "pass",
+    "trace_count": 2
+  },
+  "reproduction": {
+    "entries": 3,
+    "tree_sha256": "ee3515d5c41d760cc1e7ef33ac995ec500418dd3f4906ff446d87672a8109df2",
+    "two_complete_output_trees_identical": true
+  },
+  "source_delta_classification": "documentation and validation receipts only; exact file list verified",
+  "source_delta_files": [
+    "artifacts/validation/2026-10-27-integrated-ae45181.json",
+    "artifacts/validation/2026-10-27-reference-identity-b902d1.json",
+    "artifacts/validation/2026-10-27-reproduction-ae45181.json",
+    "artifacts/validation/2026-10-27-reproduction-binary-ae45181.json",
+    "artifacts/validation/2026-10-27-reproduction-tree-ae45181.json",
+    "docs/PARITY_LEDGER.md",
+    "docs/work-packets/release/DEVELOPMENT_PREVIEW.md"
+  ],
+  "source_revision": "4f12f4499f08115dc38507702ca163757de2600d",
+  "status": "PASS_INTERNAL_HEADLESS_ONLY",
+  "version": 1
+}
