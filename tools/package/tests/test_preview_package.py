@@ -636,6 +636,50 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                 "madsmtm/objc2",
             ),
         }
+        frameworks = {
+            ("objc2-app-kit", "0.2.2"): (
+                "e4e89ad9e3d7d297152b17d39ed92cd50ca8063a89a9fa569046d41568891eff",
+                "https://github.com/madsmtm/objc2",
+                "e282618be4c3a3b9542957e0c8540e9588472ce8",
+                "framework-crates/objc2-app-kit",
+                "madsmtm/objc2",
+            ),
+            ("objc2-app-kit", "0.3.2"): (
+                "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c",
+                "https://github.com/madsmtm/objc2",
+                "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+                "framework-crates/objc2-app-kit",
+                "madsmtm/objc2",
+            ),
+            ("objc2-core-foundation", "0.3.2"): (
+                "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536",
+                "https://github.com/madsmtm/objc2",
+                "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+                "framework-crates/objc2-core-foundation",
+                "madsmtm/objc2",
+            ),
+            ("objc2-core-graphics", "0.3.2"): (
+                "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807",
+                "https://github.com/madsmtm/objc2",
+                "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+                "framework-crates/objc2-core-graphics",
+                "madsmtm/objc2",
+            ),
+            ("objc2-metal", "0.2.2"): (
+                "dd0cba1276f6023976a406a14ffa85e1fdd19df6b0f737b063b95f6c8c7aadd6",
+                "https://github.com/madsmtm/objc2",
+                "e282618be4c3a3b9542957e0c8540e9588472ce8",
+                "framework-crates/objc2-metal",
+                "madsmtm/objc2",
+            ),
+            ("objc2-metal", "0.3.2"): (
+                "a0125f776a10d00af4152d74616409f0d4a2053a6f57fa5b7d6aa2854ac04794",
+                "https://github.com/madsmtm/objc2",
+                "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+                "framework-crates/objc2-metal",
+                "madsmtm/objc2",
+            ),
+        }
         additional_hashes = {
             ("block2", "0.5.1"): {
                 "LICENSE.txt": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
@@ -665,6 +709,14 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                 "LICENSE.md": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
             },
             ("objc2-encode", "4.1.0"): {
+                "LICENSE.md": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+            },
+        }
+        framework_hashes = {
+            "e282618be4c3a3b9542957e0c8540e9588472ce8": {
+                "LICENSE.txt": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+            },
+            "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b": {
                 "LICENSE.md": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
             },
         }
@@ -703,9 +755,9 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
         self.assertEqual(len(preexisting), 20)
         self.assertEqual(
             {identity[:2] for identity in supplement.packages},
-            preexisting | set(gpu),
+            preexisting | set(gpu) | set(frameworks),
         )
-        self.assertEqual(len(supplement.packages), 26)
+        self.assertEqual(len(supplement.packages), 32)
         for identity, curated in supplement.packages.items():
             with self.subTest(package=identity[:2]):
                 self.assertEqual(identity[2], NoticeProvenanceSupplementTests.SOURCE)
@@ -728,6 +780,10 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                     expected_checksum, repository, commit, path_in_vcs, raw_repository = gpu[identity[:2]]
                     self.assertEqual(curated.checksum, expected_checksum)
                     expected_hashes = gpu_hashes[identity[:2]]
+                elif identity[:2] in frameworks:
+                    expected_checksum, repository, commit, path_in_vcs, raw_repository = frameworks[identity[:2]]
+                    self.assertEqual(curated.checksum, expected_checksum)
+                    expected_hashes = framework_hashes[commit]
                 else:
                     expected_checksum, repository, commit, path_in_vcs, raw_repository = android[identity[:2]]
                     self.assertEqual(curated.checksum, expected_checksum)
@@ -847,6 +903,119 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                         digest,
                         digest,
                     ),
+                )
+
+    def test_objc2_framework_bindings_pin_each_name_version_and_exact_root_resource(self) -> None:
+        repo = Path(package.__file__).resolve().parents[2]
+        supplement = package.load_notice_supplement(repo / "tools/package/notice_supplement")
+        checksums = package.load_locked_package_checksums(repo / "Cargo.lock")
+        source = NoticeProvenanceSupplementTests.SOURCE
+        txt_commit = "e282618be4c3a3b9542957e0c8540e9588472ce8"
+        md_commit = "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b"
+        txt_hash = "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5"
+        md_hash = "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        expected = {
+            ("objc2-app-kit", "0.2.2"): (
+                "e4e89ad9e3d7d297152b17d39ed92cd50ca8063a89a9fa569046d41568891eff",
+                "https://github.com/madsmtm/objc2",
+                txt_commit,
+                "framework-crates/objc2-app-kit",
+                "objc2",
+                "LICENSE.txt",
+                txt_hash,
+                "e9ab3babc0d8602b83dccde8a462f8f3dc1e52ad",
+            ),
+            ("objc2-app-kit", "0.3.2"): (
+                "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c",
+                "https://github.com/madsmtm/objc2",
+                md_commit,
+                "framework-crates/objc2-app-kit",
+                "objc2",
+                "LICENSE.md",
+                md_hash,
+                "540ae4c81adb5f64a9f61e222b688880da24300e",
+            ),
+            ("objc2-core-foundation", "0.3.2"): (
+                "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536",
+                "https://github.com/madsmtm/objc2",
+                md_commit,
+                "framework-crates/objc2-core-foundation",
+                "objc2",
+                "LICENSE.md",
+                md_hash,
+                "540ae4c81adb5f64a9f61e222b688880da24300e",
+            ),
+            ("objc2-core-graphics", "0.3.2"): (
+                "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807",
+                "https://github.com/madsmtm/objc2",
+                md_commit,
+                "framework-crates/objc2-core-graphics",
+                "objc2",
+                "LICENSE.md",
+                md_hash,
+                "540ae4c81adb5f64a9f61e222b688880da24300e",
+            ),
+            ("objc2-metal", "0.2.2"): (
+                "dd0cba1276f6023976a406a14ffa85e1fdd19df6b0f737b063b95f6c8c7aadd6",
+                "https://github.com/madsmtm/objc2",
+                txt_commit,
+                "framework-crates/objc2-metal",
+                "objc2",
+                "LICENSE.txt",
+                txt_hash,
+                "e9ab3babc0d8602b83dccde8a462f8f3dc1e52ad",
+            ),
+            ("objc2-metal", "0.3.2"): (
+                "a0125f776a10d00af4152d74616409f0d4a2053a6f57fa5b7d6aa2854ac04794",
+                "https://github.com/madsmtm/objc2",
+                md_commit,
+                "framework-crates/objc2-metal",
+                "objc2",
+                "LICENSE.md",
+                md_hash,
+                "540ae4c81adb5f64a9f61e222b688880da24300e",
+            ),
+        }
+        self.assertEqual(len(expected), 6)
+        self.assertEqual(
+            {identity for identity in supplement.packages if identity[0] in {name for name, _ in expected}},
+            {(*name_version, source) for name_version in expected},
+        )
+        for name_version, identity_expected in expected.items():
+            with self.subTest(package=name_version[0], version=name_version[1]):
+                identity = (*name_version, source)
+                curated = supplement.packages[identity]
+                checksum, repository, commit, path_in_vcs, local_repo, filename, digest, blob = identity_expected
+                self.assertEqual(checksums[identity], checksum)
+                self.assertEqual(
+                    (curated.checksum, curated.repository, curated.vcs_commit, curated.path_in_vcs),
+                    (checksum, repository, commit, path_in_vcs),
+                )
+                self.assertEqual(len(curated.files), 1)
+                resource = curated.files[0]
+                on_disk = repo.joinpath("tools/package/notice_supplement", resource.path).read_bytes()
+                self.assertEqual(resource.content, on_disk)
+                self.assertEqual(
+                    (
+                        resource.source_path.as_posix(),
+                        resource.path.as_posix(),
+                        resource.source_url,
+                        resource.sha256,
+                        hashlib.sha256(resource.content).hexdigest(),
+                    ),
+                    (
+                        filename,
+                        f"files/{local_repo}/{commit}/{filename}",
+                        f"https://raw.githubusercontent.com/madsmtm/objc2/{commit}/{filename}",
+                        digest,
+                        digest,
+                    ),
+                )
+                verified_blob = hashlib.sha1(b"blob %d\0" % len(resource.content) + resource.content).hexdigest()
+                self.assertEqual(verified_blob, blob)
+                self.assertEqual(
+                    {other.source_path.as_posix() for other in curated.files},
+                    {filename},
                 )
 
 
