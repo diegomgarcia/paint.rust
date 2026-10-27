@@ -10,11 +10,12 @@ An original, cross-platform Rust image editor being developed against a pinned P
 - Rectangle selection, chosen-BGRA fill, RGB-only Invert, undo/redo, layer creation/selection, visibility, and opacity through the single-writer `AppSession`.
 - Flat PNG open and atomic PNG export. Opening creates one layer; exporting preserves the layered session, history, and modified state. PNG is not lossless layered-document persistence.
 - Dirty New, Open, and native viewport-close paths require explicit Discard confirmation; Cancel preserves the current session, and exporting does not bypass the close guard.
+- Keyboard-only core workflows with real Tab/Shift+Tab focus navigation, Enter/Space activation, arrow-adjusted values, and Escape dialog cancellation. The Keyboard menu documents preview-only Cmd/Ctrl bindings: N New, O Open, Shift+E Export, I Invert, F Fill, R Rectangle selection, Shift+L Add layer, Z Undo, and Shift+Z Redo.
 - A deterministic real-binary headless protocol with semantic snapshots, exact output checks, malformed-input failures, and per-file atomic replacement.
 - Bounded PNG and data-only PDN3/NRBF libraries. An authentic signed Paint.NET 5.1.12 2×2 Normal/BGRA fixture passes exact reader/composite acceptance. The writer remains experimental and self-round-trip-tested only until stock acceptance is demonstrated.
 - An isolated Rust↔.NET source-owned plugin transport proof. This does not load arbitrary Paint.NET plugin DLLs.
 
-The development UI uses stock `egui` styling and a text-path PNG dialog, not a pixel-parity skin or native OS file picker. Use disposable test documents; the preview is not a complete document-safety or Paint.NET workflow implementation.
+The development UI uses stock `egui` styling and a text-path PNG dialog, not a pixel-parity skin or native OS file picker. Keyboard evidence is semantic `egui_kittest` input/focus coverage, not native OS, screen-reader, or Paint.NET shortcut-parity evidence. Use disposable test documents; the preview is not a complete document-safety or Paint.NET workflow implementation.
 
 ## Prerequisites
 
