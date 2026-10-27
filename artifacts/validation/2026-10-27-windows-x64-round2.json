@@ -1,0 +1,40 @@
+{
+  "qga": {
+    "last_error": "UTM Timed out waiting for RPC (-2700)",
+    "repeated_bounded_read_checks_failed": true,
+    "reset_stop_suspend_reboot_or_unlock_attempted": false,
+    "windows_x64_cargo_or_smoke_command_executed": false
+  },
+  "reference_tool_tests": {
+    "count": 30,
+    "failed": 0,
+    "log": "artifacts/reference-local/x64-242be40/reference-tests-after-merge.log",
+    "log_sha256": "188583e4c3ef7386cde06bfd71bb9578bbd09e4cf802c24690c2de9fa8805e0c"
+  },
+  "schema_version": 1,
+  "source_archive": {
+    "bytes": 555241,
+    "exact_source_identity_verified": false,
+    "push_and_extract_command_completed_before_hash_response_timeout": true,
+    "sha256": "aae18ddc0fba44034cc94f861bd8a63ba8a662d908a3b482ff6c697a3e09d159"
+  },
+  "source_commit_attempted": "242be405f7f0af7bcd08e82d251ca18f08ab10cd",
+  "status": "WINDOWS_X64_EXECUTION_BLOCKED_BY_QGA_BEFORE_PROJECT_COMMANDS",
+  "tooling_commit": "ce90eab02637092fd38ed81d39c2f29593b7fbc7",
+  "writer": {
+    "gzip_attempted": false,
+    "raw_input_sha256_after_failure": "fb45b7e03d58dd480b1abbc567d6428b2723154e4533bb44475bf5890e5c399a",
+    "reason": "paintdotnet process not running during environment preflight",
+    "run_id": "writer-raw-20261027-round2",
+    "stage": "environment",
+    "stock_open_result": "NOT_EXECUTED",
+    "ui_action_count": 0
+  },
+  "x64_std_install_job": {
+    "exit_code": 0,
+    "job_id": "x64-std-242be40-01",
+    "seconds": 3.848,
+    "status": "COMPLETED",
+    "timed_out": false
+  }
+}

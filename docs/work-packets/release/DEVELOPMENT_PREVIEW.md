@@ -39,6 +39,20 @@ The only third-party actions are the official checkout, Python setup, .NET setup
 artifact-upload actions. Cross-compilation is not used as evidence for another
 OS/architecture lane.
 
+### Local emulated Linux x64 supplement
+
+At `ce90eab`, an isolated Lima 2.2.1 VZ VM with Rosetta/binfmt ran the pinned amd64 Rust
+image and passed 205 Rust tests, 86 Python tests, strict Clippy/format, locked metadata,
+a 78-file stub scan, and a release workspace build. All 203 tracked source files matched
+before and after. This is x86_64 userspace emulation on an ARM64 Linux VM, not native
+Linux x86_64, hosted CI, .NET/cross-language coverage, or native-window evidence. The
+separate Rancher Desktop VM and its active Kubernetes workloads were not reconfigured or
+restarted. Actionlint 1.7.12 and ShellCheck 0.11.0 also reported no findings for the two
+workflow files locally; this is not a hosted Actions result. See
+`artifacts/validation/2026-10-27-linux-x64-rosetta-gate-ce90.json`. Any clean-rebuild or
+package acceptance is recorded separately with exact binary/archive hashes and remains
+scoped to emulation.
+
 ## Artifact acceptance checklist
 
 1. Confirm the workflow run was manually dispatched from the intended commit and all three

@@ -1,0 +1,109 @@
+{
+  "container": {
+    "exit_code": 0,
+    "image": "rust@sha256:f49565f188ee00bc2a18dd418183f2c5f23ef7d6e691890517ed341a598f67c3",
+    "name": "paint-r-x64-gate-ce90",
+    "oom_killed": false,
+    "status": "exited"
+  },
+  "environment": {
+    "docker": {
+      "context_used_explicitly": "unix socket only; host context unchanged",
+      "rust_image_digest": "sha256:f49565f188ee00bc2a18dd418183f2c5f23ef7d6e691890517ed341a598f67c3",
+      "server_arch": "arm64",
+      "server_version": "29.9.2"
+    },
+    "lima": {
+      "cpus": 2,
+      "disk_bytes": 21474836480,
+      "guest_arch": "aarch64",
+      "instance": "paint-r-x64",
+      "memory_bytes": 4294967296,
+      "rosetta": {
+        "binfmt": true,
+        "enabled": true
+      },
+      "status": "Running",
+      "ubuntu_image_digest": "sha256:63a93bd5a8d76e33b15ceb5daa3657bd79be804748051ab178e643b0f5da22e7",
+      "version": "2.2.1",
+      "vm_type": "vz"
+    },
+    "probe": {
+      "log": "artifacts/reference-local/linux-x64-rosetta/probe.log",
+      "log_sha256": "9efb6ccab3c9166659633595a75508adb214131b8c5985a28f502e096e0c5a85",
+      "python": "3.13.5",
+      "rosetta_binfmt_log": "artifacts/reference-local/linux-x64-rosetta/rosetta-binfmt.json",
+      "rosetta_binfmt_sha256": "298156d430ab9df53d68638aa454921ba8f17e888d6fc647dff91b7dbad49ba3",
+      "rust_host": "x86_64-unknown-linux-gnu",
+      "rustc": "1.95.0 (59807616e 2026-04-14)",
+      "userspace_machine": "x86_64"
+    },
+    "rancher_unchanged": {
+      "host_docker_context": "rancher-desktop",
+      "restarted_or_reconfigured_by_this_lane": false,
+      "use_rosetta": false
+    },
+    "schema_version": 1,
+    "scope": "isolated Linux ARM64 VZ VM with Rosetta x86_64 userspace emulation; not native Linux x86_64",
+    "source_before": {
+      "path": "artifacts/reference-local/linux-x64-rosetta/source-before.json",
+      "sha256": "484e4f8e6e0e2b78bf696326eb328a06a723b94ec4fed44e9055aeee83429987"
+    },
+    "source_commit": "ce90eab02637092fd38ed81d39c2f29593b7fbc7"
+  },
+  "format": "paint.r.linux-x64-emulated-full-gate",
+  "logs": {
+    "actionlint": {
+      "actionlint_version": "1.7.12",
+      "findings": 0,
+      "path": "artifacts/reference-local/actionlint-ce90.log",
+      "sha256": "987ba4b4c1363b8cda03adb95ce466c891f36c6d63f9e96e1404cbc81dae37ce",
+      "shellcheck_version": "0.11.0"
+    },
+    "full_gate": {
+      "path": "artifacts/reference-local/linux-x64-rosetta/full-gate.log",
+      "sha256": "30b5c0441302435bd6ce006e7a9febafdbf486df56ce089ed1b0a8476c8c9953"
+    }
+  },
+  "not_run_in_this_gate": [
+    "native Linux x86_64 execution",
+    "native desktop window",
+    ".NET and cross-language conformance",
+    "clean rebuild and package acceptance"
+  ],
+  "python": {
+    "end_to_end": 18,
+    "failed": 0,
+    "package_workflow": 38,
+    "reference": 30,
+    "total": 86
+  },
+  "rust": {
+    "failed": 0,
+    "filtered_out": 0,
+    "format": true,
+    "ignored": 0,
+    "locked_metadata": true,
+    "measured": 0,
+    "passed": 205,
+    "release_workspace_build": true,
+    "strict_clippy": true,
+    "suite_records": 40
+  },
+  "scope": "isolated Linux ARM64 VZ VM with Rosetta x86_64 userspace emulation; not native Linux x86_64",
+  "source_commit": "ce90eab02637092fd38ed81d39c2f29593b7fbc7",
+  "source_integrity": {
+    "after_manifest": "artifacts/reference-local/linux-x64-rosetta/source-after.json",
+    "after_manifest_sha256": "95b121e0e0b369b58efa964fcf8266b566d149a1c7c997eb747a4ce0073a8bc3",
+    "before_after_identical": true,
+    "before_manifest": "artifacts/reference-local/linux-x64-rosetta/source-before.json",
+    "tracked_files": 203
+  },
+  "status": "PASS_FULL_RUST_PYTHON_RELEASE_HEADLESS_GATE",
+  "stub_scan": {
+    "allowlisted": 0,
+    "files": 78,
+    "violations": 0
+  },
+  "version": 1
+}
