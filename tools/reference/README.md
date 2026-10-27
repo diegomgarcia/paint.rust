@@ -22,7 +22,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/host_ui.py build
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/reference/tests -v
 ```
 
-The Swift binary and module caches are written only below `artifacts/reference-local`. The Python suite covers known RGBA decoding, packed palette/transparency, PNG filters, malformed input, LOGFONT decoding, A/A mismatch rejection, and bounded PDN filename OCR matching.
+The Swift binary and module caches are written only below `artifacts/reference-local`. The Python suite covers known RGBA decoding, packed palette/transparency, PNG filters, malformed input, LOGFONT decoding, A/A mismatch rejection, bounded PDN filename OCR matching, stock-writer accept/reject ambiguity and stale-title refusal, safe guest paths, secret-like environment rejection, and native gate command construction.
 
 ## Durable command building blocks
 
@@ -57,6 +57,16 @@ PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/utm.py pull \
 ```
 
 The destination directory must already exist. UTM AppleScript requires a host file object before `pull`; the helper performs its overwrite check, creates a zero-length placeholder, and removes that placeholder if transfer fails. It verifies a nonempty result. Use separate guest and host hashes to prove content.
+
+Push a host file to a **new** guest path (1 byte through 256 MiB), with guest/host length and SHA-256 verification:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/utm.py push \
+  artifacts/reference-local/source.tar.gz \
+  'C:\PaintR-Reference\downloads\source.tar.gz'
+```
+
+The push helper refuses an existing guest destination. Larger downloads must use a separately bounded guest download with an independent publisher hash check rather than weakening this limit.
 
 Host window operations:
 
@@ -141,6 +151,41 @@ PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/validate_pdn_fixture.py \
 The manifest records exact product/build/signature/source hash, canvas and bottom-to-top layer order, name, visibility/background flag, Normal blend mode, opacity 255, per-layer straight-alpha BGRA hash, UI actions, environment, and guest/host stability. Those attributes are the stock New-document defaults and are labeled as not separately queried through Layer Properties. For this sole visible full-canvas layer, BGRA is derived by an R/B swap of the independently decoded post-reopen composite. The validator recomputes all artifact/UI/environment hashes, required action ordering, exact pixels, and a fresh FFmpeg decode.
 
 `PDN3` magic is only a file-format sanity check, not an independent PDN parse. This single all-black 2×2 fixture is not the full semantic corpus and does not establish writer acceptance or clone compatibility.
+
+## Stock writer-open acceptance (blocked unless interactive UI is available)
+
+For an already transferred, untouched clone-written input whose guest hash matches the host input, use a new run ID and the expected SHA-256 explicitly:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/observe_writer_acceptance.py \
+  --run-id writer-raw-01 \
+  --host-input '/path/to/clone-normal-2x2-raw.pdn' \
+  --expected-sha256 '64-lowercase-hex-characters' \
+  --variant raw
+```
+
+The runner does not convert the input or accept a clone self-round-trip as evidence. It requires stock File → Open UI proof, rejects ambiguous accept/error OCR and stale same-file titles, rechecks input hashes, and—only after a proven open—exports and independently decodes the stock post-open PNG. `REJECTED_BY_STOCK` is a valid observed outcome; `INDETERMINATE_OR_AUTOMATION_FAILURE` is not a rejection claim. Never unlock, reset, or suspend the VM to make this gate available. A locked host/console blocks the UI workflow before File → Open.
+
+## Detached native guest jobs and Windows ARM64 gates
+
+Foreground QGA execution is capped at 300 seconds. For downloads/builds/tests, `guest_jobs.py` starts a unique detached job, records its wrapper PID, captures stdout/stderr and an atomic exit JSON, polls within a deadline, kills only that job tree on timeout, and pulls hash-verified logs. PowerShell 5.1 redirection writes those logs as UTF-16LE. Secret-like environment keys are rejected rather than recorded.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/guest_jobs.py \
+  --job-id job-smoke-01 --timeout 30 --workdir 'C:\PaintR-Reference' -- \
+  'C:\PaintR-Reference\tools\node\node.exe' --version
+```
+
+`run_windows_arm64_gate.py` runs selected commands against an exact archived source using an isolated native ARM64 gnullvm toolchain and output outside the source. It does not install tools. The available steps are `fmt`, `clippy`, `test`, `xtask`, `release`, `dotnet-restore`, `dotnet-build`, `dotnet-test`, `conformance`, and `smoke`; a failed selected step stops that sequence and later steps require an explicit independent selection.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/run_windows_arm64_gate.py \
+  --source-commit 8c6d0c2ca3813efdce110be81f098dab1f5cdb30 \
+  --steps fmt,clippy,test,xtask,release \
+  --summary rust-gate.json
+```
+
+Every result is labeled native Windows ARM64 gnullvm, not Windows x64 and not MSVC ABI coverage. Source verification must compare all unique relative paths, lengths, and hashes before and after generated outputs. The source-hash helper excludes Cargo target and .NET `plugin-host` bin/obj output only; it must not exclude legitimate Rust `src/bin` sources. `Get-PeEvidence.ps1` reads only the PE machine header for architecture evidence; it does not disassemble or inspect IL.
 
 ## Bounds, failures, and evidence handling
 

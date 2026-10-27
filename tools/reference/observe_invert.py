@@ -38,10 +38,11 @@ def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
-def guest_absent(path: str) -> None:
+def guest_absent(path: str, *, vm: str = "Windows") -> None:
     result = guest_json_source(
         "[pscustomobject]@{ exists = (Test-Path -LiteralPath $Path) } | ConvertTo-Json -Compress",
         bindings={"Path": path},
+        vm=vm,
         timeout=30,
     )
     if result.get("exists") is not False:
