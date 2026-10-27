@@ -172,7 +172,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/observe_writer_acceptance.py \
 
 The runner does not convert the input or accept a clone self-round-trip as evidence. It requires stock File → Open UI proof, rejects ambiguous accept/error OCR and stale same-file titles, rechecks input hashes, and—only after a proven open—exports and independently decodes the stock post-open PNG. `REJECTED_BY_STOCK` is a valid observed outcome; `INDETERMINATE_OR_AUTOMATION_FAILURE` is not a rejection claim. Never unlock, reset, or suspend the VM to make this gate available. A locked host/console blocks the UI workflow before File → Open.
 
-## Detached native guest jobs and Windows ARM64 gates
+## Detached guest jobs and Windows Rust gates
 
 Foreground QGA execution is capped at 300 seconds. For downloads/builds/tests, `guest_jobs.py` starts a unique detached job, records its wrapper PID, captures stdout/stderr and an atomic exit JSON, polls within a deadline, kills only that job tree on timeout, and pulls hash-verified logs. PowerShell 5.1 redirection writes those logs as UTF-16LE. Secret-like environment keys are rejected rather than recorded.
 
@@ -194,7 +194,19 @@ PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/run_windows_arm64_gate.py \
   --summary rust-gate-5914.json
 ```
 
-Every result is labeled native Windows ARM64 gnullvm, not Windows x64 and not MSVC ABI coverage. Source verification must compare all unique relative paths, lengths, and hashes before and after generated outputs. The source-hash helper excludes Cargo target and .NET `plugin-host` bin/obj output only; it must not exclude legitimate Rust `src/bin` sources. `Get-PeEvidence.ps1` reads only the PE machine header for architecture evidence; it does not disassemble or inspect IL.
+`run_windows_x64_gate.py` accepts the same arguments and step names and uses the same bounded guest jobs. It keeps the native ARM64 Rust 1.95 host toolchain but targets `x86_64-pc-windows-gnullvm`, with x64-specific Cargo/CC/AR environment names and `x86_64-w64-mingw32-clang.exe`. It does not install or verify the x64 Rust standard library or linker; provision and probe those separately before selecting a gate.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/run_windows_x64_gate.py \
+  --source-commit 5914c4b8cd9155d28baa18617437f271d134e7e5 \
+  --root 'C:\PaintR-Reference\candidate5914-src' \
+  --target-dir 'C:\PaintR-Reference\target-5914-x64-gnullvm' \
+  --prefix final5914x64 \
+  --steps fmt,clippy,test,xtask,release,smoke \
+  --summary rust-gate-5914-x64.json
+```
+
+ARM64 results are labeled native Windows ARM64 gnullvm, not Windows x64 and not MSVC ABI coverage. x64 results explicitly identify a Windows ARM64 host cross-compiling x64 gnullvm; any executed x64 tests or smoke binaries run through Windows x64 emulation, not native Windows x64, and do not provide MSVC ABI coverage. Source verification must compare all unique relative paths, lengths, and hashes before and after generated outputs. The source-hash helper excludes Cargo target and .NET `plugin-host` bin/obj output only; it must not exclude legitimate Rust `src/bin` sources. `Get-PeEvidence.ps1` reads only the PE machine header for architecture evidence; it does not disassemble or inspect IL.
 
 ## Bounds, failures, and evidence handling
 
