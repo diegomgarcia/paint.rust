@@ -1,8 +1,8 @@
 # Paint.R — cross-platform Paint.NET 5.1.12 parity plan
 
-**Revision:** 2, 2026-10-26  
-**Status:** planning plus initial reference-VM verification; no clone code or parity comparisons have been executed  
-**Supersedes:** the earlier macOS-first, non-identical-UI, deferred-compatibility plan  
+**Revision:** 2, 2026-10-26
+**Status:** planning plus initial reference-VM verification; no clone code or parity comparisons have been executed
+**Supersedes:** the earlier macOS-first, non-identical-UI, deferred-compatibility plan
 **Reference target:** Paint.NET **5.1.12**, released 2026-03-08; 5.2 beta is excluded
 
 ## 1. Requirement contract
