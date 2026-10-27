@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-27",
+  "status": "PASS_SCOPED_ENGINEERING_VALIDATION",
+  "product_code_commit": "eb2eefe0596a176d177f3a80c6801117fa5c024d",
+  "corrected_product_test_commit": "5914c4b8cd9155d28baa18617437f271d134e7e5",
+  "integrated_tooling_commit": "db73225d739a97ff98facde91d2622406f245801",
+  "correction": {
+    "windows_failures": [
+      "xtask/tests/scanner.rs::active_violations_have_precise_relative_diagnostics",
+      "xtask/tests/scanner.rs::allowlist_does_not_leak_to_production_source"
+    ],
+    "cause": "Two tests compared raw PathBuf strings with forward-slash literals on Windows.",
+    "fix": "Compare against Path::new(\"src\").join(\"lib.rs\") while retaining the portable diagnostic-string assertion.",
+    "production_code_changed": false,
+    "test_file_changed": "xtask/tests/scanner.rs"
+  },
+  "accepted_macos_archive": {
+    "archive_tree": "ec7440ab7c4078656a669eee3b6bced1f63ea151",
+    "path": "artifacts/preview/final-ec7440a/macos-aarch64-primary/paint-r-0.1.0-macos-aarch64.zip",
+    "bytes": 7110714,
+    "sha256": "16801e66b876eef625629a8c75e1cf33865033e1f1ab2ef7e9eb416a7aba69cd",
+    "unchanged": true,
+    "relation": "The paint-ui product code is unchanged. The scanner correction is test-only; later tooling and evidence commits are not claimed to be packaged in this previously accepted internal archive."
+  },
+  "macos_arm64": {
+    "status": "PASS",
+    "integrated_gate_commit": "db73225d739a97ff98facde91d2622406f245801",
+    "rust": {
+      "passed": 203,
+      "failed": 0,
+      "ignored": 0,
+      "strict_clippy": "PASS",
+      "format": "PASS",
+      "stub_files_scanned": 70,
+      "stub_violations": 0
+    },
+    "python": {
+      "passed": 49,
+      "failed": 0
+    },
+    "dotnet": {
+      "passed": 12,
+      "failed_or_skipped": 0
+    },
+    "live_plugin_checks": {
+      "passed": 8,
+      "failed_or_skipped": 0
+    },
+    "corrected_source_reference_validators": {
+      "commit": "5914c4b8cd9155d28baa18617437f271d134e7e5",
+      "paintnet_aa_manifest": "PASS",
+      "authentic_pdn_fixture": "PASS"
+    },
+    "logs": [
+      {
+        "path": "artifacts/preview/final-macos-db73225.log",
+        "sha256": "e7ffb4e1d9bb791f8e1a82dc9479efc499d9b8cf1b5672792654cf638dea3ba0"
+      },
+      {
+        "path": "artifacts/preview/final-macos-5914c4b.log",
+        "sha256": "ca0624b1babe8e225693857782e2cac3a3352284ddaa84c383d510b02f0e2f57"
+      }
+    ],
+    "native_window_and_packaged_os_keyboard_dirty_close": "NOT_VERIFIED_HOST_LOCKED"
+  },
+  "linux_arm64": {
+    "status": "PASS",
+    "product_gate_commit": "5914c4b8cd9155d28baa18617437f271d134e7e5",
+    "environment": "linux/arm64 Docker on aarch64; pinned Rust 1.95.0",
+    "rust": {
+      "passed": 203,
+      "failed": 0,
+      "ignored": 0,
+      "strict_clippy": "PASS",
+      "format": "PASS",
+      "stub_files_scanned": 70,
+      "stub_violations": 0
+    },
+    "product_gate_python": {
+      "passed": 44,
+      "failed": 0
+    },
+    "integrated_tooling_python": {
+      "commit": "db73225d739a97ff98facde91d2622406f245801",
+      "passed": 49,
+      "failed": 0,
+      "rust_delta_from_product_gate": "NONE_TOOLS_AND_DOCUMENTATION_ONLY"
+    },
+    "release_build": "PASS",
+    "release_smoke": {
+      "status": "PASS",
+      "traces": 2,
+      "repeat_per_trace": 2,
+      "invert_decoded_rgba_sha256": "a7aff0f8e3f44663c369e1e75a981b90b66949586d71035771921871d67e334e",
+      "undo_decoded_rgba_sha256": "5ac6a5945f16500911219129984ba8b387a06f24fe383ce4e81a73294065461b"
+    },
+    "setup_notes": [
+      "An initial container lacked rustfmt and stopped before project tests.",
+      "Two linked-worktree attempts stopped at an unavailable in-container Git-admin path; no Cargo gate ran.",
+      "The final read-only frozen-source run used host-verified commit identity and explicit rustfmt/clippy components; it passed without source changes."
+    ],
+    "logs": [
+      {
+        "path": "artifacts/preview/final-linux-5914c4b.log",
+        "sha256": "6bb83e72fffe993065c7cb10c46a9f512a4d229fa1ed6f21d82f9c53aff19eab"
+      },
+      {
+        "path": "artifacts/preview/final-linux-python-db73225.log",
+        "sha256": "7b247c08db9604a68139a8d55303a10a39dcc5778ef75ad9f7d487ca97108669"
+      }
+    ],
+    "x86_64": "NOT_VALIDATED_QEMU_RUSTC_SIGSEGV_BEFORE_PROJECT_CODE"
+  },
+  "windows_arm64_gnullvm": {
+    "status": "PASS_SCOPED_NATIVE_WINDOWS_ARM64_GNULLVM",
+    "commit": "5914c4b8cd9155d28baa18617437f271d134e7e5",
+    "architecture": "Native Windows ARM64; Rust host and target aarch64-pc-windows-gnullvm; not Windows x64 or MSVC ABI coverage",
+    "source": {
+      "archive_bytes": 413849,
+      "archive_sha256": "68802c1d81cc69bccf743a9baa71031cef388bb9ff37c5bcf12d2547dd25ff75",
+      "files": 178,
+      "pre_gate_exact_path_length_sha256_match": true,
+      "post_gate_exact_match": true,
+      "git_directory_transferred": false,
+      "reference_lane_source_modification": false
+    },
+    "steps": [
+      {
+        "name": "fmt",
+        "job_id": "final5914-fmt",
+        "exit_code": 0,
+        "seconds": 6.823
+      },
+      {
+        "name": "strict_clippy",
+        "job_id": "final5914-clippy",
+        "exit_code": 0,
+        "seconds": 37.428
+      },
+      {
+        "name": "workspace_test",
+        "job_id": "final5914-test",
+        "exit_code": 0,
+        "seconds": 142.137
+      },
+      {
+        "name": "xtask_verify",
+        "job_id": "final5914-xtask",
+        "exit_code": 0,
+        "seconds": 8.354
+      },
+      {
+        "name": "release_build",
+        "job_id": "final5914-release",
+        "exit_code": 0,
+        "seconds": 121.706
+      }
+    ],
+    "direct_workspace_tests": {
+      "suite_records": 40,
+      "passed": 203,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 0
+    },
+    "xtask": {
+      "repeated_test_passed": 203,
+      "repeated_tests_added_to_direct_count": false,
+      "cargo_steps": 4,
+      "stub_files_scanned": 70,
+      "violations": 0,
+      "allowlisted": 0
+    },
+    "release_binary": {
+      "guest_path": "C:\\PaintR-Reference\\target-5914-gnullvm\\aarch64-pc-windows-gnullvm\\release\\paint-ui.exe",
+      "bytes": 14940160,
+      "sha256": "2c8148e58946b6d8da1ab67eed4d954316618798ce44ba41be445f29a7e5cfa4",
+      "pe_machine": "0xAA64",
+      "architecture": "ARM64"
+    },
+    "observation_errors": [
+      {
+        "job_id": "final5914-test",
+        "error": "command exceeded 45s: osascript",
+        "handling": "One transient QGA status-poll error; the same job reached an atomic exit-0 record and was not rerun."
+      }
+    ],
+    "independent_coordinator_review": {
+      "status": "PASS",
+      "job_results_checked": 5,
+      "log_hashes_checked": 20,
+      "direct_and_xtask_test_counts_recomputed": true,
+      "source_archive_and_all_178_files_checked": true
+    },
+    "not_run": [
+      "Windows x64 or MSVC ABI gate",
+      "Windows .NET restore/build/test",
+      "Windows cross-language checks",
+      "Windows release headless smoke or package",
+      "stock writer-open acceptance"
+    ],
+    "manifests": [
+      {
+        "path": ".worktrees/reference/artifacts/reference-local/harness-final-5914/final-validation.json",
+        "sha256": "3fd42a799d8c36fc58bb9c46ebdb096057f0e7feddb5c1052db54b25927d3b52"
+      },
+      {
+        "path": ".worktrees/reference/artifacts/reference-local/harness-final-5914/post-gate-verification.json",
+        "sha256": "e7ddcd6e74973d4e0c828ac32bbf496f5c7bb4217b7ab40f78035e53be31659e"
+      },
+      {
+        "path": ".worktrees/reference/artifacts/reference-local/harness-final/rust-gate-5914.json",
+        "sha256": "3b667fa5e238b5e6cca97610656a7da8b55c929a4cf7dab6c69d982531238ad0"
+      }
+    ]
+  },
+  "limitations": [
+    "This is scoped engineering evidence, not full Paint.NET 5.1.12 parity or public-release approval.",
+    "The contractual Windows x64 and Linux x86_64 preview matrix is not complete; Windows ARM64 gnullvm is not a substitute.",
+    "Only the macOS ARM64 internal archive was packaged and independently accepted. No Windows or Linux preview archive was produced.",
+    "Final native-window, packaged native-window, OS keyboard, and OS dirty-close observations remain blocked by the host lock.",
+    "Writer acceptance remains unobserved; the authentic reader fixture and self-round-trips do not certify writer compatibility.",
+    "Named Paint.NET binary-plugin compatibility, full UI-region pixel parity, public licensing/notices, signing, and notarization remain open."
+  ]
+}
