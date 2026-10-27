@@ -7,13 +7,19 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 cd "$REPO_ROOT"
 
-# cargo-pinned.sh selects Cargo/rustc/rustfmt; also pin companion drivers such
-# as clippy-driver/rustdoc when this lane expands to full Rust verification.
-PINNED_CARGO=$(rustup which cargo --toolchain 1.95.0)
-PATH="${PINNED_CARGO%/*}:$PATH"
-export PATH
+# Native .NET processes need Windows paths when this POSIX script runs in
+# MSYS/Git Bash. Unix-like hosts keep the original paths unchanged.
+native_path() {
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -w "$1"
+    else
+        printf '%s\n' "$1"
+    fi
+}
+SOLUTION=$(native_path "$SCRIPT_DIR/Paint.PluginHost.sln")
+HOST_DLL=$(native_path "$SCRIPT_DIR/src/Paint.PluginHost/bin/Release/net10.0/Paint.PluginHost.dll")
 
-dotnet restore "$SCRIPT_DIR/Paint.PluginHost.sln" --locked-mode
-dotnet build "$SCRIPT_DIR/Paint.PluginHost.sln" --configuration Release --no-restore
-./tools/cargo-pinned.sh run -p paint-plugin-bridge --bin paint-plugin-conformance -- \
-    "$SCRIPT_DIR/src/Paint.PluginHost/bin/Release/net10.0/Paint.PluginHost.dll"
+dotnet restore "$SOLUTION" --locked-mode
+dotnet build "$SOLUTION" --configuration Release --no-restore
+./tools/cargo-pinned.sh run --locked -p paint-plugin-bridge --bin paint-plugin-conformance -- \
+    "$HOST_DLL"
