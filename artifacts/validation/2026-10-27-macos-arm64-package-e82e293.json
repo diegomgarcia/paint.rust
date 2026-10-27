@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-27T03:25:01Z",
+  "source_commit": "e82e2936e639fa79a1fd429e98036c282418189a",
+  "host": "Darwin 25.6.0 arm64",
+  "distribution": "internal-development-preview; unsigned and unnotarized",
+  "archive": "artifacts/preview/macos-aarch64/paint-r-0.1.0-macos-aarch64.zip",
+  "archive_sha256": "c4a7d5fa6abe592f381ce65fbe09347d3ce0648ac394e0ae55b7df2d545a5852",
+  "binary_sha256": "b0816b3b9d8f21f0b3699e4b120650d7f2097938e3c26f6eea4a777898194235",
+  "release_binary_sha256": "b0816b3b9d8f21f0b3699e4b120650d7f2097938e3c26f6eea4a777898194235",
+  "archived_executable_mode": "0755",
+  "extractor": "macOS ditto -x -k",
+  "harness_note": "Python zipfile.extractall produced mode 0644 and an EACCES attempt; that attempt is not counted as a passing product smoke. macOS ditto restored the archived 0755 mode.",
+  "repeat": 2,
+  "status": "pass",
+  "traces": [
+    {
+      "invalid_rect_error": "paint-ui: failed to execute trace: invalid rectangle in trace command 0: rectangle must have positive width and height, got (2, 0)..(1, 1)",
+      "runs": [
+        {
+          "decoded_rgba_sha256": "a7aff0f8e3f44663c369e1e75a981b90b66949586d71035771921871d67e334e",
+          "height": 600,
+          "png_sha256": "bd5970d91acacd7986f92910031ef1c5603a3f9c1bbe76dc6ae8c8a58412ad86",
+          "snapshot": {
+            "active_layer_index": 0,
+            "can_redo": false,
+            "can_undo": true,
+            "dirty": true,
+            "layer_count": 1
+          },
+          "snapshot_sha256": "be0967b692341d2f64b52b8b61a6abde03fa0f3813d9a343922014536b21e8e8",
+          "width": 800
+        },
+        {
+          "decoded_rgba_sha256": "a7aff0f8e3f44663c369e1e75a981b90b66949586d71035771921871d67e334e",
+          "height": 600,
+          "png_sha256": "bd5970d91acacd7986f92910031ef1c5603a3f9c1bbe76dc6ae8c8a58412ad86",
+          "snapshot": {
+            "active_layer_index": 0,
+            "can_redo": false,
+            "can_undo": true,
+            "dirty": true,
+            "layer_count": 1
+          },
+          "snapshot_sha256": "be0967b692341d2f64b52b8b61a6abde03fa0f3813d9a343922014536b21e8e8",
+          "width": 800
+        }
+      ],
+      "status": "pass",
+      "trace": "tests/e2e/traces/invert-800x600.json",
+      "unknown_command_error": "paint-ui: failed to execute trace: invalid trace command at index 1: unknown variant `not-a-command`, expected one of `invert`, `undo`, `redo`, `clear_selection`, `select_rect`, `fill`, `add_layer`, `set_active_layer`, `set_layer_visibility`, `set_layer_opacity`"
+    },
+    {
+      "invalid_rect_error": "paint-ui: failed to execute trace: invalid rectangle in trace command 0: rectangle must have positive width and height, got (2, 0)..(1, 1)",
+      "runs": [
+        {
+          "decoded_rgba_sha256": "5ac6a5945f16500911219129984ba8b387a06f24fe383ce4e81a73294065461b",
+          "height": 2,
+          "png_sha256": "0e1b9e7bd2807f635cd181104a48802b177ee3f4fe7992626eb484bce2d33473",
+          "snapshot": {
+            "active_layer_index": 0,
+            "can_redo": true,
+            "can_undo": false,
+            "dirty": false,
+            "layer_count": 1
+          },
+          "snapshot_sha256": "cff067e619eb2cb4d682c224e47674c5002f10e5ae098e0899c9d26546aeec0c",
+          "width": 2
+        },
+        {
+          "decoded_rgba_sha256": "5ac6a5945f16500911219129984ba8b387a06f24fe383ce4e81a73294065461b",
+          "height": 2,
+          "png_sha256": "0e1b9e7bd2807f635cd181104a48802b177ee3f4fe7992626eb484bce2d33473",
+          "snapshot": {
+            "active_layer_index": 0,
+            "can_redo": true,
+            "can_undo": false,
+            "dirty": false,
+            "layer_count": 1
+          },
+          "snapshot_sha256": "cff067e619eb2cb4d682c224e47674c5002f10e5ae098e0899c9d26546aeec0c",
+          "width": 2
+        }
+      ],
+      "status": "pass",
+      "trace": "tests/e2e/traces/undo-invert-2x2.json",
+      "unknown_command_error": "paint-ui: failed to execute trace: invalid trace command at index 2: unknown variant `not-a-command`, expected one of `invert`, `undo`, `redo`, `clear_selection`, `select_rect`, `fill`, `add_layer`, `set_active_layer`, `set_layer_visibility`, `set_layer_opacity`"
+    }
+  ],
+  "stock_invert_comparison": {
+    "reference_version": "Paint.NET 5.1.12",
+    "reference_platform": "Windows 11 ARM64 under UTM",
+    "reference_run": ".worktrees/reference/artifacts/reference-local/runs/invert-aa-20261026t2242z",
+    "reference_runs": 3,
+    "stock_decoded_rgba_sha256": "a7aff0f8e3f44663c369e1e75a981b90b66949586d71035771921871d67e334e",
+    "clone_decoded_rgba_sha256": "a7aff0f8e3f44663c369e1e75a981b90b66949586d71035771921871d67e334e",
+    "decoded_rgba_equal": true,
+    "stock_png_sha256": "0c8cdc8f496907b88ef445cfdfa8f88e36cf09863a5cdde4b8e7243637708163",
+    "clone_png_sha256": "bd5970d91acacd7986f92910031ef1c5603a3f9c1bbe76dc6ae8c8a58412ad86",
+    "encoded_png_equal": false,
+    "comparison_scope": "Exact decoded RGBA for the 800x600 Invert trace; encoded PNG byte identity is not required."
+  }
+}
