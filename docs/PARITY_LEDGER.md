@@ -34,6 +34,7 @@ No entry is marked `parity-pinned` by an implementation agent. The integrator re
 - `artifacts/validation/2026-10-27-macos-arm64-package-e82e293.json` records the permission-preserving extracted-package smoke. Python `zipfile.extractall` did not restore the archived executable bit; macOS `ditto` restored the correct `0755` mode. The failed extractor attempt is not counted as a product pass.
 - `crates/pdn3/tests/stock_5_1_12.rs` and its adjacent fixture manifest record authentic signed Paint.NET 5.1.12 PDN reader acceptance. The clone composite matches stock's reopened PNG exactly for the committed 2×2 Normal/BGRA case.
 - Integrated source `e12d5c80ee85ffd3b6ae0a3d88f3eec3ba51b8b2` passed 194 Rust tests, 16 end-to-end/oracle Python tests, 18 packaging tests, 12 .NET tests, and 8 live cross-language checks on macOS. The same source passed 194 Rust tests, 34 Python tests, release build, and deterministic release smoke in a Linux ARM64 container.
+- Source `918a03ffaf24a867e630917152a931e351a9dd1e` passed a supplemental `PROPTEST_CASES=2048` run: 133 tests across core, document, raster, PNG, PDN, and AppSession, with no failed/ignored tests. The real plugin-child crash/broken-pipe race also passed 25/25 repeated macOS runs. These supplement the standard platform gates.
 - These receipts do not certify full UI parity, broad PDN interoperability or writer acceptance, arbitrary plugin compatibility, Windows x64, Linux x86_64, or public redistribution.
 
 ## Development-preview exit criteria
