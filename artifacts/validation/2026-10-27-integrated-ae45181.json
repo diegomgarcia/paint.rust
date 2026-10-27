@@ -1,0 +1,43 @@
+{
+  "dotnet": {
+    "failed": 0,
+    "passed": 12,
+    "skipped": 0
+  },
+  "format": "paint.r.integrated-gate-evidence",
+  "live_plugin_conformance": {
+    "failed": 0,
+    "passed": 8,
+    "skipped": 0
+  },
+  "log": {
+    "path": "artifacts/preview/final-validation-ae45181.log",
+    "sha256": "6ab8eacf5f3a2de4100ced91d932ef57dc8a63069e9acb7137785e5260415287"
+  },
+  "python": {
+    "passed": 82,
+    "suite_counts": {
+      "e2e": 18,
+      "package": 38,
+      "reference": 26
+    }
+  },
+  "rust": {
+    "failed": 0,
+    "format": "PASS",
+    "ignored": 0,
+    "passed": 205,
+    "release_workspace_build": "PASS",
+    "strict_clippy": "PASS",
+    "suite_records": 40
+  },
+  "source_revision": "ae451813691cf8e03aebecfee6d676816e865a3e",
+  "status": "PASS",
+  "stub_scan": {
+    "allowlisted": 0,
+    "rust_files": 78,
+    "violations": 0
+  },
+  "version": 1,
+  "workflow_yaml": "parsed; actionlint unavailable; hosted CI not executed"
+}

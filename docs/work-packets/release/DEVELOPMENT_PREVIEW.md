@@ -26,10 +26,14 @@ Each lane installs Rust 1.95.0, Python 3.12, and .NET 10.0.201, uses
 `tools/cargo-pinned.sh`, fetches with `--locked`, runs packaging tests, formatting, strict
 all-feature Clippy, all workspace tests, the stub scan, locked .NET tests, real
 Rust-to-.NET conformance, independent PNG tests, and reference-harness unit tests (not VM
-execution). It then builds only the actual `paint-ui` release package and calls the packager. The packager must run the real trace
-smoke successfully before creating its archive. `actions/upload-artifact` uploads `dist/`
-with a seven-day retention period and `if-no-files-found: error`; no GitHub release is
-created.
+execution). It then builds the actual `paint-ui` release package into two fresh target
+directories and requires identical executable bytes. The packager runs real trace smoke
+before archiving, then reopens each archive, verifies its exact payload/modes/hashes, and
+repeats smoke on the extracted executable. Both complete archive/sidecar/verification
+trees must be identical. `actions/upload-artifact` uploads only the first `dist-a/` tree
+with a source-qualified name, seven-day retention, and `if-no-files-found: error`; no
+GitHub release is created. Ordinary PR/push CI runs the same reproduction/package gate
+without uploading.
 
 The only third-party actions are the official checkout, Python setup, .NET setup, and
 artifact-upload actions. Cross-compilation is not used as evidence for another
@@ -39,11 +43,12 @@ OS/architecture lane.
 
 1. Confirm the workflow run was manually dispatched from the intended commit and all three
    native jobs passed without ignored acceptance tests.
-2. Download artifacts only through the authorized internal CI workflow. Verify each outer
-   `.sha256` sidecar before extraction.
+2. Download artifacts only through the authorized internal CI workflow. Review the clean
+   binary/output-tree comparison log, verify each outer `.sha256` sidecar, and require the
+   adjacent `.verification.json` receipt to report post-extraction success for those bytes.
 3. Inspect `README-PREVIEW.md` and `PARITY_LEDGER.md`; do not broaden their claims.
-4. Verify extracted `SHA256SUMS.txt`, then compare `PREVIEW_SMOKE.json`'s binary hash and
-   semantic results with the binary in the payload.
+4. Verify extracted `SHA256SUMS.txt`, then compare `PREVIEW_BINARY.json` and
+   `PREVIEW_SMOKE.json` hashes and semantic results with the binary in the payload.
 5. Review `third-party-notices/index.json` for extraction gaps and errors. The SBOM is a
    locked-workspace inventory, not proof of exact binary contents or redistribution
    compliance.
@@ -81,8 +86,10 @@ OS/architecture lane.
 - Decide on Windows signing and macOS signing/notarization only after identities, policies,
   and credentials are available. The current artifacts make no such claims.
 - Validate native runtime dependencies and actual desktop launch/usability on each target.
-- Review action-pinning, artifact access/retention, provenance/attestation, and vulnerability
-  scanning requirements before a public release process is approved.
+- Review artifact access/retention, provenance/attestation, and vulnerability scanning
+  requirements before a public release process is approved. Keep the existing immutable
+  action pins under review; they are not a complete provenance or runtime-security claim.
 
 The first scope intentionally stops at deterministic ZIP/tar.gz archives, `.app` bundling on
-macOS, locked Cargo SBOM/notices, SHA-256 evidence, and non-publishing manual automation.
+macOS, locked Cargo SBOM/notices, SHA-256 evidence, post-extraction headless acceptance,
+same-runner clean rebuild comparisons, and non-publishing manual automation.

@@ -1,0 +1,23 @@
+{
+  "entries": 3,
+  "files": [
+    {
+      "bytes": 7114038,
+      "path": "paint-r-0.1.0-macos-aarch64.zip",
+      "sha256": "2cf0c020861e8cb483d00b00a2df84074f253c5f815843929f278aad7aa627f7"
+    },
+    {
+      "bytes": 98,
+      "path": "paint-r-0.1.0-macos-aarch64.zip.sha256",
+      "sha256": "a1f2c9d2f9a24566c85cffbb10bb80bdf5dac38baace3c49cf3b0ed4cf4de9ce"
+    },
+    {
+      "bytes": 572,
+      "path": "paint-r-0.1.0-macos-aarch64.zip.verification.json",
+      "sha256": "049fc7109085fc05f28ab900c9af29b79ab41245a77d9bc6f4abdd77ddb83319"
+    }
+  ],
+  "kind": "directory",
+  "status": "pass",
+  "tree_sha256": "b771bfa48f7145a8e6ce3acebfd37009ba87c18f818f1f0eda3107f8b21cb345"
+}

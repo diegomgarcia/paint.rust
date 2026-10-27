@@ -1,0 +1,40 @@
+{
+  "format": "paint.r.reference-identity-validation",
+  "invert": {
+    "decoded_rgba_repeatable": true,
+    "encoded_bytes_repeatable": true,
+    "encoded_sha256": "0c8cdc8f496907b88ef445cfdfa8f88e36cf09863a5cdde4b8e7243637708163",
+    "manifest": ".worktrees/reference/artifacts/reference-local/runs/invert-aa-20261026t2242z/manifest.json",
+    "manifest_sha256": "e372348b1f7c354666ffa6876b249506723c1a94b4b4c8944683d4d5ca337ce1",
+    "observation_count": 3,
+    "rgba_sha256": "a7aff0f8e3f44663c369e1e75a981b90b66949586d71035771921871d67e334e",
+    "status": "PASS"
+  },
+  "pdn": {
+    "action_count": 32,
+    "ffmpeg_rgba_match": true,
+    "manifest": ".worktrees/reference/artifacts/reference-local/runs/pdn-fixture-20261026t2342z/manifest.json",
+    "manifest_sha256": "1c60140f726d101f2461218b4d02be780b77d7136ddab7733feec4c4c41be7e8",
+    "pdn_bytes": 3569,
+    "pdn_sha256": "86736d36d886e08943fe57d3045a092051c83ad7f919aa6f21b177c84007c09b",
+    "png_sha256": "008b013d9c7a9a645fe9889386284608d8969d61a1b2a2044cddf108d9e08904",
+    "rgba_sha256": "cc0fa51d4d0a97b664030be5052f3b2b69a1267f89ace4c9bbc65007566725df",
+    "status": "PASS",
+    "ui_evidence_count": 22
+  },
+  "reviewed_identity": {
+    "display_version": "5.1.12",
+    "executable_sha256": "17b27aee8eb0d18e7b39964e6c1c43b1dac5705f23727af550f2cde7fe737e2e",
+    "file_version": "5.112.9563.32325",
+    "product_version": "5.112.9563.32325",
+    "signature_status": "Valid"
+  },
+  "scope": "existing authentic manifests revalidated read-only; no fresh VM/UI observation or writer-open acceptance",
+  "source_revision": "b902d1dfddbd6d9bb0d2fbda6a0f043846177846",
+  "status": "PASS",
+  "unit_tests": {
+    "failed": 0,
+    "passed": 26
+  },
+  "version": 1
+}

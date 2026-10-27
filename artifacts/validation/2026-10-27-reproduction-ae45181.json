@@ -1,0 +1,27 @@
+{
+  "archive": {
+    "bytes": 7114038,
+    "name": "paint-r-0.1.0-macos-aarch64.zip",
+    "sha256": "2cf0c020861e8cb483d00b00a2df84074f253c5f815843929f278aad7aa627f7"
+  },
+  "binary": {
+    "bytes": 12518832,
+    "identical": true,
+    "sha256": "58eeda09fd027a6d19ab1dffa56d9bb4864721f3ce0ff6ec4afa97454b6f5321"
+  },
+  "format": "paint.r.clean-rebuild-evidence",
+  "package_output_tree": {
+    "entries": 3,
+    "identical": true,
+    "tree_sha256": "b771bfa48f7145a8e6ce3acebfd37009ba87c18f818f1f0eda3107f8b21cb345"
+  },
+  "platform": "macos-aarch64",
+  "post_extract_smoke": {
+    "repeat": 2,
+    "status": "pass",
+    "trace_count": 2
+  },
+  "scope": "two-fresh-target-directories-same-checkout-native-macos-headless-not-hosted-ci",
+  "source_revision": "ae451813691cf8e03aebecfee6d676816e865a3e",
+  "version": 1
+}
