@@ -208,3 +208,56 @@ fn allocate<T>(count: usize, context: &'static str) -> Result<Vec<T>, PdnError> 
 fn malformed(reason: &'static str) -> PdnError {
     PdnError::Malformed { offset: 0, reason }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn one_gzip_chunk(payload: &[u8], trailing: &[u8]) -> Vec<u8> {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(payload).expect("encode test gzip");
+        let mut compressed = encoder.finish().expect("finish test gzip");
+        compressed.extend_from_slice(trailing);
+        let mut bytes = vec![0];
+        bytes.extend_from_slice(&5u32.to_be_bytes());
+        bytes.extend_from_slice(&0u32.to_be_bytes());
+        bytes.extend_from_slice(&(compressed.len() as u32).to_be_bytes());
+        bytes.extend_from_slice(&compressed);
+        bytes
+    }
+
+    fn decode_one(payload: &[u8], trailing: &[u8]) -> (Vec<u8>, Result<Vec<u8>, PdnError>) {
+        let bytes = one_gzip_chunk(payload, trailing);
+        let mut reader = ChunkReader::new(&bytes);
+        let result = decode_chunks(&mut reader, 5, &PdnLimits::default());
+        (bytes, result)
+    }
+
+    #[test]
+    fn gzip_has_a_valid_control_and_specific_length_and_trailing_errors() {
+        let (valid_bytes, valid) = decode_one(&[1, 2, 3, 4, 5], &[]);
+        assert_eq!(valid.expect("valid five-byte gzip"), [1, 2, 3, 4, 5]);
+        let mut reader = ChunkReader::new(&valid_bytes);
+        decode_chunks(&mut reader, 5, &PdnLimits::default()).expect("valid cursor control");
+        assert_eq!(reader.position(), valid_bytes.len());
+
+        for payload in [vec![0; 4], vec![0; 6]] {
+            assert!(matches!(
+                decode_one(&payload, &[]).1,
+                Err(PdnError::Malformed {
+                    reason: "gzip chunk has the wrong decoded length",
+                    ..
+                })
+            ));
+        }
+        for trailing in [vec![0xaa], vec![0x55; 8192]] {
+            assert!(matches!(
+                decode_one(&[0; 5], &trailing).1,
+                Err(PdnError::Malformed {
+                    reason: "gzip chunk has trailing compressed data",
+                    ..
+                })
+            ));
+        }
+    }
+}

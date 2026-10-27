@@ -1,3 +1,8 @@
+//! Experimental Normal/BGRA PDN writer.
+//!
+//! Validation is self-round-trip-only at present. Stock Paint.NET 5.1.12
+//! acceptance is unverified; semantic tests must not be described as an oracle.
+
 use paint_document::{BlendMode, Document};
 
 use crate::chunks::encode_chunks;

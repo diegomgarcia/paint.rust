@@ -1,4 +1,6 @@
 #![doc = "Bounded, versioned PDN3 container and semantic interoperability."]
+#![doc = ""]
+#![doc = "EXPERIMENTAL: the writer is currently self-round-trip-tested only; stock Paint.NET 5.1.12 acceptance is unverified. The packet remains PARTIAL."]
 
 mod chunks;
 mod codec;

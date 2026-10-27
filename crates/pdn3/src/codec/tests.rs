@@ -480,21 +480,6 @@ fn semantic_fixture(config: &FixtureConfig) -> Fixture {
     }
 }
 
-fn fixture_with_first_gzip_chunk(payload: &[u8], trailing: &[u8]) -> Vec<u8> {
-    let fixture = semantic_fixture(&FixtureConfig::default());
-    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(payload).expect("gzip payload");
-    let mut compressed = encoder.finish().expect("gzip payload finish");
-    compressed.extend_from_slice(trailing);
-    let mut bytes = fixture.bytes[..fixture.chunks_offset].to_vec();
-    bytes.push(0);
-    bytes.extend_from_slice(&5u32.to_be_bytes());
-    bytes.extend_from_slice(&0u32.to_be_bytes());
-    bytes.extend_from_slice(&(compressed.len() as u32).to_be_bytes());
-    bytes.extend_from_slice(&compressed);
-    bytes
-}
-
 fn out_of_order_raw_fixture() -> Vec<u8> {
     let fixture = semantic_fixture(&FixtureConfig::default());
     let mut records = Vec::new();
@@ -670,17 +655,6 @@ fn trailing_data_is_preserved_and_reported() {
 fn out_of_order_chunks_restore_exact_pixel_offsets() {
     let decoded = decode_pdn(&out_of_order_raw_fixture()).expect("decode reordered chunks");
     assert_eq!(decoded.document, expected_document());
-}
-
-#[test]
-fn gzip_output_length_and_compressed_consumption_are_exact() {
-    for payload in [vec![0; 4], vec![0; 6]] {
-        assert!(decode_pdn(&fixture_with_first_gzip_chunk(&payload, &[])).is_err());
-    }
-    assert!(
-        decode_pdn(&fixture_with_first_gzip_chunk(&[0; 5], &[0xaa])).is_err(),
-        "gzip member trailing byte was accepted"
-    );
 }
 
 #[test]
