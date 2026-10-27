@@ -27,11 +27,17 @@
   "property_stress": {
     "failed": 0,
     "ignored": 0,
-    "passed": 338,
+    "passed": 93,
     "proptest_cases": 8192,
-    "scope": "full workspace plus UI with 8192 cases per property",
+    "scope": [
+      "paint-core",
+      "paint-document",
+      "paint-raster",
+      "paint-pdn3",
+      "paint-plugin-bridge"
+    ],
     "source_commit": "00d8819ca662afb20e24c375503aef37839d4617",
-    "suite_records": 93
+    "suite_records": 21
   },
   "remaining_release_gates": [
     "real macOS native keyboard/window usability after user unlock",
