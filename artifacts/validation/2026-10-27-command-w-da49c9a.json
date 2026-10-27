@@ -1,0 +1,37 @@
+{
+  "binary_sha256": "465ec7206a586c96c807230fb22a52cd588ed47cc998058bdeae8bcc1e2f989b",
+  "format": "paint.r.native-command-w-dirty-guard",
+  "full_acceptance_paths": [
+    "Command-Q",
+    "AXCloseButton"
+  ],
+  "limitations": [
+    "This is a focused native probe, not the full five-screenshot acceptance gate.",
+    "The probe intentionally terminates after confirming the dialog.",
+    "Packaged-app, Windows/Linux, hosted CI, signing, legal, and parity gates remain open."
+  ],
+  "native_gate_source_commit": "da49c9a759113c4e3569abdfef8db3596b53e3b3",
+  "probe": {
+    "cleanup": "probe intentionally terminated after confirmation; process_reaped true",
+    "command_w_event": {
+      "event": "CGEvent keyboard down/up posted",
+      "key": "w",
+      "modifiers": [
+        "command"
+      ],
+      "pid": 33461
+    },
+    "confirmation_title_present": true,
+    "pid": 33461,
+    "terminal_kind": "dirty_close_dialog"
+  },
+  "product_source_commit": "05556c6cb45533b124e5162e4f2880df06c2abd8",
+  "public_release": false,
+  "semantic_tests": {
+    "failed": 0,
+    "native_gate_tests": 27,
+    "paint_ui_tests": 27
+  },
+  "status": "PASS_NATIVE_COMMAND_W_DIRTY_DIALOG_PROBE",
+  "version": 1
+}

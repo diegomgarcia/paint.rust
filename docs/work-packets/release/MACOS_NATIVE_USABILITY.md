@@ -98,10 +98,11 @@ necessary.
 6. AXPress the exact root window’s `AXCloseButton`, confirm the same protections, then
    explicitly AXPress Discard and require process exit status zero.
 
-The native default menu is disabled so Command-Q reaches the app instead of terminating
-directly through `Event::LoopExiting`; the app routes it through the same dirty guard.
-The acceptance covers both Command-Q and the native window close button. Command-W remains
-outside the verified shortcut surface.
+The native default menu is disabled so Command-Q and Command-W reach the app instead of
+terminating directly through `Event::LoopExiting`; both route through the same dirty guard.
+The full acceptance sequence covers Command-Q and the native window close button. A focused
+live probe separately confirmed that Command-W opens the discard confirmation on a modified
+document; see `2026-10-27-command-w-da49c9a.json`.
 
 ## Evidence and pixel oracle
 
