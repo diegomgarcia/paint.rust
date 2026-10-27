@@ -33,6 +33,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("dotnet restore plugin-host/Paint.PluginHost.sln --locked-mode", self.workflow)
         self.assertIn("dotnet test plugin-host/Paint.PluginHost.sln", self.workflow)
         self.assertIn("plugin-host/test-cross-language.sh", self.workflow)
+        self.assertIn("discover -s tests/e2e", self.workflow)
+        self.assertIn("discover -s tools/reference/tests", self.workflow)
 
     def test_workflow_has_no_release_or_publish_capability(self) -> None:
         self.assertIn("contents: read", self.workflow)
