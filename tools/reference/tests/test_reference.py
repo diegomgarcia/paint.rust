@@ -29,7 +29,31 @@ from observe_writer_acceptance import (  # noqa: E402
 from guest_jobs import guest_absolute, start_guest_job  # noqa: E402
 from run_windows_arm64_gate import TRIPLE, command, environment, main as gate_main  # noqa: E402
 from utm import ReferenceCommandError  # noqa: E402
-from validate_observations import ValidationError, validate_manifest  # noqa: E402
+from validate_observations import (  # noqa: E402
+    ValidationError,
+    main as validate_observations_main,
+    validate_manifest,
+)
+from validate_pdn_fixture import validate_pdn_fixture  # noqa: E402
+
+
+AUTHENTIC_PAINTNET = {
+    "file_version": "5.112.9563.32325",
+    "product_version": "5.112.9563.32325",
+    "path": r"C:\Program Files\paint.net\paintdotnet.exe",
+    "sha256": "17b27aee8eb0d18e7b39964e6c1c43b1dac5705f23727af550f2cde7fe737e2e",
+    "signature_status": "Valid",
+    "signer_subject": "CN=DOTPDN LLC, O=DOTPDN LLC, S=Washington, C=US",
+}
+
+
+def authentic_environment(**paintnet_changes: object) -> dict:
+    return {
+        "guest": {
+            "paintnet": {**AUTHENTIC_PAINTNET, **paintnet_changes},
+            "os": {"native_system_type": "ARM64-based PC"},
+        },
+    }
 
 
 def chunk(kind: bytes, payload: bytes) -> bytes:
@@ -136,7 +160,13 @@ class PngEvidenceTests(unittest.TestCase):
 def observation(run: int, *, encoded: str = "a" * 64, rgba: str = "b" * 64) -> dict:
     return {
         "run": run,
-        "document": {"width": 800, "height": 600, "operation": "Invert Colors", "source": "new document"},
+        "document": {
+            "width": 800,
+            "height": 600,
+            "operation": "Invert Colors",
+            "source": "new document",
+            "paintnet_window_title_version": "5.1.12",
+        },
         "guest": {"sha256": encoded, "png": {"rgba_sha256": rgba}},
         "host": {
             "sha256": encoded,
@@ -168,12 +198,45 @@ class EnvironmentDecodingTests(unittest.TestCase):
         self.assertEqual(decoded["charset"], 1)
 
 
+class PaintNetIdentityTests(unittest.TestCase):
+    def preflight(self, environment: dict) -> dict:
+        from paintnet_identity import require_reviewed_paintnet
+
+        return require_reviewed_paintnet(environment)
+
+    def test_valid_reviewed_evidence_passes_and_derives_display_version(self) -> None:
+        identity = self.preflight(authentic_environment())
+        self.assertEqual(identity["display_version"], "5.1.12")
+        self.assertEqual(identity["file_version"], AUTHENTIC_PAINTNET["file_version"])
+        self.assertEqual(identity["product_version"], AUTHENTIC_PAINTNET["product_version"])
+        self.assertEqual(identity["source_sha256"], AUTHENTIC_PAINTNET["sha256"])
+        self.assertEqual(identity["signature_status"], "Valid")
+        self.assertEqual(identity["executable_path"], AUTHENTIC_PAINTNET["path"])
+        self.assertEqual(identity["signer_subject"], AUTHENTIC_PAINTNET["signer_subject"])
+
+    def test_wrong_file_or_product_version_fails(self) -> None:
+        for field in ("file_version", "product_version"):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
+                self.preflight(authentic_environment(**{field: "5.113.9563.32325"}))
+
+    def test_wrong_executable_hash_fails(self) -> None:
+        with self.assertRaisesRegex(ValueError, "sha256"):
+            self.preflight(authentic_environment(sha256="0" * 64))
+
+    def test_non_valid_signature_fails(self) -> None:
+        with self.assertRaisesRegex(ValueError, "signature_status"):
+            self.preflight(authentic_environment(signature_status="NotValid"))
+
+
 class ManifestValidationTests(unittest.TestCase):
     def manifest(self) -> dict:
         return {"schema_version": 1, "kind": "paintnet-invert-aa", "observations": [observation(i) for i in range(1, 4)]}
 
+    def validate(self, manifest: dict) -> dict:
+        return validate_manifest(manifest, environment=authentic_environment())
+
     def test_three_identical_observations_pass(self) -> None:
-        result = validate_manifest(self.manifest())
+        result = self.validate(self.manifest())
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["observation_count"], 3)
         self.assertTrue(result["encoded_bytes_repeatable"])
@@ -184,17 +247,104 @@ class ManifestValidationTests(unittest.TestCase):
         manifest["observations"][1] = copy.deepcopy(manifest["observations"][1])
         manifest["observations"][1]["host"]["png"]["first_pixel_rgba"] = [255, 255, 255, 255]
         with self.assertRaises(ValidationError):
-            validate_manifest(manifest)
+            self.validate(manifest)
         manifest = self.manifest()
         manifest["observations"][0] = observation(1, rgba="c" * 64)
         with self.assertRaises(ValidationError):
-            validate_manifest(manifest)
+            self.validate(manifest)
 
     def test_two_runs_are_partial_not_aa_pass(self) -> None:
         manifest = self.manifest()
         manifest["observations"] = manifest["observations"][:2]
         with self.assertRaises(ValidationError):
-            validate_manifest(manifest)
+            self.validate(manifest)
+
+    def test_window_title_must_match_observed_identity(self) -> None:
+        manifest = self.manifest()
+        manifest["observations"][1]["document"]["paintnet_window_title_version"] = "5.1.13"
+        with self.assertRaisesRegex(ValidationError, "window_title"):
+            self.validate(manifest)
+
+    def test_independent_validator_rejects_self_consistent_wrong_identity(self) -> None:
+        cases = (
+            (
+                "wrong-version",
+                {"file_version": "5.113.9563.32325", "product_version": "5.113.9563.32325"},
+                "5.1.13",
+                "file_version",
+            ),
+            ("wrong-hash", {"sha256": "0" * 64}, None, "sha256"),
+            ("wrong-signature", {"signature_status": "NotValid"}, None, "signature_status"),
+        )
+        for name, changes, display_version, error_field in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                environment_bytes = (json.dumps(authentic_environment(**changes)) + "\n").encode("utf-8")
+                (root / "environment.json").write_bytes(environment_bytes)
+                manifest = self.manifest()
+                manifest["environment"] = {
+                    "path": "environment.json",
+                    "sha256": hashlib.sha256(environment_bytes).hexdigest(),
+                }
+                if display_version is not None:
+                    for item in manifest["observations"]:
+                        item["document"]["paintnet_window_title_version"] = display_version
+                manifest_path = root / "manifest.json"
+                manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+                stderr = io.StringIO()
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
+                    return_code = validate_observations_main([str(manifest_path)])
+                self.assertEqual(return_code, 2, stderr.getvalue())
+                self.assertIn(error_field, stderr.getvalue())
+
+
+class PdnIdentityValidationTests(unittest.TestCase):
+    def forged_manifest(self, root: Path, changes: dict, display_version: str) -> Path:
+        environment = authentic_environment(**changes)
+        environment_bytes = (json.dumps(environment) + "\n").encode("utf-8")
+        (root / "environment.json").write_bytes(environment_bytes)
+        paintnet = environment["guest"]["paintnet"]
+        manifest = {
+            "kind": "authentic-paintnet-pdn-fixture",
+            "status": "PASS_UI_SAVE_CLOSE_REOPEN_AND_RGBA",
+            "authentic_stock_output": True,
+            "ancillary_tool_edited_file": False,
+            "checks": {"otherwise_self_consistent": True},
+            "environment": {
+                "path": "environment.json",
+                "sha256": hashlib.sha256(environment_bytes).hexdigest(),
+            },
+            "product": {
+                "display_version": display_version,
+                "file_version": paintnet["file_version"],
+                "product_version": paintnet["product_version"],
+                "executable_path": paintnet["path"],
+                "source_sha256": paintnet["sha256"],
+                "signature_status": paintnet["signature_status"],
+                "signer_subject": paintnet["signer_subject"],
+            },
+        }
+        path = root / "manifest.json"
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+        return path
+
+    def test_independent_validator_rejects_self_consistent_wrong_identity(self) -> None:
+        cases = (
+            (
+                "wrong-version",
+                {"file_version": "5.113.9563.32325", "product_version": "5.113.9563.32325"},
+                "5.1.13",
+                "file_version",
+            ),
+            ("wrong-hash", {"sha256": "0" * 64}, "5.1.12", "sha256"),
+            ("wrong-signature", {"signature_status": "NotValid"}, "5.1.12", "signature_status"),
+        )
+        for name, changes, display_version, error_field in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                manifest_path = self.forged_manifest(Path(directory), changes, display_version)
+                with self.assertRaises(ValueError) as raised:
+                    validate_pdn_fixture(manifest_path, check_ffmpeg=False)
+                self.assertIn(error_field, str(raised.exception))
 
 
 class PdnUiGateTests(unittest.TestCase):
@@ -231,6 +381,93 @@ class WriterAcceptanceTests(unittest.TestCase):
         with self.assertRaises(ReferenceCommandError):
             require_not_already_open({"ocr_text": f"{self.filename} - Paint.NET"}, self.filename)
         require_not_already_open({"ocr_text": "Untitled - Paint.NET"}, self.filename)
+
+
+class ObservationGateIdentityTests(unittest.TestCase):
+    def assert_preflight_failure(self, root: Path, expected_field: str) -> None:
+        failure = json.loads((root / "failure.json").read_text(encoding="utf-8"))
+        self.assertEqual(failure["stage"], "paintnet-preflight")
+        self.assertIn(expected_field, failure["error"])
+
+    def test_invert_gate_preflights_before_observation(self) -> None:
+        import observe_invert
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "run"
+            with (
+                mock.patch(
+                    "observe_invert.collect_environment",
+                    return_value=authentic_environment(sha256="0" * 64),
+                ),
+                mock.patch("observe_invert.run_observation", side_effect=AssertionError("observation reached")) as run,
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                return_code = observe_invert.main([
+                    "--run-id", "invert-identity-test", "--output-dir", str(root),
+                ])
+            self.assertEqual(return_code, 2)
+            run.assert_not_called()
+            self.assert_preflight_failure(root, "sha256")
+
+    def test_pdn_gate_preflights_before_guest_or_ui_actions(self) -> None:
+        import observe_pdn_fixture
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "run"
+            with (
+                mock.patch(
+                    "observe_pdn_fixture.collect_environment",
+                    return_value=authentic_environment(signature_status="NotValid"),
+                ),
+                mock.patch("observe_pdn_fixture.guest_absent") as absent,
+                mock.patch("observe_pdn_fixture.new_2x2", side_effect=AssertionError("UI reached")),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                return_code = observe_pdn_fixture.main([
+                    "--run-id", "pdn-identity-test", "--output-dir", str(root),
+                ])
+            self.assertEqual(return_code, 2)
+            absent.assert_not_called()
+            self.assert_preflight_failure(root, "signature_status")
+
+    def test_writer_gate_preflights_before_ui(self) -> None:
+        import observe_writer_acceptance
+
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            host_input = temporary / "clone-normal-2x2-raw.pdn"
+            payload = b"PDN3 identity preflight test"
+            host_input.write_bytes(payload)
+            host_sha = hashlib.sha256(payload).hexdigest()
+            before = {"sha256": host_sha, "length": len(payload)}
+            with (
+                mock.patch("observe_writer_acceptance.LOCAL_ROOT", temporary),
+                mock.patch("observe_writer_acceptance.guest_file_metadata", return_value=before),
+                mock.patch("observe_writer_acceptance.guest_absent"),
+                mock.patch(
+                    "observe_writer_acceptance.collect_environment",
+                    return_value=authentic_environment(
+                        file_version="5.113.9563.32325",
+                        product_version="5.113.9563.32325",
+                    ),
+                ),
+                mock.patch("observe_writer_acceptance.key", side_effect=AssertionError("UI reached")) as key,
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                return_code = observe_writer_acceptance.main([
+                    "--run-id", "writer-identity-test",
+                    "--host-input", str(host_input),
+                    "--expected-sha256", host_sha,
+                    "--variant", "raw",
+                ])
+            self.assertEqual(return_code, 2)
+            key.assert_not_called()
+            self.assert_preflight_failure(
+                temporary / "runs" / "writer-identity-test", "file_version",
+            )
 
 
 class GuestJobAndGateTests(unittest.TestCase):

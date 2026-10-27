@@ -17,6 +17,7 @@ from typing import Any
 
 from collect_environment import collect_environment, write_json_new
 from host_ui import LOCAL_ROOT, capture_window
+from paintnet_identity import require_reviewed_paintnet
 from paintnet_ui import invert_colors, localize_capture, new_default_document, save_png_with_defaults
 from png_evidence import decode_png, png_file_evidence, rgba_evidence
 from utm import (
@@ -97,7 +98,7 @@ def basic_observation_check(observation: dict[str, Any]) -> None:
         raise ReferenceCommandError(f"FFmpeg and primary host decoder differ in run {observation['run']}")
 
 
-def run_observation(run: int, run_id: str, output_root: Path, vm: str) -> dict[str, Any]:
+def run_observation(run: int, run_id: str, output_root: Path, vm: str, paintnet_display_version: str) -> dict[str, Any]:
     started = utc_now()
     run_directory = output_root / f"run-{run}"
     ui_directory = run_directory / "ui"
@@ -150,7 +151,7 @@ def run_observation(run: int, run_id: str, output_root: Path, vm: str) -> dict[s
             "operation": "Invert Colors",
             "save_format": "PNG",
             "save_configuration": "Auto-detect",
-            "paintnet_window_title_version": "5.1.12",
+            "paintnet_window_title_version": paintnet_display_version,
         },
         "actions": actions,
         "ui_evidence": [localize_capture(capture, output_root) for capture in captures],
@@ -212,9 +213,13 @@ def main(argv: list[str] | None = None) -> int:
         stage = "environment"
         environment = collect_environment(args.vm)
         write_json_new(output_root / "environment.json", environment)
+        stage = "paintnet-preflight"
+        paintnet_identity = require_reviewed_paintnet(environment)
         for run in range(1, args.runs + 1):
             stage = f"observation-{run}"
-            observation = run_observation(run, args.run_id, output_root, args.vm)
+            observation = run_observation(
+                run, args.run_id, output_root, args.vm, paintnet_identity["display_version"],
+            )
             observations.append(observation)
             write_json_new(output_root / f"observation-{run}.json", observation)
             basic_observation_check(observation)
@@ -222,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest = base_manifest(args.run_id, args.runs, output_root, args.vm, command)
         manifest["status"] = "PASS"
         manifest["observations"] = observations
-        validation = validate_manifest(manifest, minimum_runs=args.runs)
+        validation = validate_manifest(manifest, minimum_runs=args.runs, environment=environment)
         write_json_new(output_root / "manifest.json", manifest)
         write_json_new(output_root / "validation.json", validation)
     except Exception as error:
