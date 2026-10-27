@@ -301,6 +301,26 @@ fn open_dialog_previews_a_valid_png_without_changing_the_session() {
 }
 
 #[test]
+fn color_wheel_exposes_accessible_hsv_color_selection() {
+    assert_eq!(
+        paint_ui::color_from_hsv(0.0, 1.0, 1.0, 255),
+        Bgra::new(0, 0, 255, 255)
+    );
+    assert_eq!(
+        paint_ui::color_from_hsv(120.0, 1.0, 1.0, 255),
+        Bgra::new(0, 255, 0, 255)
+    );
+    assert_eq!(
+        paint_ui::color_from_hsv(240.0, 1.0, 1.0, 128),
+        Bgra::new(255, 0, 0, 128)
+    );
+    assert_eq!(paint_ui::color_from_hsv(0.0, 0.0, 1.0, 255), Bgra::WHITE);
+
+    let harness = app();
+    harness.get_by_role_and_label(Role::Button, "Color wheel");
+}
+
+#[test]
 fn zoom_controls_change_canvas_preview_without_mutating_the_document() {
     let mut harness = app();
     let before = harness.state().session().document().clone();

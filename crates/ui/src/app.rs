@@ -442,6 +442,10 @@ impl PaintApp {
                         "Alpha {}% · canonical BGRA channels",
                         (u16::from(color.a) * 100 / 255)
                     ));
+                    ui.label("Color wheel");
+                    if let Some(color) = color_wheel(ui, self.fill_color) {
+                        self.fill_color = color;
+                    }
                     ui.label("Palette");
                     ui.horizontal_wrapped(|ui| {
                         for &(label, preset) in PRESET_COLORS {
@@ -1199,6 +1203,75 @@ fn open_png_preview(
         PREVIEW_HEIGHT,
     );
     Ok(DialogPreview { label, texture })
+}
+
+fn color_wheel(ui: &mut egui::Ui, current: Bgra) -> Option<Bgra> {
+    let diameter = ui.available_width().clamp(96.0, 170.0);
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(diameter, diameter), egui::Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Color wheel"));
+    if ui.is_rect_visible(rect) {
+        let center = rect.center();
+        let radius = diameter * 0.5 - 3.0;
+        let segments = 64;
+        let mut mesh = egui::Mesh::default();
+        mesh.vertices.push(egui::epaint::Vertex {
+            pos: center,
+            uv: egui::epaint::WHITE_UV,
+            color: egui::Color32::WHITE,
+        });
+        for index in 0..=segments {
+            let angle = std::f32::consts::TAU * index as f32 / segments as f32;
+            let color = crate::color_from_hsv(angle.to_degrees(), 1.0, 1.0, 255);
+            mesh.vertices.push(egui::epaint::Vertex {
+                pos: center + egui::vec2(angle.cos(), angle.sin()) * radius,
+                uv: egui::epaint::WHITE_UV,
+                color: egui::Color32::from_rgb(color.r, color.g, color.b),
+            });
+        }
+        for index in 1..=segments {
+            mesh.indices.extend([0, index as u32, (index + 1) as u32]);
+        }
+        ui.painter().add(egui::Shape::mesh(mesh));
+        ui.painter().circle_stroke(
+            center,
+            radius,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(80)),
+        );
+        let maximum = current.r.max(current.g).max(current.b);
+        let minimum = current.r.min(current.g).min(current.b);
+        let chroma = maximum - minimum;
+        if chroma > 0 {
+            let hue = if maximum == current.r {
+                (f32::from(current.g) - f32::from(current.b)) / f32::from(chroma)
+            } else if maximum == current.g {
+                (f32::from(current.b) - f32::from(current.r)) / f32::from(chroma) + 2.0
+            } else {
+                (f32::from(current.r) - f32::from(current.g)) / f32::from(chroma) + 4.0
+            }
+            .rem_euclid(6.0)
+                * 60.0;
+            let saturation = f32::from(chroma) / f32::from(maximum);
+            let angle = hue.to_radians();
+            ui.painter().circle_stroke(
+                center + egui::vec2(angle.cos(), angle.sin()) * radius * saturation,
+                5.0,
+                egui::Stroke::new(2.0, egui::Color32::WHITE),
+            );
+        }
+    }
+    if response.clicked()
+        && let Some(position) = response.interact_pointer_pos()
+    {
+        let offset = position - rect.center();
+        let radius = diameter * 0.5 - 3.0;
+        if offset.length() <= radius {
+            let hue = offset.y.atan2(offset.x).to_degrees().rem_euclid(360.0);
+            let saturation = (offset.length() / radius).clamp(0.0, 1.0);
+            return Some(crate::color_from_hsv(hue, saturation, 1.0, current.a));
+        }
+    }
+    None
 }
 
 fn labeled_button(ui: &mut egui::Ui, text: &str, label: &'static str) -> egui::Response {
