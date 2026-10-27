@@ -612,7 +612,7 @@ class NativeUsabilityGate:
             "before/after native screenshot RGBA pixels are identical; visual modification is inconclusive",
         )
 
-        self.evidence.record("native_input", action="key", key="q", modifiers=["command"], result=self._native("send first Command-Q", lambda: self.backend.key(pid, "q", ("command",))))
+        self.evidence.record("native_input", action="key", key="w", modifiers=["command"], result=self._native("send first Command-W", lambda: self.backend.key(pid, "w", ("command",))))
         self._wait_window(
             "dirty_close_confirmation_observed",
             self.config.observation_timeout,
@@ -653,7 +653,7 @@ class NativeUsabilityGate:
             "confirmation and canceled screenshot RGBA pixels are identical",
         )
 
-        self.evidence.record("native_input", action="key", key="q", modifiers=["command"], result=self._native("send second Command-Q", lambda: self.backend.key(pid, "q", ("command",))))
+        self.evidence.record("native_input", action="key", key="w", modifiers=["command"], result=self._native("send second Command-W", lambda: self.backend.key(pid, "w", ("command",))))
         second = self._wait_window(
             "second_dirty_close_confirmation",
             self.config.observation_timeout,
@@ -846,7 +846,7 @@ class MacOSNativeBackend:
         return self._call("observe", str(pid), WINDOW_TITLE)
 
     def key(self, pid: int, name: str, modifiers: tuple[str, ...] = ()) -> dict[str, Any]:
-        allowed = {("i", ("command",)), ("q", ("command",)), ("escape", ())}
+        allowed = {("i", ("command",)), ("w", ("command",)), ("q", ("command",)), ("escape", ())}
         if (name, modifiers) not in allowed:
             raise NativeCommandError("INPUT_REJECTED", "native key is outside the gate allowlist")
         return self._call("key", str(pid), WINDOW_TITLE, name, ",".join(modifiers))

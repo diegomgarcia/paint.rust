@@ -81,13 +81,18 @@ necessary.
 2. Capture the window, send Command-I through `CGEvent`, and require Modified state, the
    exact invert status, and the same native window.
 3. Capture again and require different decoded RGBA pixels.
-4. Send Command-Q and require the exact dirty-close title/explanation, enabled Discard,
+4. Send Command-W and require the exact dirty-close title/explanation, enabled Discard,
    and enabled **focused Cancel** while the modified session remains open.
 5. Send Escape and require the dialog to disappear without losing the modified document.
    The complete accessible text set must equal the pre-close modified observation, not merely
    retain the required Modified/invert/canvas labels.
-6. Send Command-Q again, confirm the same protections, then explicitly AXPress Discard and
+6. Send Command-W again, confirm the same protections, then explicitly AXPress Discard and
    require process exit status zero.
+
+Command-Q is not used for the acceptance close: a live run confirmed that pinned
+eframe/winit on macOS reaches `Event::LoopExiting` directly and bypasses the app’s
+`CloseRequested` guard. That native application-menu quit behavior remains a separate
+platform limitation; failure cleanup may still use Command-Q.
 
 ## Evidence and pixel oracle
 

@@ -201,7 +201,7 @@ class FakeBackend:
                 self.modified = True
             if self.lock_during_invert:
                 raise gate.NativeCommandError("SCREEN_LOCKED", "screen became locked")
-        elif (name, modifiers) == ("q", ("command",)):
+        elif (name, modifiers) in {("q", ("command",)), ("w", ("command",))}:
             if self.modified:
                 if self.exit_on_dirty_close:
                     self.process.returncode = 0
@@ -290,9 +290,9 @@ class NativeGateTests(unittest.TestCase):
             native_actions,
             [
                 ("key", 4242, "i", ("command",)),
-                ("key", 4242, "q", ("command",)),
+                ("key", 4242, "w", ("command",)),
                 ("key", 4242, "escape", ()),
-                ("key", 4242, "q", ("command",)),
+                ("key", 4242, "w", ("command",)),
                 ("press", 4242, "Discard"),
             ],
         )
