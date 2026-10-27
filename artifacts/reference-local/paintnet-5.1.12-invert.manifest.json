@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "status": "single-run-observation-not-certified-golden",
+  "captured_at": "2026-10-26T08:40:23-04:00",
+  "reference": {
+    "application": "Paint.NET",
+    "application_version": "5.1.12",
+    "executable_file_version": "5.112.9563.32325",
+    "executable_sha256": "17B27AEE8EB0D18E7B39964E6C1C43B1DAC5705F23727AF550F2CDE7FE737E2E",
+    "executable_signature": "Valid; DOTPDN LLC",
+    "web_installer_zip_sha256": "311C28433616C80FE0E3FC56A23B87068A8213E38F52481F88F5F9DB147D3E5F",
+    "os": "Microsoft Windows 11 Pro",
+    "os_build": "26100",
+    "architecture": "ARM64",
+    "vm": {
+      "application": "UTM 4.7.5",
+      "backend": "QEMU/HVF",
+      "virtual_cpus": 4,
+      "memory_gib": 12,
+      "display": "virtio-ramfb-gl"
+    },
+    "graphics": {
+      "adapter": "Red Hat VirtIO GPU DOD controller",
+      "driver_version": "22.7.38.43",
+      "ddi_version": "12",
+      "verified_feature_levels": ["12_1", "12_0", "11_1", "11_0", "10_1", "10_0", "9_3", "9_2", "9_1", "1_0_CORE"]
+    }
+  },
+  "trace": [
+    "Launch Paint.NET interactively with its default Untitled 800x600 document.",
+    "Choose Adjustments > Invert Colors.",
+    "Save as PNG with the default Auto-detect save configuration.",
+    "Export to C:\\Users\\CodeFreak\\Documents\\paint-r-reference-invert.png."
+  ],
+  "output": {
+    "file": "paintnet-5.1.12-invert.png",
+    "encoded_bytes": 436,
+    "sha256": "0C8CDC8F496907B88EF445CFDFA8F88E36CF09863A5CDDE4B8E7243637708163",
+    "dimensions": [800, 600],
+    "decoded_rgba_bytes": 1920000,
+    "decoded_pixel_count": 480000,
+    "decoded_colors": [
+      {
+        "rgba": [0, 0, 0, 255],
+        "count": 480000
+      }
+    ],
+    "decoder": "FFmpeg 8.1 rawvideo RGBA",
+    "guest_and_host_file_hashes_match": true
+  },
+  "limitations": [
+    "Only one reference run has been completed; A/A repeatability is unverified.",
+    "DPI, theme, locale details, font hashes, ClearType, color profile, HDR state, and all application settings were not pinned for this observation.",
+    "The Windows ISO hash, license status, and update state have not been audited.",
+    "No clone comparison, semantic UI Automation capture, or clean snapshot has been performed.",
+    "Encoded-byte identity is not a compatibility requirement; decoded pixels and document semantics are the relevant future differential gates."
+  ]
+}

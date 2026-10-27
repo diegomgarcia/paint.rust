@@ -1,0 +1,51 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/document",
+    "crates/raster",
+    "crates/image-io",
+    "crates/pdn3",
+    "crates/plugin-bridge",
+    "crates/app",
+    "crates/ui",
+    "xtask",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+authors = ["Paint.R contributors"]
+
+[workspace.dependencies]
+paint-core = { path = "crates/core" }
+paint-document = { path = "crates/document" }
+paint-raster = { path = "crates/raster" }
+paint-image-io = { path = "crates/image-io" }
+paint-pdn3 = { path = "crates/pdn3" }
+paint-plugin-bridge = { path = "crates/plugin-bridge" }
+paint-app = { path = "crates/app" }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+flate2 = "1.1"
+quick-xml = "0.38"
+eframe = "0.37"
+egui = "0.37"
+egui_kittest = "0.37"
+proptest = "1.9"
+tempfile = "3"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+panic = "unwind"
+strip = "debuginfo"

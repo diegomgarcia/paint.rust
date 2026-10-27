@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Paint.R — Cross-Platform Parity Architecture",
+    "quality_profile": "showcase",
+    "viewBox": [1390, 590],
+    "views": [
+      {
+        "id": "product-path",
+        "label": "Product editing path",
+        "focus": ["desktop-ui", "app-session", "document-core", "raster-engine", "canvas-renderer"],
+        "note": "Follow input through the single-writer document model to the displayed canvas."
+      },
+      {
+        "id": "parity-path",
+        "label": "Parity evidence",
+        "focus": ["windows-vm", "capture-harness", "golden-store", "raster-engine", "ci-matrix"],
+        "note": "Compare candidate behavior with a pinned Paint.NET reference and retain every manifest."
+      },
+      {
+        "id": "compatibility-path",
+        "label": "PDN and plugins",
+        "focus": ["app-session", "format-codecs", "plugin-bridge", "dotnet-host"],
+        "note": "Keep format and selected-plugin compatibility behind explicit versioned boundaries."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "ci-matrix",
+      "type": "external",
+      "label": "Three-OS CI",
+      "sublabel": "Windows, macOS, Linux",
+      "pos": [335, 45],
+      "size": [210, 82]
+    },
+    {
+      "id": "windows-vm",
+      "type": "external",
+      "label": "Windows reference VM",
+      "sublabel": "Windows 11 ARM64 + Paint.NET",
+      "pos": [625, 45],
+      "size": [230, 82]
+    },
+    {
+      "id": "capture-harness",
+      "type": "backend",
+      "label": "Capture harness",
+      "sublabel": "UI automation and RGBA probes",
+      "pos": [935, 45],
+      "size": [215, 82]
+    },
+    {
+      "id": "golden-store",
+      "type": "database",
+      "label": "Golden store",
+      "sublabel": "Versioned evidence",
+      "pos": [1225, 45],
+      "size": [140, 82]
+    },
+    {
+      "id": "desktop-ui",
+      "type": "frontend",
+      "label": "Identical UI shell",
+      "sublabel": "Custom widgets and licensed assets",
+      "pos": [55, 245],
+      "size": [200, 82]
+    },
+    {
+      "id": "app-session",
+      "type": "backend",
+      "label": "Application session",
+      "sublabel": "Single writer, commands, tools",
+      "pos": [335, 245],
+      "size": [210, 82]
+    },
+    {
+      "id": "document-core",
+      "type": "backend",
+      "label": "Document engine",
+      "sublabel": "Layers, selections, history",
+      "pos": [635, 245],
+      "size": [210, 82]
+    },
+    {
+      "id": "raster-engine",
+      "type": "backend",
+      "label": "Raster engine",
+      "sublabel": "Deterministic reference operations",
+      "pos": [935, 245],
+      "size": [215, 82]
+    },
+    {
+      "id": "canvas-renderer",
+      "type": "frontend",
+      "label": "Canvas renderer",
+      "sublabel": "Display, not oracle",
+      "pos": [1225, 245],
+      "size": [140, 82]
+    },
+    {
+      "id": "format-codecs",
+      "type": "backend",
+      "label": "Format codecs",
+      "sublabel": "Versioned PDN and standard formats",
+      "pos": [325, 430],
+      "size": [210, 82]
+    },
+    {
+      "id": "plugin-bridge",
+      "type": "messagebus",
+      "label": "Plugin bridge",
+      "sublabel": "Versioned IPC and shared tiles",
+      "pos": [635, 430],
+      "size": [210, 82]
+    },
+    {
+      "id": "dotnet-host",
+      "type": "external",
+      "label": ".NET plugin host",
+      "sublabel": "Selected DLLs and compatibility shim",
+      "pos": [935, 430],
+      "size": [215, 82]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Parity infrastructure",
+      "wraps": ["ci-matrix", "windows-vm", "capture-harness", "golden-store"],
+      "pad": 24
+    },
+    {
+      "kind": "region",
+      "label": "Cross-platform product",
+      "wraps": ["desktop-ui", "app-session", "document-core", "raster-engine", "canvas-renderer", "format-codecs", "plugin-bridge", "dotnet-host"],
+      "pad": 24
+    }
+  ],
+  "connections": [
+    {
+      "id": "ui-to-session",
+      "from": "desktop-ui",
+      "to": "app-session",
+      "label": "input",
+      "variant": "emphasis"
+    },
+    {
+      "id": "session-to-document",
+      "from": "app-session",
+      "to": "document-core",
+      "label": "commands",
+      "variant": "emphasis"
+    },
+    {
+      "id": "document-to-raster",
+      "from": "document-core",
+      "to": "raster-engine",
+      "label": "snapshots",
+      "variant": "emphasis"
+    },
+    {
+      "id": "raster-to-canvas",
+      "from": "raster-engine",
+      "to": "canvas-renderer",
+      "label": "frames",
+      "variant": "emphasis"
+    },
+    {
+      "id": "session-to-formats",
+      "from": "app-session",
+      "to": "format-codecs",
+      "label": "read / write",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24,
+      "labelDx": -70
+    },
+    {
+      "id": "session-to-plugins",
+      "from": "app-session",
+      "to": "plugin-bridge",
+      "label": "plugin edits",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "plugins-to-host",
+      "from": "plugin-bridge",
+      "to": "dotnet-host",
+      "label": "IPC / buffers"
+    },
+    {
+      "id": "vm-to-capture",
+      "from": "windows-vm",
+      "to": "capture-harness",
+      "label": "oracle data"
+    },
+    {
+      "id": "capture-to-store",
+      "from": "capture-harness",
+      "to": "golden-store",
+      "label": "evidence"
+    },
+    {
+      "id": "raster-to-capture",
+      "from": "raster-engine",
+      "to": "capture-harness",
+      "label": "candidate RGBA",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "variant": "dashed"
+    },
+    {
+      "id": "ci-to-session",
+      "from": "ci-matrix",
+      "to": "app-session",
+      "label": "build / test",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Parity contract",
+      "items": ["Exact app-controlled UI and decoded RGBA comparisons", "Semantic PDN compatibility in both directions", "No feature is complete without reference evidence"]
+    },
+    {
+      "dot": "violet",
+      "title": "Compatibility boundary",
+      "items": ["Selected plugins and API versions only", "No Paint.NET DLLs shipped or loaded by the clone", "Every plugin records its per-OS support matrix"]
+    },
+    {
+      "dot": "amber",
+      "title": "Release control",
+      "items": ["Pin the Paint.NET, Windows, font, DPI, and theme builds", "Run candidate tests on Windows, macOS, and Linux", "Version codecs and compatibility shims for future releases"]
+    }
+  ]
+}

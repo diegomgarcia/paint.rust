@@ -1,0 +1,13 @@
+[package]
+name = "xtask"
+description = "Workspace verification and release engineering commands"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

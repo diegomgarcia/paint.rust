@@ -1,0 +1,24 @@
+[package]
+name = "paint-ui"
+description = "Paint.R desktop UI and usability-tested development preview"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+paint-app.workspace = true
+paint-core.workspace = true
+paint-document.workspace = true
+paint-raster.workspace = true
+paint-image-io.workspace = true
+eframe.workspace = true
+egui.workspace = true
+
+[dev-dependencies]
+egui_kittest.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
