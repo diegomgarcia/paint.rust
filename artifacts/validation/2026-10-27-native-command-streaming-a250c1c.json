@@ -1,0 +1,86 @@
+{
+  "early_wall_clock_regression": {
+    "combined_stdout_stderr_overflow_covered": true,
+    "continuing_child_timeout_seconds": 5,
+    "exact_limit_success_covered": true,
+    "expected_error": "COMMAND_OUTPUT_LIMIT",
+    "log": {
+      "path": "artifacts/reference-local/round5-a4d60eb/streaming-output-final.log",
+      "sha256": "a35bad4654e4e191ba25a13c1d617b8dd841b8d7b66e4341d59d9d610b8e265c"
+    },
+    "required_completion_seconds": 2
+  },
+  "expected_red": {
+    "failed": 1,
+    "log": {
+      "path": "artifacts/reference-local/round5-a4d60eb/streaming-output-red.log",
+      "sha256": "ddd9e6a99cb76333df05f80c52c640652672c13d5de294f4ddc5b5318fb59789"
+    },
+    "old_behavior": "2 MiB child then sleep returned COMMAND_TIMEOUT after buffering instead of COMMAND_OUTPUT_LIMIT",
+    "tests": 22
+  },
+  "format": "paint.r.native-command-streaming",
+  "green": {
+    "failed": 0,
+    "logs": [
+      {
+        "path": "artifacts/reference-local/round5-a4d60eb/streaming-output-green.log",
+        "sha256": "2af6541cbed7f97e4f8df6dbb58821b45a55272b2416a812be2f51b7355e9601"
+      },
+      {
+        "path": "artifacts/reference-local/round5-a4d60eb/reference-after-streaming.log",
+        "sha256": "188583e4c3ef7386cde06bfd71bb9578bbd09e4cf802c24690c2de9fa8805e0c"
+      },
+      {
+        "path": "artifacts/reference-local/round5-a4d60eb/e2e-after-streaming.log",
+        "sha256": "c5794b5b9ba5020eada6b5123e3f25a97a47ab95571d56e87dd407d6c74d2a2f"
+      }
+    ],
+    "native_orchestration": 22,
+    "python_end_to_end": 18,
+    "reference_tools": 30
+  },
+  "implementation": {
+    "combined_retained_output_cap": true,
+    "early_overflow_terminates_exact_spawned_process": true,
+    "process_api": "subprocess.Popen without a shell",
+    "reader_failure_and_reap_failure_fail_closed": true,
+    "stdout_stderr_consumed_concurrently": true,
+    "timeout_kills_and_reaps_exact_spawned_process": true
+  },
+  "limitations": [
+    "Real Python child processes test the command wrapper only; native transport remains fake in orchestration tests.",
+    "No current native window, hosted CI, public release, or Paint.NET parity claim is made."
+  ],
+  "live_acceptance": {
+    "current_revision_executed_against_real_window": false,
+    "host_unlock_or_permission_bypass_attempted": false,
+    "native_execution": "NOT_RUN"
+  },
+  "real_child_stress": {
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round5-a4d60eb/streaming-output-stress.log",
+      "sha256": "c304c4e39d01da315b4a8746c8a10ddbe669189dcf8396ded94131475d7179fe"
+    },
+    "paint_r_or_native_input_launched": false,
+    "passed": 50,
+    "scope": "25 early-overflow and 25 timeout/overflow test repetitions"
+  },
+  "relocated_fake_suite": {
+    "cwd": "/tmp",
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round5-a4d60eb/streaming-output-relocated.log",
+      "sha256": "c30702a2cdb0d8b5580ba340bea8c1474255a81499216c7b390b40e88c6f6f3e"
+    },
+    "passed": 22
+  },
+  "source_commit": "a250c1cf4f104fb92f846d9ce1f3541b864bab2a",
+  "static_checks": {
+    "python_compile": "pass",
+    "swift_5_typecheck": "pass"
+  },
+  "status": "PASS_STREAMING_BOUNDS_NOT_LIVE_NATIVE_ACCEPTANCE",
+  "version": 1
+}
