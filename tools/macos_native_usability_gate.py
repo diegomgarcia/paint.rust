@@ -244,6 +244,19 @@ def sha256_file(path: Path, *, maximum: int = MAX_SCREENSHOT_BYTES) -> tuple[str
     return digest.hexdigest(), size
 
 
+def harness_identity() -> dict[str, Any]:
+    repository = Path(__file__).resolve().parents[1]
+    records = []
+    for relative in (
+        "tools/macos_native_usability_gate.py",
+        "tools/macos_native_usability_gate.swift",
+        "tests/e2e/png_rgba.py",
+    ):
+        digest, size = sha256_file(repository / relative, maximum=MAX_NATIVE_OUTPUT)
+        records.append({"path": relative, "sha256": digest, "bytes": size})
+    return {"capture_stage": "gate_initialization", "files": records}
+
+
 def write_json_new(path: Path, value: dict[str, Any]) -> None:
     with path.open("x", encoding="utf-8") as output:
         output.write(json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
@@ -483,6 +496,7 @@ class NativeUsabilityGate:
         if not self.binary.is_file() or not os.access(self.binary, os.X_OK):
             raise ValueError(f"not an executable Paint.R binary: {self.binary}")
         self.backend = backend
+        self.harness_evidence = harness_identity()
         self.evidence = Evidence(Path(output_dir))
         self.process: Any | None = None
         self.deadline = 0.0
@@ -747,6 +761,7 @@ class NativeUsabilityGate:
             "evidence_scope": getattr(self.backend, "evidence_scope", "fake-no-native-evidence"),
             "error": error,
             "binary": self.binary_evidence,
+            "harness": self.harness_evidence,
             "process": process_evidence,
             "cleanup": self.cleanup,
             "limits": dataclasses.asdict(self.config),

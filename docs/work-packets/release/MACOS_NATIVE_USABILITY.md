@@ -43,7 +43,8 @@ Native transport uses a deterministic fake backend; process-wrapper tests also l
 short-lived Python children. They cover lock/permission failures, process exit and timeout
 failures, exact-PID cleanup, dirty-close cancellation, focused Cancel, unchanged accessible
 document text after Cancel, explicit Discard, exact-limit output, combined stdout/stderr
-overflow, early termination of a continuing oversized stream, and pixel-evidence failures. They never launch Paint.R or post native input.
+overflow, early termination of a continuing oversized stream, binary/harness source identities,
+and pixel-evidence failures. They never launch Paint.R or post native input.
 
 ## Live acceptance command
 
@@ -93,7 +94,11 @@ necessary.
 A run writes `manifest.json`, `events.jsonl`, timestamped observations, up to five PNG
 window captures, and the spawned process log. Every observation and screenshot is hashed.
 Screenshot records contain both the exact PNG SHA-256 and `rgba_sha256`, the SHA-256 of the
-independently decoded RGBA8 pixel buffer.
+independently decoded RGBA8 pixel buffer. The manifest's `harness` object records
+`capture_stage=gate_initialization` plus the source-relative path, byte length, and SHA-256 of
+`tools/macos_native_usability_gate.py`, `tools/macos_native_usability_gate.swift`, and
+`tests/e2e/png_rgba.py`. These identities describe the files read during initialization; they
+do not prove a clean checkout or convert fake/blocked evidence into a native pass.
 
 The gate lazily loads the repository's bounded `tests/e2e/png_rgba.py` oracle. It rejects
 malformed or unsupported PNGs and enforces encoded-size, dimension, pixel, inflation, and

@@ -561,6 +561,34 @@ class NativeGateTests(unittest.TestCase):
         self.assertTrue((self.root / "evidence" / "paint-ui.log").is_file())
         self.assertTrue(manifest_path.is_file())
 
+    def test_manifest_binds_harness_source_identities(self) -> None:
+        result = self.run_gate()
+
+        harness = result["harness"]
+        self.assertEqual(harness["capture_stage"], "gate_initialization")
+        records = harness["files"]
+        self.assertEqual(
+            [record["path"] for record in records],
+            [
+                "tools/macos_native_usability_gate.py",
+                "tools/macos_native_usability_gate.swift",
+                "tests/e2e/png_rgba.py",
+            ],
+        )
+        repository = Path(gate.__file__).resolve().parents[1]
+        for record in records:
+            with self.subTest(path=record["path"]):
+                content = (repository / record["path"]).read_bytes()
+                self.assertEqual(record["bytes"], len(content))
+                self.assertEqual(record["sha256"], hashlib.sha256(content).hexdigest())
+
+        self.setUp()
+        self.backend.preflight_result = preflight(screen_locked=True)
+        blocked = self.run_gate()
+        self.assertEqual(blocked["outcome"], "BLOCKED")
+        self.assertEqual(blocked["native_execution"], "NOT_RUN")
+        self.assertEqual(blocked["harness"], harness)
+
 
 if __name__ == "__main__":
     unittest.main()
