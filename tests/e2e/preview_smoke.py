@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from png_rgba import PngError, read_png
+from png_rgba import PngError, decode_png
 
 SNAPSHOT_FIELDS = {
     "format",
@@ -28,10 +28,15 @@ SNAPSHOT_FIELDS = {
     "selection",
     "decoded_rgba_sha256",
 }
+LAYER_FIELDS = {"name", "visible", "opacity", "is_background", "blend_mode"}
+SELECTION_FIELDS = {"left", "top", "right", "bottom"}
+BLEND_MODES = {"normal", "multiply", "screen", "overlay"}
 
 
 def load_trace(path: Path) -> dict[str, object]:
     trace = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(trace, dict):
+        raise ValueError(f"command trace must be a JSON object: {path}")
     if trace.get("format") != "paint.r.command-trace" or trace.get("version") != 1:
         raise ValueError(f"unsupported trace format in {path}")
     return trace
@@ -50,12 +55,44 @@ def run_product(binary: Path, trace: Path, output: Path, timeout: float) -> subp
     )
 
 
+def validate_snapshot_shape(snapshot: dict[str, object]) -> None:
+    """Reject semantically incomplete snapshots even when their composite hash matches."""
+    layers = snapshot["layers"]
+    if not isinstance(layers, list):
+        raise ValueError("snapshot layers must be a list")
+    for index, layer in enumerate(layers):
+        if not isinstance(layer, dict) or set(layer) != LAYER_FIELDS:
+            raise ValueError(f"snapshot layer {index} has invalid fields")
+        if not isinstance(layer["name"], str) or not layer["name"]:
+            raise ValueError(f"snapshot layer {index} has an invalid name")
+        if type(layer["visible"]) is not bool or type(layer["is_background"]) is not bool:
+            raise ValueError(f"snapshot layer {index} has invalid boolean metadata")
+        if type(layer["opacity"]) is not int or not 0 <= layer["opacity"] <= 255:
+            raise ValueError(f"snapshot layer {index} has invalid opacity")
+        if layer["blend_mode"] not in BLEND_MODES:
+            raise ValueError(f"snapshot layer {index} has an invalid blend mode")
+    if snapshot["layer_count"] < 1 or snapshot["layer_count"] != len(layers):
+        raise ValueError("snapshot layer_count does not match layers")
+    if not 0 <= snapshot["active_layer_index"] < snapshot["layer_count"]:
+        raise ValueError("snapshot active_layer_index is outside the layer list")
+    selection = snapshot["selection"]
+    if selection is not None:
+        if not isinstance(selection, dict) or set(selection) != SELECTION_FIELDS:
+            raise ValueError("snapshot selection has invalid fields")
+        if any(type(selection[key]) is not int for key in SELECTION_FIELDS):
+            raise ValueError("snapshot selection coordinates must be integers")
+        if selection["left"] >= selection["right"] or selection["top"] >= selection["bottom"]:
+            raise ValueError("snapshot selection must be a nonempty half-open rectangle")
+
+
 def verify_outputs(trace: dict[str, object], output: Path) -> dict[str, object]:
-    composite = output / "composite.png"
-    snapshot_path = output / "snapshot.json"
-    image = read_png(composite)
+    composite_bytes = (output / "composite.png").read_bytes()
+    snapshot_bytes = (output / "snapshot.json").read_bytes()
+    image = decode_png(composite_bytes)
     pixel_hash = hashlib.sha256(image.pixels).hexdigest()
-    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    snapshot = json.loads(snapshot_bytes)
+    if not isinstance(snapshot, dict):
+        raise ValueError("semantic snapshot must be a JSON object")
     missing = SNAPSHOT_FIELDS - snapshot.keys()
     if missing or set(snapshot) != SNAPSHOT_FIELDS:
         raise ValueError(f"snapshot fields differ: missing={sorted(missing)}, actual={sorted(snapshot)}")
@@ -67,17 +104,15 @@ def verify_outputs(trace: dict[str, object], output: Path) -> dict[str, object]:
     for key in ("dirty", "can_undo", "can_redo"):
         if type(snapshot[key]) is not bool:
             raise ValueError(f"snapshot {key} must be a boolean")
-    if not isinstance(snapshot["layers"], list) or not (snapshot["selection"] is None or isinstance(snapshot["selection"], dict)):
-        raise ValueError("snapshot layers/selection have invalid types")
     if (snapshot["width"], snapshot["height"]) != (image.width, image.height):
         raise ValueError("snapshot and PNG dimensions differ")
-    if snapshot["layer_count"] != len(snapshot["layers"]):
-        raise ValueError("snapshot layer_count does not match layers")
+    validate_snapshot_shape(snapshot)
     if snapshot["decoded_rgba_sha256"] != pixel_hash:
         raise ValueError("snapshot pixel hash does not match independently decoded PNG")
 
     expected = trace.get("expect", {})
-    assert isinstance(expected, dict)
+    if not isinstance(expected, dict):
+        raise ValueError("trace expectations must be an object")
     allowed_expectations = {"width", "height", "decoded_rgba_sha256", "layer_count", "active_layer_index", "dirty", "can_undo", "can_redo"}
     unknown_expectations = set(expected) - allowed_expectations
     if unknown_expectations:
@@ -93,6 +128,8 @@ def verify_outputs(trace: dict[str, object], output: Path) -> dict[str, object]:
         "width": image.width,
         "height": image.height,
         "decoded_rgba_sha256": pixel_hash,
+        "png_sha256": hashlib.sha256(composite_bytes).hexdigest(),
+        "snapshot_sha256": hashlib.sha256(snapshot_bytes).hexdigest(),
         "snapshot": {key: snapshot[key] for key in ("layer_count", "active_layer_index", "dirty", "can_undo", "can_redo")},
     }
 
