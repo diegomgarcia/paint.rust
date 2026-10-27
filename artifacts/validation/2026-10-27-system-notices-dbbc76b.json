@@ -1,0 +1,135 @@
+{
+  "agent_commit": "e4475564be026808ca4b0d74860bf16677bb4d8d",
+  "fallback_or_moving_license_used": false,
+  "format": "paint.r.system-notice-provenance",
+  "independent_upstream_verification": {
+    "path": "artifacts/reference-local/round6-5ab0ec2/system-upstream-verification.json",
+    "sha256": "55076a50c276f20a87b891817f7dbd4d356fcc096796b98c5f4279a4f73aaa94"
+  },
+  "limitations": [
+    "The original six-package target was reduced to three exactly verifiable packages.",
+    "40 locked-package notice gaps remain and extraction_complete is false.",
+    "Curated/heuristic extraction is not legal compliance or a linked-binary/native dependency audit.",
+    "Public packaging remains refused; no release or parity status changed."
+  ],
+  "merged_package_workflow_tests": {
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round6-5ab0ec2/merged-package-tests.log",
+      "sha256": "4c61c09d6306b18d9b0a05d229f98c85fa5cfb5099a23bed0bbcd8a936985128"
+    },
+    "passed": 46
+  },
+  "real_collection": {
+    "added_notice_files": [
+      "third-party-notices/files/block2-0.5.1-4f46b37d90/000-LICENSE.txt",
+      "third-party-notices/files/block2-0.6.2-61997e72f7/000-LICENSE.md",
+      "third-party-notices/files/profiling-1.0.18-5b26cc8d1f/000-LICENSE-APACHE",
+      "third-party-notices/files/profiling-1.0.18-5b26cc8d1f/001-LICENSE-MIT"
+    ],
+    "changed_global_files": [
+      "THIRD_PARTY_NOTICES.md",
+      "third-party-notices/index.json"
+    ],
+    "changed_package_entries": [
+      "block2@0.5.1",
+      "block2@0.6.2",
+      "profiling@1.0.18"
+    ],
+    "curated_emitted_files": 38,
+    "curated_supplements": 20,
+    "deterministic_tree": {
+      "entries": 785,
+      "status": "pass",
+      "tree_sha256": "f108ab11b9891ac76748960a5b5d3b2d3fa20b3af68d879c1dc4ee335e4f4790"
+    },
+    "extraction_complete": false,
+    "network_socket_calls": "disabled and not attempted; Cargo metadata offline",
+    "package_count": 457,
+    "packages_with_texts": 417,
+    "remaining_gaps": 40,
+    "removed_files": [],
+    "unchanged_skipped_identities": [
+      "dispatch@0.2.0",
+      "r-efi@5.3.0",
+      "r-efi@6.0.0"
+    ]
+  },
+  "requested_package_count": 6,
+  "skipped_packages": [
+    {
+      "name": "dispatch",
+      "reason": "Locked Cargo repository is HTTP; exact HTTPS-only supplement validation rejects it and the metadata was not rewritten.",
+      "version": "0.2.0"
+    },
+    {
+      "name": "r-efi",
+      "reason": "Exact recorded VCS root tree has no license/notice resource.",
+      "version": "5.3.0"
+    },
+    {
+      "name": "r-efi",
+      "reason": "Exact recorded VCS root tree has no license/notice resource.",
+      "version": "6.0.0"
+    }
+  ],
+  "source_commit": "dbbc76ba381fc42b391c16d60f57624ab16947be",
+  "status": "PASS_THREE_PACKAGE_SUBSET_NOT_LEGAL_CLEARANCE",
+  "supplemented_package_count": 3,
+  "supplemented_packages": [
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "2c132eebf10f5cad5289222520a4a058514204aed6d791f1cf4fe8088b82d15f",
+      "name": "block2",
+      "path_in_vcs": "crates/block2",
+      "repository": "https://github.com/madsmtm/objc2",
+      "vcs_commit": "4fc083f1c6d6784577e38b0ee8dbd344481e2fd2",
+      "version": "0.5.1"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "cdeb9d870516001442e364c5220d3574d2da8dc765554b4a617230d33fa58ef5",
+      "name": "block2",
+      "path_in_vcs": "crates/block2",
+      "repository": "https://github.com/madsmtm/objc2",
+      "vcs_commit": "b4167b582b2f75f9a1be75495c41b765344fd03c",
+      "version": "0.6.2"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5",
+      "name": "profiling",
+      "path_in_vcs": "profiling",
+      "repository": "https://github.com/aclysma/profiling",
+      "vcs_commit": "8271551172eb6fa4cba47369aedd93790c623df9",
+      "version": "1.0.18"
+    }
+  ],
+  "upstream_files": [
+    {
+      "bytes": 1066,
+      "matches_checked_in_bytes": true,
+      "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+      "source_url": "https://raw.githubusercontent.com/madsmtm/objc2/4fc083f1c6d6784577e38b0ee8dbd344481e2fd2/LICENSE.txt"
+    },
+    {
+      "bytes": 1339,
+      "matches_checked_in_bytes": true,
+      "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+      "source_url": "https://raw.githubusercontent.com/madsmtm/objc2/b4167b582b2f75f9a1be75495c41b765344fd03c/LICENSE.md"
+    },
+    {
+      "bytes": 10818,
+      "matches_checked_in_bytes": true,
+      "sha256": "10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551",
+      "source_url": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-APACHE"
+    },
+    {
+      "bytes": 1093,
+      "matches_checked_in_bytes": true,
+      "sha256": "c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333",
+      "source_url": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-MIT"
+    }
+  ],
+  "version": 1
+}
