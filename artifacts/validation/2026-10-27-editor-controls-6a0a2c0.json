@@ -1,0 +1,141 @@
+{
+  "binary": {
+    "bytes": 12592144,
+    "path": "/Users/diegogarcia/Projects/Paint .R/target/release/paint-ui",
+    "sha256": "01f58ef06bd1100117f2c122db81e3507f4485543ce7f8051ea74e1310e3db03"
+  },
+  "features": [
+    "11-color primary palette with transparent checkerboard swatch",
+    "canvas zoom out/in at 25% steps with visible percentage",
+    "fit-canvas zoom",
+    "palette and zoom do not mutate the document"
+  ],
+  "format": "paint.r.editor-controls",
+  "limitations": [
+    "No color wheel or numeric hex input yet.",
+    "Zoom is display-only; no pan/selection-tool parity.",
+    "Packaged app for this exact source, Windows/Linux, hosted CI, signing, legal, and parity gates remain open."
+  ],
+  "native_gate": {
+    "assertions": [
+      {
+        "name": "initial_clean_native_window",
+        "passed": true
+      },
+      {
+        "name": "command_i_modified_document",
+        "passed": true
+      },
+      {
+        "message": "before/after native screenshot RGBA pixels are identical; visual modification is inconclusive",
+        "name": "before_after_screenshots_differ",
+        "passed": true
+      },
+      {
+        "name": "dirty_close_confirmation_observed",
+        "passed": true
+      },
+      {
+        "message": "dirty close confirmation did not remain observable",
+        "name": "dirty_close_blocked_by_confirmation",
+        "passed": true
+      },
+      {
+        "name": "cancel_preserved_modified_session",
+        "passed": true
+      },
+      {
+        "message": "accessible document text changed while canceling the dirty close",
+        "name": "cancel_preserved_accessible_document_state",
+        "passed": true
+      },
+      {
+        "message": "confirmation and canceled screenshot RGBA pixels are identical",
+        "name": "cancel_screenshot_differs_from_confirmation",
+        "passed": true
+      },
+      {
+        "name": "second_dirty_close_confirmation",
+        "passed": true
+      },
+      {
+        "exit_code": 0,
+        "name": "explicit_discard_exit_zero",
+        "passed": true
+      }
+    ],
+    "independent_rgba": [
+      "50eee59130ff55f82297322a211ee818aca632805938f3aef9812562d7a2c49d",
+      "0161b018587ed44809191222b83182dc39fa0b4c476249bbf8fae18414463312",
+      "6596bb104cdea1d0782074111f85fc8777d83adead39ff8482490b5987fd637a",
+      "0161b018587ed44809191222b83182dc39fa0b4c476249bbf8fae18414463312",
+      "6596bb104cdea1d0782074111f85fc8777d83adead39ff8482490b5987fd637a"
+    ],
+    "screenshots": [
+      {
+        "bytes": 785961,
+        "height": 2088,
+        "path": "00-before.png",
+        "pid": 37725,
+        "rgba_sha256": "50eee59130ff55f82297322a211ee818aca632805938f3aef9812562d7a2c49d",
+        "sha256": "698f79834f13680cd712c4a34b3574dd627579bd0c76c71867a2cdcb8f428a34",
+        "width": 2784,
+        "window_id": 7439
+      },
+      {
+        "bytes": 781881,
+        "height": 2088,
+        "path": "01-modified.png",
+        "pid": 37725,
+        "rgba_sha256": "0161b018587ed44809191222b83182dc39fa0b4c476249bbf8fae18414463312",
+        "sha256": "a3d87d199572920ff3b7546b27bb8fdf26407402e7750fa41361e0eaf49210ba",
+        "width": 2784,
+        "window_id": 7439
+      },
+      {
+        "bytes": 808587,
+        "height": 2088,
+        "path": "02-close-confirmation.png",
+        "pid": 37725,
+        "rgba_sha256": "6596bb104cdea1d0782074111f85fc8777d83adead39ff8482490b5987fd637a",
+        "sha256": "04146b447763e57ef07a5ddd3f6e235774561684faac10dc1cce57e64c662fcc",
+        "width": 2784,
+        "window_id": 7439
+      },
+      {
+        "bytes": 781881,
+        "height": 2088,
+        "path": "03-canceled.png",
+        "pid": 37725,
+        "rgba_sha256": "0161b018587ed44809191222b83182dc39fa0b4c476249bbf8fae18414463312",
+        "sha256": "a3d87d199572920ff3b7546b27bb8fdf26407402e7750fa41361e0eaf49210ba",
+        "width": 2784,
+        "window_id": 7439
+      },
+      {
+        "bytes": 808587,
+        "height": 2088,
+        "path": "04-second-close-confirmation.png",
+        "pid": 37725,
+        "rgba_sha256": "6596bb104cdea1d0782074111f85fc8777d83adead39ff8482490b5987fd637a",
+        "sha256": "04146b447763e57ef07a5ddd3f6e235774561684faac10dc1cce57e64c662fcc",
+        "width": 2784,
+        "window_id": 7439
+      }
+    ]
+  },
+  "process": {
+    "exit_code": 0,
+    "pid": 37725
+  },
+  "product_source_commit": "6a0a2c05d40a88d6c7badbd5a1b1fd20be4e0c51",
+  "public_release": false,
+  "status": "PASS_COLOR_PALETTE_ZOOM_AND_LIVE_NATIVE_SMOKE",
+  "tests": {
+    "failed": 0,
+    "native_gate": 27,
+    "paint_ui": 29,
+    "strict_clippy": "pass"
+  },
+  "version": 1
+}
