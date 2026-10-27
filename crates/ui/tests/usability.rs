@@ -301,6 +301,33 @@ fn open_dialog_previews_a_valid_png_without_changing_the_session() {
 }
 
 #[test]
+fn zoom_controls_change_canvas_preview_without_mutating_the_document() {
+    let mut harness = app();
+    let before = harness.state().session().document().clone();
+
+    click(&mut harness, "Zoom in");
+    click(&mut harness, "Zoom in");
+    harness.get_by_label_contains("150%");
+    click(&mut harness, "Zoom out");
+    harness.get_by_label_contains("125%");
+    assert_eq!(harness.state().session().document(), &before);
+}
+
+#[test]
+fn palette_updates_primary_color_without_mutating_the_document() {
+    let mut harness = app();
+    let before = harness.state().session().document().clone();
+
+    click(&mut harness, "Preset red");
+    assert_eq!(harness.state().fill_color(), Bgra::new(0, 0, 255, 255));
+    harness.get_by_label_contains("Primary color preview · #FF0000");
+
+    click(&mut harness, "Preset transparent");
+    assert_eq!(harness.state().fill_color(), Bgra::TRANSPARENT);
+    assert_eq!(harness.state().session().document(), &before);
+}
+
+#[test]
 fn png_browser_navigates_and_previews_without_mutating_the_session() {
     let root = TempDir::new().expect("temp dir");
     let nested = root.path().join("nested");

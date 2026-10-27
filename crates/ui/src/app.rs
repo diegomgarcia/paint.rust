@@ -16,6 +16,19 @@ const MAX_PREVIEW_DECODED_BYTES: usize = 64 * 1024 * 1024;
 const PREVIEW_WIDTH: f32 = 180.0;
 const PREVIEW_HEIGHT: f32 = 140.0;
 const MAX_BROWSER_ENTRIES: usize = 200;
+const PRESET_COLORS: &[(&str, Bgra)] = &[
+    ("Preset black", Bgra::BLACK),
+    ("Preset white", Bgra::WHITE),
+    ("Preset red", Bgra::new(0, 0, 255, 255)),
+    ("Preset orange", Bgra::new(0, 128, 255, 255)),
+    ("Preset yellow", Bgra::new(0, 255, 255, 255)),
+    ("Preset green", Bgra::new(0, 255, 0, 255)),
+    ("Preset cyan", Bgra::new(255, 255, 0, 255)),
+    ("Preset blue", Bgra::new(255, 0, 0, 255)),
+    ("Preset magenta", Bgra::new(255, 0, 255, 255)),
+    ("Preset gray", Bgra::new(128, 128, 128, 255)),
+    ("Preset transparent", Bgra::TRANSPARENT),
+];
 
 /// Original development-preview shell. `AppSession` remains the only document writer.
 pub struct PaintApp {
@@ -24,6 +37,7 @@ pub struct PaintApp {
     selection_input: SelectionInput,
     texture: Option<egui::TextureHandle>,
     texture_dirty: bool,
+    zoom: f32,
     layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
     next_layer_number: usize,
     status: String,
@@ -41,6 +55,7 @@ impl PaintApp {
             selection_input: SelectionInput::default(),
             texture: None,
             texture_dirty: true,
+            zoom: 1.0,
             layer_thumbnails: HashMap::new(),
             next_layer_number: 1,
             status: "New 800×600 opaque-white document".to_owned(),
@@ -79,6 +94,7 @@ impl PaintApp {
         self.pending_discard = None;
         self.focus_discard_buttons = false;
         self.texture_dirty = true;
+        self.zoom = 1.0;
         self.layer_thumbnails.clear();
         self.status = "New 800×600 opaque-white document".to_owned();
     }
@@ -126,6 +142,7 @@ impl PaintApp {
                 self.session = session;
                 self.next_layer_number = 1;
                 self.texture_dirty = true;
+                self.zoom = 1.0;
                 self.layer_thumbnails.clear();
                 self.path_dialog = None;
                 self.status = format!("Opened flattened PNG: {}", path_buffer.display());
@@ -425,6 +442,16 @@ impl PaintApp {
                         "Alpha {}% · canonical BGRA channels",
                         (u16::from(color.a) * 100 / 255)
                     ));
+                    ui.label("Palette");
+                    ui.horizontal_wrapped(|ui| {
+                        for &(label, preset) in PRESET_COLORS {
+                            if color_swatch(ui, label, preset, preset == self.fill_color).clicked()
+                            {
+                                self.fill_color = preset;
+                            }
+                        }
+                    });
+                    ui.separator();
                     color_slider(ui, "Fill blue", &mut self.fill_color.b);
                     color_slider(ui, "Fill green", &mut self.fill_color.g);
                     color_slider(ui, "Fill red", &mut self.fill_color.r);
@@ -476,7 +503,28 @@ impl PaintApp {
     fn canvas_panel(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show(ui, |ui| {
             let size = self.session.document().size();
-            ui.heading(format!("Canvas — {}×{}", size.width(), size.height()));
+            let mut fit_requested = false;
+            ui.horizontal(|ui| {
+                ui.heading(format!("Canvas — {}×{}", size.width(), size.height()));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if labeled_button(ui, "Fit", "Fit canvas").clicked() {
+                        fit_requested = true;
+                    }
+                    if labeled_button(ui, "+", "Zoom in").clicked() {
+                        self.zoom = (self.zoom + 0.25).min(8.0);
+                    }
+                    ui.label(format!("{}%", (self.zoom * 100.0).round() as u32));
+                    if labeled_button(ui, "−", "Zoom out").clicked() {
+                        self.zoom = (self.zoom - 0.25).max(0.1);
+                    }
+                });
+            });
+            if fit_requested {
+                let available = ui.available_size();
+                self.zoom = ((available.x - 24.0).max(32.0) / size.width() as f32)
+                    .min((available.y - 24.0).max(32.0) / size.height() as f32)
+                    .clamp(0.05, 8.0);
+            }
             ui.label("Actual composed session surface");
             egui::ScrollArea::both()
                 .auto_shrink([false, false])
@@ -484,7 +532,10 @@ impl PaintApp {
                     if let Some(texture) = &self.texture {
                         ui.add(
                             egui::Image::from_texture(texture)
-                                .fit_to_original_size(1.0)
+                                .fit_to_exact_size(egui::vec2(
+                                    size.width() as f32 * self.zoom,
+                                    size.height() as f32 * self.zoom,
+                                ))
                                 .alt_text("Composed document canvas"),
                         );
                     } else {
@@ -1148,6 +1199,68 @@ fn open_png_preview(
         PREVIEW_HEIGHT,
     );
     Ok(DialogPreview { label, texture })
+}
+
+fn labeled_button(ui: &mut egui::Ui, text: &str, label: &'static str) -> egui::Response {
+    let response = ui.button(text);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
+    response.on_hover_text(label)
+}
+
+fn color_swatch(
+    ui: &mut egui::Ui,
+    label: &'static str,
+    color: Bgra,
+    selected: bool,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(24.0, 24.0), egui::Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        let checker = 6.0;
+        let mut y = rect.top();
+        let mut row = 0;
+        while y < rect.bottom() {
+            let mut x = rect.left();
+            let mut column = 0;
+            while x < rect.right() {
+                let cell = egui::Rect::from_min_max(
+                    egui::pos2(x, y),
+                    egui::pos2(
+                        (x + checker).min(rect.right()),
+                        (y + checker).min(rect.bottom()),
+                    ),
+                );
+                painter.rect_filled(
+                    cell,
+                    0,
+                    if (row + column) % 2 == 0 {
+                        egui::Color32::from_gray(190)
+                    } else {
+                        egui::Color32::from_gray(110)
+                    },
+                );
+                x += checker;
+                column += 1;
+            }
+            y += checker;
+            row += 1;
+        }
+        painter.rect_filled(
+            rect,
+            3,
+            egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+        );
+        let stroke = if selected {
+            egui::Stroke::new(2.0, egui::Color32::WHITE)
+        } else if response.hovered() {
+            ui.visuals().widgets.hovered.bg_stroke
+        } else {
+            egui::Stroke::new(1.0, egui::Color32::from_gray(80))
+        };
+        painter.rect_stroke(rect, 3, stroke, egui::StrokeKind::Inside);
+    }
+    response.on_hover_text(label)
 }
 
 fn color_preview(ui: &mut egui::Ui, color: Bgra) {
