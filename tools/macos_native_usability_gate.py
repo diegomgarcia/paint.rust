@@ -513,6 +513,8 @@ class NativeUsabilityGate:
         except NativeCommandError as error:
             if error.code in BLOCKED_CODES:
                 raise GateBlocked(error.code, f"{description}: {error}") from error
+            if error.code == "AX_UNAVAILABLE":
+                raise GateError("AX_UNAVAILABLE", f"{description}: {error}") from error
             raise GateError("NATIVE_COMMAND_FAILED", f"{description}: {error} ({error.code})") from error
 
     def _require(self, condition: bool, name: str, code: str, message: str) -> None:
@@ -552,6 +554,10 @@ class NativeUsabilityGate:
                     self.evidence.assertion(assertion_name, True)
                     return observed
             except GateError as error:
+                if error.code == "AX_UNAVAILABLE":
+                    last = str(error)
+                    self._sleep(min(self.config.poll_interval, max(0.0, end - time.monotonic())))
+                    continue
                 if error.code in {"INCONCLUSIVE_AX", "AMBIGUOUS_NATIVE_WINDOW", "INCONCLUSIVE_WINDOW", "INCONCLUSIVE_PROCESS"}:
                     self.evidence.assertion(assertion_name, False, message=str(error))
                     raise

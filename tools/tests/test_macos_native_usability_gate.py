@@ -154,6 +154,7 @@ class FakeBackend:
         self.capture_sequence = 0
         self.fail_screenshots = False
         self.truncated_ax = False
+        self.ax_unavailable_observations = 0
         self.cancel_unfocused = False
         self.cancel_extra_text: str | None = None
         self.cancel_finished = False
@@ -176,6 +177,9 @@ class FakeBackend:
     def observe(self, pid: int) -> dict[str, object]:
         self._check_lock()
         self.actions.append(("observe", pid))
+        if self.ax_unavailable_observations > 0:
+            self.ax_unavailable_observations -= 1
+            raise gate.NativeCommandError("AX_UNAVAILABLE", "simulated startup AX delay")
         return observation(
             pid,
             running=self.process.returncode is None,
@@ -356,6 +360,16 @@ class NativeGateTests(unittest.TestCase):
         self.assertEqual(result["outcome"], "FAIL")
         self.assertEqual(result["error"]["code"], "OBSERVATION_TIMEOUT")
         self.assertFalse(any(item["name"] == "command_i_modified_document" and item["passed"] for item in result["assertions"]))
+
+    def test_transient_ax_unavailability_is_retried_within_startup(self) -> None:
+        self.backend.ax_unavailable_observations = 2
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "PASS")
+        self.assertEqual(result["native_execution"], "COMPLETED")
+        observed = [action for action in self.backend.actions if action[0] == "observe"]
+        self.assertGreaterEqual(len(observed), 3)
 
     def test_cancel_must_preserve_modified_session_and_window(self) -> None:
         self.backend.cancel_clears_modified = True
