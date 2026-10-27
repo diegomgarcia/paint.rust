@@ -1,0 +1,96 @@
+{
+  "archive": {
+    "bytes": 9159794,
+    "name": "paint-r-0.1.0-linux-x86_64.tar.gz",
+    "sha256": "10fa6fb992bc4056c17e216ee3b637daf85ca0c33d11cfdb3adbcf22585254f4",
+    "sidecar_sha256": "6b8a6dd108b85cdbbf699a0474c075f0dabd78d02cd9226bd5416e218d9fb040",
+    "verification_sha256": "b38fcf50d2f1776f5f3681c03ed6f7e4cacabb99c3fd4becaa49d8d8f97918fe"
+  },
+  "archive_promoted_path": "artifacts/preview/linux-x64-5af5981/paint-r-0.1.0-linux-x86_64.tar.gz",
+  "binary": {
+    "bytes": 22919680,
+    "executable_after_independent_extract": true,
+    "format": "ELF 64",
+    "machine": "0x003e",
+    "sha256": "c18eb9a034f30f81bbd651341b41e4c7cf0c36ac6d362a2453f383447ac848b8"
+  },
+  "binary_reproduction": {
+    "bytes": 22919680,
+    "kind": "file",
+    "sha256": "c18eb9a034f30f81bbd651341b41e4c7cf0c36ac6d362a2453f383447ac848b8",
+    "status": "pass"
+  },
+  "environment": {
+    "build_targets": [
+      "fresh clean target-a",
+      "independent warmed target-b"
+    ],
+    "host": "Apple Silicon macOS",
+    "native_x86_64_hardware": false,
+    "userspace": "x86_64 Linux",
+    "vm": "Lima VZ ARM64 with Rosetta"
+  },
+  "format": "paint.r.linux-x64-emulated-artifact",
+  "limitations": [
+    "Emulated x86_64 userspace under Rosetta, not native Linux x86_64 hardware.",
+    "Headless/package gates only; no native Linux window/input acceptance.",
+    "Hosted three-OS CI and Windows remain unavailable.",
+    "Unsigned internal preview; ten notice/legal gaps remain."
+  ],
+  "package_output_tree": {
+    "entries": 3,
+    "files": [
+      {
+        "bytes": 9159794,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz",
+        "sha256": "10fa6fb992bc4056c17e216ee3b637daf85ca0c33d11cfdb3adbcf22585254f4"
+      },
+      {
+        "bytes": 100,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz.sha256",
+        "sha256": "6b8a6dd108b85cdbbf699a0474c075f0dabd78d02cd9226bd5416e218d9fb040"
+      },
+      {
+        "bytes": 573,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz.verification.json",
+        "sha256": "b38fcf50d2f1776f5f3681c03ed6f7e4cacabb99c3fd4becaa49d8d8f97918fe"
+      }
+    ],
+    "kind": "directory",
+    "status": "pass",
+    "tree_sha256": "3446ac95e20dde211579bb59408b4833dd087f46c7d8e7d195d41cf3598f4bd1"
+  },
+  "package_source_commit": "5af5981f5757dbd2f8719f70a0274b6aa5b87c70",
+  "payload": {
+    "all_hashes_verified": true,
+    "entries": 822,
+    "layer_flips": true,
+    "manifest_hash_records": 821,
+    "notices": {
+      "curated_supplements": 50,
+      "packages_with_texts": 447,
+      "remaining_gaps": 10
+    },
+    "updated_ledger_embedded": true
+  },
+  "post_extract_smoke": {
+    "repeat": 2,
+    "status": "pass",
+    "trace_count": 2
+  },
+  "product_source_commit": "5af5981f5757dbd2f8719f70a0274b6aa5b87c70",
+  "public_release": false,
+  "status": "PASS_CURRENT_LINUX_X64_FLIP_ARTIFACT_AND_STRICT_GATE",
+  "strict_gate": {
+    "clippy_deny_warnings": "pass",
+    "failed": 0,
+    "fmt": "pass",
+    "log": {
+      "path": "artifacts/reference-local/linux-x64-round18/linux-strict-gate.log",
+      "sha256": "858f091a857e3af44b83c90ab565b4e78ee2822994ebb73b28bcd9b49b6659ff"
+    },
+    "test_result_records": 40,
+    "workspace_tests_passed": 218
+  },
+  "version": 1
+}
