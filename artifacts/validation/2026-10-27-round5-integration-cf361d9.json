@@ -1,0 +1,130 @@
+{
+  "external_gates": {
+    "hosted_three_os_ci": "NOT_RUN",
+    "native_windows_linux_window_usability": "NOT_RUN",
+    "paintnet_5_1_12_full_parity": "OPEN",
+    "real_macos_window_keyboard": "NOT_RUN_HOST_LOCKED; current streaming revision not executed live",
+    "remaining_notice_legal_asset_font_review": "OPEN",
+    "signing_notarization_installer": "OPEN",
+    "stock_writer_open": "NOT_RUN",
+    "windows_qga_round5_probe": "NOT_REPEATED; last bounded probe failed with UTM RPC -2700",
+    "windows_x64_product_execution": "NOT_RUN"
+  },
+  "failed": 0,
+  "format": "paint.r.round5-integration",
+  "goal_complete": false,
+  "ignored": 0,
+  "integrated_log": {
+    "path": "artifacts/reference-local/round5-a4d60eb/integrated-final.log",
+    "sha256": "640c07d47a8461d88a61534fcdf8e5ce0ba15e41e5382655d483ae65823a5ffa"
+  },
+  "native_command_streaming": {
+    "combined_retained_output_cap": true,
+    "early_overflow_terminates_exact_spawned_process": true,
+    "expected_red_old_behavior": "2 MiB child then sleep returned COMMAND_TIMEOUT after buffering instead of COMMAND_OUTPUT_LIMIT",
+    "orchestration_passed": 22,
+    "real_child_stress_passed": 50,
+    "receipt": "artifacts/validation/2026-10-27-native-command-streaming-a250c1c.json",
+    "round5_native_execution": "NOT_RUN"
+  },
+  "native_pixel_evidence": {
+    "current_revision_executed_against_real_window": false,
+    "pixel_regressions_included_in_current_22_tests": true,
+    "receipt": "artifacts/validation/2026-10-27-native-pixel-evidence-7c62176.json"
+  },
+  "native_streaming_commit": "a250c1cf4f104fb92f846d9ce1f3541b864bab2a",
+  "notice_merge_commit": "8e28c8a46d332c758c216a1c89c519e159908f00",
+  "notice_provenance": {
+    "archived_and_unpacked_vcs_match": true,
+    "curated_supplements": 17,
+    "deterministic_tree_entries": 781,
+    "deterministic_tree_sha256": "4d69bd957cc0a7a17399f75dae270f664aeae91a0d3d78464606fde008a880ac",
+    "extraction_complete": false,
+    "fallback_or_moving_license_used": false,
+    "independent_upstream_files_verified": 10,
+    "new_packages": [
+      "jni",
+      "jni-macros",
+      "jni-sys-macros",
+      "ndk",
+      "ndk-context",
+      "ndk-sys"
+    ],
+    "package_count": 457,
+    "public_packaging": "REFUSED",
+    "receipt": "artifacts/validation/2026-10-27-android-jni-notices-8e28c8a.json",
+    "remaining_gaps": 43,
+    "requested_six_package_batch_completed": true,
+    "with_texts": 414
+  },
+  "package_logs": [
+    {
+      "path": "artifacts/reference-local/round5-a4d60eb/package-a.log",
+      "sha256": "b71f1e41fbd0a9d0d9d4e0d684aa571b2e22b2c9a6dbcdc6ac2f5b86d4b8a07a"
+    },
+    {
+      "path": "artifacts/reference-local/round5-a4d60eb/package-b.log",
+      "sha256": "47450e104d49ee9d5140b48de4f2539746dd420312311690e361980aac3b5f0c"
+    }
+  ],
+  "property_stress": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 93,
+    "proptest_cases": 8192,
+    "scope": [
+      "paint-core",
+      "paint-document",
+      "paint-raster",
+      "paint-pdn3",
+      "paint-plugin-bridge"
+    ],
+    "source_commit": "00d8819ca662afb20e24c375503aef37839d4617",
+    "suite_records": 21
+  },
+  "real_package_integration": {
+    "archive": {
+      "bytes": 7210323,
+      "path": "artifacts/preview/round5-cf361d9-a/paint-r-0.1.0-macos-aarch64.zip",
+      "sha256": "ee07c570b057721579416896bd2f30c4e736053a356ea9849121325c611c00f5"
+    },
+    "binary_sha256": "ad69dcd9dbbe22d9fef3bc8e31265fcd87220a1764ee8fbff3b5eedb86e1d922",
+    "curated_files_verified_inside_archive": 34,
+    "embedded_ledger_matches_source": true,
+    "embedded_ledger_sha256": "169dbb5ba044e8436601674344ee9c54f51fc10b739871f5ab43ea3d9b7b78f6",
+    "fresh_binary_reproduction": "NOT_RUN_IN_THIS_INTEGRATION",
+    "native_window": "NOT_RUN_HOST_LOCKED",
+    "package_output_tree_sha256": "c7d9e2bd45bb79db4622dea0cde972631481967c4b5781fb4ca8c947e1db219d",
+    "post_extract_smoke": {
+      "repeat": 2,
+      "status": "pass",
+      "trace_count": 2
+    },
+    "public_release": false
+  },
+  "rust_full_gate": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 205,
+    "product_tree_unchanged_at_round5_head": true,
+    "source_commit": "01dcbb8f4a99d50115f26747acf1ddb509d1bedc",
+    "suite_records": 40
+  },
+  "source_commit": "cf361d9d86aa6d7af8e536045a7cfc61fe6c020d",
+  "static_checks": {
+    "actionlint": "pass",
+    "launcher_shellcheck": "pass",
+    "swift_typecheck": "pass"
+  },
+  "status": "PASS_ENGINEERING_ROUND_NOT_A_PUBLIC_RELEASE",
+  "tests": {
+    "cross_language_live": 8,
+    "dotnet": 12,
+    "native_orchestration": 22,
+    "native_real_child_stress": 50,
+    "package_workflow": 46,
+    "python_end_to_end": 18,
+    "reference_tools": 30
+  },
+  "version": 1
+}
