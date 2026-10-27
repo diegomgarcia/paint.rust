@@ -417,3 +417,125 @@ fn snapshot_has_exact_protocol_metadata_and_serializable_shape() {
     assert_eq!(object["layers"][0]["blend_mode"], "normal");
     assert_eq!(object["selection"]["right"], 1);
 }
+
+#[test]
+fn multiple_pixel_edits_rebase_every_older_history_entry() {
+    let initial = Bgra::new(1, 2, 3, 255);
+    let first = Bgra::new(10, 20, 30, 200);
+    let second = Bgra::new(200, 100, 50, 44);
+    let third = second.inverted_rgb();
+    let mut session = session_with_color(1, 1, initial);
+    session.execute(Command::Fill(first)).unwrap();
+    session.execute(Command::Fill(second)).unwrap();
+    session.execute(Command::Invert).unwrap();
+    assert_eq!(pixel(&session, 0, 0), third);
+
+    for _ in 0..6 {
+        session.undo().unwrap();
+        assert_eq!(pixel(&session, 0, 0), second);
+        session.undo().unwrap();
+        assert_eq!(pixel(&session, 0, 0), first);
+        session.undo().unwrap();
+        assert_eq!(pixel(&session, 0, 0), initial);
+        assert!(!session.dirty());
+        assert!(!session.can_undo());
+        assert!(session.can_redo());
+
+        session.redo().unwrap();
+        assert_eq!(pixel(&session, 0, 0), first);
+        session.redo().unwrap();
+        assert_eq!(pixel(&session, 0, 0), second);
+        session.redo().unwrap();
+        assert_eq!(pixel(&session, 0, 0), third);
+        assert!(session.dirty());
+        assert!(session.can_undo());
+        assert!(!session.can_redo());
+    }
+}
+
+#[test]
+fn added_layer_pixels_and_properties_survive_complete_history_cycles() {
+    let mut session = session_with_color(1, 1, Bgra::WHITE);
+    session
+        .execute(Command::AddLayer {
+            name: "编辑 🎨".to_owned(),
+            opacity: 200,
+            visible: true,
+        })
+        .unwrap();
+    let layer_id = session.document().layers()[1].id();
+    session.execute(Command::Fill(Bgra::BLACK)).unwrap();
+    session
+        .execute(Command::SetLayerOpacity {
+            index: 1,
+            opacity: 90,
+        })
+        .unwrap();
+    session
+        .execute(Command::SetLayerVisibility {
+            index: 1,
+            visible: false,
+        })
+        .unwrap();
+
+    for _ in 0..4 {
+        session.undo().unwrap();
+        assert!(session.document().layers()[1].is_visible());
+        session.undo().unwrap();
+        assert_eq!(session.document().layers()[1].opacity(), 200);
+        session.undo().unwrap();
+        assert_eq!(
+            session.document().layers()[1].surface().pixels(),
+            &[Bgra::TRANSPARENT]
+        );
+        session.undo().unwrap();
+        assert_eq!(session.document().layers().len(), 1);
+        assert!(!session.dirty());
+        assert!(!session.can_undo());
+
+        session.redo().unwrap();
+        assert_eq!(session.document().layers().len(), 2);
+        assert_eq!(session.document().layers()[1].id(), layer_id);
+        assert_eq!(session.document().layers()[1].name(), "编辑 🎨");
+        session.redo().unwrap();
+        assert_eq!(
+            session.document().layers()[1].surface().pixels(),
+            &[Bgra::BLACK]
+        );
+        session.redo().unwrap();
+        assert_eq!(session.document().layers()[1].opacity(), 90);
+        session.redo().unwrap();
+        assert!(!session.document().layers()[1].is_visible());
+        assert!(session.dirty());
+        assert!(!session.can_redo());
+    }
+}
+
+#[test]
+fn undoing_an_inactive_layer_add_does_not_undo_later_active_ui_state() {
+    let mut session = session_with_color(1, 1, Bgra::WHITE);
+    session
+        .execute(Command::AddLayer {
+            name: "A".to_owned(),
+            opacity: 255,
+            visible: true,
+        })
+        .unwrap();
+    session
+        .execute(Command::AddLayer {
+            name: "B".to_owned(),
+            opacity: 255,
+            visible: true,
+        })
+        .unwrap();
+    let background = session.document().layers()[0].id();
+    session
+        .execute(Command::SetActiveLayer { index: 0 })
+        .unwrap();
+    let history_revision = session.document().revision();
+
+    session.undo().unwrap();
+    assert_eq!(session.document().layers().len(), 2);
+    assert_eq!(session.document().active_layer_id(), background);
+    assert!(session.document().revision().get() > history_revision.get());
+}

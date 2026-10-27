@@ -375,8 +375,11 @@ impl Mutation {
                         "layer order changed outside the session history",
                     ));
                 }
+                let removed_was_active = document.active_layer_id() == layer.id();
                 let removed = document.remove_layer(layer.id())?;
-                document.set_active_layer(*restore_active)?;
+                if removed_was_active {
+                    document.set_active_layer(*restore_active)?;
+                }
                 Ok(Some(Self::AddLayer {
                     layer: removed,
                     index: actual_index,
@@ -517,5 +520,53 @@ fn blend_mode_tag(mode: paint_document::BlendMode) -> u8 {
         paint_document::BlendMode::Multiply => 1,
         paint_document::BlendMode::Screen => 2,
         paint_document::BlendMode::Overlay => 3,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use paint_core::Size;
+
+    use super::*;
+
+    #[test]
+    fn rebasing_a_patch_changes_only_its_expected_revision() {
+        let rect = Rect::new(0, 0, 1, 1).unwrap();
+        let patch = PixelPatch::new(
+            LayerId::new(7),
+            Revision::ZERO,
+            rect,
+            vec![Bgra::WHITE],
+            vec![Bgra::BLACK],
+        )
+        .unwrap();
+
+        let rebased = rebase_patch(&patch, Revision::new(41)).unwrap();
+        assert_eq!(rebased.layer_id(), patch.layer_id());
+        assert_eq!(rebased.expected_revision(), Revision::new(41));
+        assert_eq!(rebased.rect(), patch.rect());
+        assert_eq!(rebased.before(), patch.before());
+        assert_eq!(rebased.after(), patch.after());
+    }
+
+    #[test]
+    fn content_fingerprint_excludes_ui_revisions_but_tracks_exact_content() {
+        let size = Size::new(1, 1).unwrap();
+        let surface = Surface::filled(size, Bgra::new(1, 2, 3, 4)).unwrap();
+        let background = Layer::new(LayerId::new(1), "Background", surface).with_background(true);
+        let mut document = Document::from_layers(size, vec![background]).unwrap();
+        let second = document.add_layer("second").unwrap();
+        let baseline = content_fingerprint(&document);
+
+        document.set_active_layer(LayerId::new(1)).unwrap();
+        document
+            .set_selection(Some(Rect::new(-1, -1, 2, 2).unwrap()))
+            .unwrap();
+        assert_eq!(content_fingerprint(&document), baseline);
+
+        document.set_layer_visibility(second, false).unwrap();
+        assert_ne!(content_fingerprint(&document), baseline);
+        document.set_layer_visibility(second, true).unwrap();
+        assert_eq!(content_fingerprint(&document), baseline);
     }
 }
