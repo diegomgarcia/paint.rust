@@ -28,3 +28,23 @@ pub fn color_from_hsv(hue_degrees: f32, saturation: f32, value: f32, alpha: u8) 
     let channel = |component: f32| ((component + match_value) * 255.0).round() as u8;
     Bgra::new(channel(blue), channel(green), channel(red), alpha)
 }
+
+/// Parses `RRGGBB` or `RRGGBBAA` with an optional leading `#`.
+pub fn color_from_hex(text: &str) -> Result<Bgra, String> {
+    let digits = text.trim().strip_prefix('#').unwrap_or(text.trim());
+    if digits.len() != 6 && digits.len() != 8 {
+        return Err("hex color must contain 6 or 8 digits".to_owned());
+    }
+    if !digits.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("hex color contains a non-hexadecimal digit".to_owned());
+    }
+    let pair = |start: usize| {
+        u8::from_str_radix(&digits[start..start + 2], 16)
+            .map_err(|_| "hex color contains an invalid byte".to_owned())
+    };
+    let red = pair(0)?;
+    let green = pair(2)?;
+    let blue = pair(4)?;
+    let alpha = if digits.len() == 8 { pair(6)? } else { u8::MAX };
+    Ok(Bgra::new(blue, green, red, alpha))
+}

@@ -34,6 +34,8 @@ const PRESET_COLORS: &[(&str, Bgra)] = &[
 pub struct PaintApp {
     session: AppSession,
     fill_color: Bgra,
+    hex_input: String,
+    hex_error: Option<String>,
     selection_input: SelectionInput,
     texture: Option<egui::TextureHandle>,
     texture_dirty: bool,
@@ -52,6 +54,8 @@ impl PaintApp {
         let mut app = Self {
             session: default_session(),
             fill_color: Bgra::BLACK,
+            hex_input: String::new(),
+            hex_error: None,
             selection_input: SelectionInput::default(),
             texture: None,
             texture_dirty: true,
@@ -432,6 +436,7 @@ impl PaintApp {
             .show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.heading("Colors");
+                    let initial_color = self.fill_color;
                     let color = self.fill_color;
                     color_preview(ui, color);
                     ui.label(format!(
@@ -442,6 +447,28 @@ impl PaintApp {
                         "Alpha {}% · canonical BGRA channels",
                         (u16::from(color.a) * 100 / 255)
                     ));
+                    ui.horizontal(|ui| {
+                        let label = ui.label("Hex color");
+                        let _response = ui
+                            .text_edit_singleline(&mut self.hex_input)
+                            .labelled_by(label.id);
+                        if ui.button("Apply color").clicked() {
+                            match crate::color_from_hex(&self.hex_input) {
+                                Ok(parsed) => {
+                                    self.fill_color = parsed;
+                                    self.hex_input = format_hex_color(parsed);
+                                    self.hex_error = None;
+                                }
+                                Err(error) => self.hex_error = Some(error),
+                            }
+                        }
+                    });
+                    if let Some(error) = &self.hex_error {
+                        ui.colored_label(
+                            egui::Color32::LIGHT_RED,
+                            format!("Invalid hex color: {error}"),
+                        );
+                    }
                     ui.label("Color wheel");
                     if let Some(color) = color_wheel(ui, self.fill_color) {
                         self.fill_color = color;
@@ -460,6 +487,10 @@ impl PaintApp {
                     color_slider(ui, "Fill green", &mut self.fill_color.g);
                     color_slider(ui, "Fill red", &mut self.fill_color.r);
                     color_slider(ui, "Fill alpha", &mut self.fill_color.a);
+                    if self.fill_color != initial_color {
+                        self.hex_input = format_hex_color(self.fill_color);
+                        self.hex_error = None;
+                    }
                     let color = self.fill_color;
                     ui.colored_label(
                         egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
@@ -1203,6 +1234,17 @@ fn open_png_preview(
         PREVIEW_HEIGHT,
     );
     Ok(DialogPreview { label, texture })
+}
+
+fn format_hex_color(color: Bgra) -> String {
+    if color.a == u8::MAX {
+        format!("#{:02X}{:02X}{:02X}", color.r, color.g, color.b)
+    } else {
+        format!(
+            "#{:02X}{:02X}{:02X}{:02X}",
+            color.r, color.g, color.b, color.a
+        )
+    }
 }
 
 fn color_wheel(ui: &mut egui::Ui, current: Bgra) -> Option<Bgra> {

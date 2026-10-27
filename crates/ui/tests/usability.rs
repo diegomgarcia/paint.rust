@@ -301,6 +301,32 @@ fn open_dialog_previews_a_valid_png_without_changing_the_session() {
 }
 
 #[test]
+fn hex_color_input_applies_exact_rgb_and_alpha() {
+    assert_eq!(
+        paint_ui::color_from_hex("#FF0000").expect("red"),
+        Bgra::new(0, 0, 255, 255)
+    );
+    assert_eq!(
+        paint_ui::color_from_hex("00FF0080").expect("green alpha"),
+        Bgra::new(0, 255, 0, 128)
+    );
+    assert!(paint_ui::color_from_hex("#12345").is_err());
+    assert!(paint_ui::color_from_hex("#GG0000").is_err());
+
+    let mut harness = app();
+    let before = harness.state().session().document().clone();
+    let field = harness.get_by_label("Hex color");
+    field.click();
+    field.type_text("#FF8000");
+    harness.run();
+    click(&mut harness, "Apply color");
+
+    assert_eq!(harness.state().fill_color(), Bgra::new(0, 128, 255, 255));
+    harness.get_by_label_contains("Primary color preview · #FF8000");
+    assert_eq!(harness.state().session().document(), &before);
+}
+
+#[test]
 fn color_wheel_exposes_accessible_hsv_color_selection() {
     assert_eq!(
         paint_ui::color_from_hsv(0.0, 1.0, 1.0, 255),
