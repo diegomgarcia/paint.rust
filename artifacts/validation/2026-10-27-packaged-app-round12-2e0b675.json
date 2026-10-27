@@ -1,0 +1,178 @@
+{
+  "archive": {
+    "bytes": 7317778,
+    "path": "artifacts/preview/round12-2e0b675-a/paint-r-0.1.0-macos-aarch64.zip",
+    "sha256": "938c0c51a588a9e89e0c25c75bfb7880d8f4fa699df30f15694c048f4b8590b7"
+  },
+  "binary": "01f58ef06bd1100117f2c122db81e3507f4485543ce7f8051ea74e1310e3db03",
+  "extracted_app_native_gate": {
+    "assertions": [
+      {
+        "name": "initial_clean_native_window",
+        "passed": true
+      },
+      {
+        "name": "command_i_modified_document",
+        "passed": true
+      },
+      {
+        "message": "before/after native screenshot RGBA pixels are identical; visual modification is inconclusive",
+        "name": "before_after_screenshots_differ",
+        "passed": true
+      },
+      {
+        "name": "dirty_close_confirmation_observed",
+        "passed": true
+      },
+      {
+        "message": "dirty close confirmation did not remain observable",
+        "name": "dirty_close_blocked_by_confirmation",
+        "passed": true
+      },
+      {
+        "name": "cancel_preserved_modified_session",
+        "passed": true
+      },
+      {
+        "message": "accessible document text changed while canceling the dirty close",
+        "name": "cancel_preserved_accessible_document_state",
+        "passed": true
+      },
+      {
+        "message": "confirmation and canceled screenshot RGBA pixels are identical",
+        "name": "cancel_screenshot_differs_from_confirmation",
+        "passed": true
+      },
+      {
+        "name": "second_dirty_close_confirmation",
+        "passed": true
+      },
+      {
+        "exit_code": 0,
+        "name": "explicit_discard_exit_zero",
+        "passed": true
+      }
+    ],
+    "binary": {
+      "bytes": 12592144,
+      "path": "/Users/diegogarcia/Projects/Paint .R/artifacts/reference-local/packaged-app-final-round12/paint-r-0.1.0-macos-aarch64/Paint.R.app/Contents/MacOS/paint-ui",
+      "sha256": "01f58ef06bd1100117f2c122db81e3507f4485543ce7f8051ea74e1310e3db03"
+    },
+    "independent_rgba": [
+      "50eee59130ff55f82297322a211ee818aca632805938f3aef9812562d7a2c49d",
+      "0161b018587ed44809191222b83182dc39fa0b4c476249bbf8fae18414463312",
+      "6596bb104cdea1d0782074111f85fc8777d83adead39ff8482490b5987fd637a",
+      "0161b018587ed44809191222b83182dc39fa0b4c476249bbf8fae18414463312",
+      "6596bb104cdea1d0782074111f85fc8777d83adead39ff8482490b5987fd637a"
+    ],
+    "native_execution": "COMPLETED",
+    "outcome": "PASS",
+    "process": {
+      "exit_code": 0,
+      "pid": 38914
+    },
+    "screenshots": [
+      {
+        "bytes": 785961,
+        "height": 2088,
+        "path": "00-before.png",
+        "pid": 38914,
+        "rgba_sha256": "50eee59130ff55f82297322a211ee818aca632805938f3aef9812562d7a2c49d",
+        "sha256": "698f79834f13680cd712c4a34b3574dd627579bd0c76c71867a2cdcb8f428a34",
+        "width": 2784,
+        "window_id": 7451
+      },
+      {
+        "bytes": 781881,
+        "height": 2088,
+        "path": "01-modified.png",
+        "pid": 38914,
+        "rgba_sha256": "0161b018587ed44809191222b83182dc39fa0b4c476249bbf8fae18414463312",
+        "sha256": "a3d87d199572920ff3b7546b27bb8fdf26407402e7750fa41361e0eaf49210ba",
+        "width": 2784,
+        "window_id": 7451
+      },
+      {
+        "bytes": 808587,
+        "height": 2088,
+        "path": "02-close-confirmation.png",
+        "pid": 38914,
+        "rgba_sha256": "6596bb104cdea1d0782074111f85fc8777d83adead39ff8482490b5987fd637a",
+        "sha256": "04146b447763e57ef07a5ddd3f6e235774561684faac10dc1cce57e64c662fcc",
+        "width": 2784,
+        "window_id": 7451
+      },
+      {
+        "bytes": 781881,
+        "height": 2088,
+        "path": "03-canceled.png",
+        "pid": 38914,
+        "rgba_sha256": "0161b018587ed44809191222b83182dc39fa0b4c476249bbf8fae18414463312",
+        "sha256": "a3d87d199572920ff3b7546b27bb8fdf26407402e7750fa41361e0eaf49210ba",
+        "width": 2784,
+        "window_id": 7451
+      },
+      {
+        "bytes": 808587,
+        "height": 2088,
+        "path": "04-second-close-confirmation.png",
+        "pid": 38914,
+        "rgba_sha256": "6596bb104cdea1d0782074111f85fc8777d83adead39ff8482490b5987fd637a",
+        "sha256": "04146b447763e57ef07a5ddd3f6e235774561684faac10dc1cce57e64c662fcc",
+        "width": 2784,
+        "window_id": 7451
+      }
+    ]
+  },
+  "format": "paint.r.packaged-app-live",
+  "limitations": [
+    "Unsigned internal artifact only.",
+    "Command-W is covered by a focused probe, not the five-screenshot gate.",
+    "Windows/Linux, hosted CI, signing, legal clearance, and Paint.NET parity remain open."
+  ],
+  "notice_inventory": {
+    "curated_supplements": 48,
+    "extraction_complete": false,
+    "packages_with_texts": 445,
+    "remaining_gaps": 12
+  },
+  "package_output_tree": {
+    "entries": 3,
+    "files": [
+      {
+        "bytes": 7317778,
+        "path": "paint-r-0.1.0-macos-aarch64.zip",
+        "sha256": "938c0c51a588a9e89e0c25c75bfb7880d8f4fa699df30f15694c048f4b8590b7"
+      },
+      {
+        "bytes": 98,
+        "path": "paint-r-0.1.0-macos-aarch64.zip.sha256",
+        "sha256": "b7536e9364dfe0857dd017b01fcf2c41abcfbe0d245cf34257ec09ecbaab8348"
+      },
+      {
+        "bytes": 572,
+        "path": "paint-r-0.1.0-macos-aarch64.zip.verification.json",
+        "sha256": "5cdc8b4de23a5b96fde904d6d99cc922fdc0729fe4a85179b793b6dec4c49637"
+      }
+    ],
+    "kind": "directory",
+    "status": "pass",
+    "tree_sha256": "4e9808eca43ef1639f0a55c8a2b8c53f18ff58e86f132cb82a638f3a9a5bfbf8"
+  },
+  "package_source_commit": "2e0b67555a6d6e70745040388ed9399c574427e4",
+  "post_extract_smoke": {
+    "repeat": 2,
+    "status": "pass",
+    "trace_count": 2
+  },
+  "product_source_commit": "6a0a2c05d40a88d6c7badbd5a1b1fd20be4e0c51",
+  "public_release": false,
+  "status": "PASS_FINAL_ROUND12_PACKAGE_AND_EXTRACTED_MACOS_APP",
+  "ui_features": [
+    "color palette",
+    "canvas zoom and fit",
+    "bounded PNG browser preview",
+    "Command-Q/Command-W dirty guards"
+  ],
+  "version": 1
+}
