@@ -17,6 +17,7 @@ import unittest
 import zipfile
 from pathlib import Path
 from unittest import mock
+from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -794,6 +795,22 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                 "madsmtm/objc2",
             ),
         }
+        final = {
+            ("clipboard-win", "5.4.3"): (
+                "052af7878466feccda12ba7a6a67d019d712f296809559b47c12c8cc196d3a9a",
+                "https://github.com/DoumanAsh/clipboard-win",
+                "ed27008ae5d1f10cfbb266de039f0fb35fd05a56",
+                "",
+                "DoumanAsh/clipboard-win",
+            ),
+            ("dispatch2", "0.3.1"): (
+                "1e0e367e4e7da84520dedcac1901e4da967309406d1e51017ae1abfb97adbd38",
+                "https://github.com/madsmtm/objc2",
+                "8852b424193ca41602281b3d7540d7c8ed51e49a",
+                "crates/dispatch2",
+                "madsmtm/objc2",
+            ),
+        }
         additional_hashes = {
             ("block2", "0.5.1"): {
                 "LICENSE.txt": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
@@ -868,15 +885,27 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
             },
         }
 
+        final_hashes = {
+            ("clipboard-win", "5.4.3"): {
+                "LICENSE": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
+            },
+            ("dispatch2", "0.3.1"): {
+                "LICENSE.md": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+            },
+        }
+
         preexisting = set(accesskit) | set(egui) | set(android) | set(additional)
         self.assertEqual(len(preexisting), 20)
         self.assertEqual(len(frameworks), 12)
         self.assertEqual(len(third_objc2), 10)
+        self.assertEqual(len(final), 2)
+        previously_curated = preexisting | set(gpu) | set(frameworks) | set(third_objc2)
+        self.assertEqual(len(previously_curated), 48)
         self.assertEqual(
             {identity[:2] for identity in supplement.packages},
-            preexisting | set(gpu) | set(frameworks) | set(third_objc2),
+            previously_curated | set(final),
         )
-        self.assertEqual(len(supplement.packages), 48)
+        self.assertEqual(len(supplement.packages), 50)
         for identity, curated in supplement.packages.items():
             with self.subTest(package=identity[:2]):
                 self.assertEqual(identity[2], NoticeProvenanceSupplementTests.SOURCE)
@@ -903,6 +932,10 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                     expected_checksum, repository, commit, path_in_vcs, raw_repository = third_objc2[identity[:2]]
                     self.assertEqual(curated.checksum, expected_checksum)
                     expected_hashes = framework_hashes[commit]
+                elif identity[:2] in final:
+                    expected_checksum, repository, commit, path_in_vcs, raw_repository = final[identity[:2]]
+                    self.assertEqual(curated.checksum, expected_checksum)
+                    expected_hashes = final_hashes[identity[:2]]
                 elif identity[:2] in frameworks:
                     expected_checksum, repository, commit, path_in_vcs, raw_repository = frameworks[identity[:2]]
                     self.assertEqual(curated.checksum, expected_checksum)
@@ -1411,6 +1444,115 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
             b"All other crates are trio-licensed under the [Zlib], [Apache-2.0] or [MIT]",
             md_content,
         )
+
+
+    def test_clipboard_win_and_dispatch2_pin_exact_identity_and_root_resource(self) -> None:
+        repo = Path(package.__file__).resolve().parents[2]
+        supplement = package.load_notice_supplement(repo / "tools/package/notice_supplement")
+        checksums = package.load_locked_package_checksums(repo / "Cargo.lock")
+        source = NoticeProvenanceSupplementTests.SOURCE
+        expected = {
+            ("clipboard-win", "5.4.3"): {
+                "checksum": "052af7878466feccda12ba7a6a67d019d712f296809559b47c12c8cc196d3a9a",
+                "repository": "https://github.com/DoumanAsh/clipboard-win",
+                "commit": "ed27008ae5d1f10cfbb266de039f0fb35fd05a56",
+                "path_in_vcs": "",
+                "local_repository": "clipboard-win",
+                "raw_repository": "DoumanAsh/clipboard-win",
+                "filename": "LICENSE",
+                "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
+                "blob": "36b7cd93cdfbac762f5be4c6ce276df2ea6305c2",
+                "bytes": 1338,
+            },
+            ("dispatch2", "0.3.1"): {
+                "checksum": "1e0e367e4e7da84520dedcac1901e4da967309406d1e51017ae1abfb97adbd38",
+                "repository": "https://github.com/madsmtm/objc2",
+                "commit": "8852b424193ca41602281b3d7540d7c8ed51e49a",
+                "path_in_vcs": "crates/dispatch2",
+                "local_repository": "objc2",
+                "raw_repository": "madsmtm/objc2",
+                "filename": "LICENSE.md",
+                "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+                "blob": "540ae4c81adb5f64a9f61e222b688880da24300e",
+                "bytes": 1339,
+            },
+        }
+        names = {name for name, _ in expected}
+        self.assertEqual(
+            {
+                identity[:2]
+                for identity in supplement.packages
+                if identity[0] in names
+            },
+            set(expected),
+        )
+        for name_version, record in expected.items():
+            with self.subTest(package=name_version[0], version=name_version[1]):
+                identity = (*name_version, source)
+                curated = supplement.packages[identity]
+                self.assertEqual(checksums[identity], record["checksum"])
+                self.assertEqual(
+                    (curated.checksum, curated.repository, curated.vcs_commit, curated.path_in_vcs),
+                    (record["checksum"], record["repository"], record["commit"], record["path_in_vcs"]),
+                )
+                self.assertEqual(len(curated.files), 1)
+                resource = curated.files[0]
+                content = repo.joinpath("tools/package/notice_supplement", resource.path).read_bytes()
+                self.assertEqual(resource.content, content)
+                self.assertEqual(len(content), record["bytes"])
+                self.assertEqual(hashlib.sha256(content).hexdigest(), record["sha256"])
+                self.assertEqual(resource.sha256, record["sha256"])
+                self.assertEqual(
+                    hashlib.sha1(b"blob %d\0" % len(content) + content).hexdigest(),
+                    record["blob"],
+                )
+                self.assertEqual(resource.source_path.as_posix(), record["filename"])
+                self.assertEqual(
+                    resource.path.as_posix(),
+                    f"files/{record['local_repository']}/{record['commit']}/{record['filename']}",
+                )
+                self.assertEqual(
+                    resource.source_url,
+                    f"https://raw.githubusercontent.com/{record['raw_repository']}/{record['commit']}/{record['filename']}",
+                )
+                parsed = urlsplit(resource.source_url)
+                self.assertEqual((parsed.scheme, parsed.hostname), ("https", "raw.githubusercontent.com"))
+                self.assertIsNone(parsed.username)
+                self.assertIsNone(parsed.password)
+                self.assertFalse(parsed.query)
+                self.assertFalse(parsed.fragment)
+                self.assertTrue(record["repository"].startswith("https://"))
+                for moving in ("/main/", "/master/", "/latest/", "/refs/", "/tags/"):
+                    self.assertNotIn(moving, resource.source_url)
+                self.assertIn(f"/{record['commit']}/", resource.source_url)
+                if record["path_in_vcs"]:
+                    self.assertNotIn(record["path_in_vcs"], resource.path.as_posix())
+                    self.assertNotIn(record["path_in_vcs"], resource.source_url)
+                if name_version[0] == "clipboard-win":
+                    self.assertTrue(content.startswith(b"Boost Software License - Version 1.0"))
+                    self.assertIn(b"THE SOFTWARE IS PROVIDED \"AS IS\"", content)
+                    self.assertNotIn(b"MIT License", content)
+                    self.assertNotIn(b"Apache License", content)
+                    unique = [
+                        other
+                        for package_record in supplement.packages.values()
+                        for other in package_record.files
+                        if other.sha256 == record["sha256"]
+                    ]
+                    self.assertEqual(len(unique), 1)
+                else:
+                    self.assertTrue(content.startswith(b"# License"))
+                    self.assertIn(
+                        b"All other crates are trio-licensed under the [Zlib], [Apache-2.0] or [MIT]",
+                        content,
+                    )
+                    independently_identical = supplement.packages[
+                        ("objc2-core-foundation", "0.3.2", source)
+                    ].files[0]
+                    self.assertEqual(content, independently_identical.content)
+                    self.assertEqual(resource.sha256, independently_identical.sha256)
+                    self.assertNotEqual(resource.path, independently_identical.path)
+                    self.assertNotEqual(resource.source_url, independently_identical.source_url)
 
 
 class BinaryArchitectureTests(DisposableFixtureMixin):
