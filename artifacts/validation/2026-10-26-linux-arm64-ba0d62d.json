@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "source_commit": "ba0d62d6f10cd7724f099599ee91edecfe7c39f4",
+  "scope": "Integrated core, document, raster, atomic output, bounded NRBF, and verification tooling; before public PNG, plugin, session, and UI integration.",
+  "platform": {
+    "os": "linux",
+    "architecture": "aarch64",
+    "execution": "Docker container on macOS ARM64 host",
+    "source_access": "read-only detached worktree"
+  },
+  "container": {
+    "image": "rust:1.95.0",
+    "digest": "sha256:f49565f188ee00bc2a18dd418183f2c5f23ef7d6e691890517ed341a598f67c3",
+    "rustc": "1.95.0 (59807616e 2026-04-14)"
+  },
+  "commands": [
+    "cargo run --locked -p xtask -- verify",
+    "python3 -m unittest discover -s tests/e2e -p 'test_*.py' -v"
+  ],
+  "results": {
+    "format": "pass",
+    "strict_clippy": "pass with -D warnings",
+    "locked_workspace_tests": {
+      "passed": 92,
+      "failed": 0,
+      "ignored": 0
+    },
+    "locked_metadata": "pass",
+    "stub_scan": {
+      "scanned_rust_files": 37,
+      "violations": 0,
+      "allowlisted": 0
+    },
+    "python_oracle_tests": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "limitations": [
+    "This is Linux ARM64 evidence, not Linux x86_64 evidence.",
+    "This source predates the real session, UI binary, public PNG API, and plugin-host integration.",
+    "This is not a package, release, three-OS, or Paint.NET parity certification."
+  ]
+}
