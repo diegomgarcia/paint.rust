@@ -55,6 +55,8 @@ pub enum NrbfError {
     },
     #[error("malformed NRBF at byte {offset}: {reason}")]
     Malformed { offset: usize, reason: &'static str },
+    #[error("dangling NRBF object reference {id} at byte {offset}")]
+    DanglingReference { offset: usize, id: ObjectId },
     #[error("unsupported NRBF record {record_type} at byte {offset}")]
     UnsupportedRecord { offset: usize, record_type: u8 },
     #[error("unsupported NRBF feature at byte {offset}: {feature}")]
@@ -356,6 +358,65 @@ mod tests {
     }
 
     #[test]
+    fn writer_can_define_a_schema_on_an_instance_before_its_source_owner() {
+        let mut stream = NrbfStream::new(1, -1);
+        stream.schemas.insert(
+            1,
+            ClassSchema {
+                name: "Root".into(),
+                member_names: vec!["entry".into()],
+                member_types: Some(vec![BinaryType::SystemClass("Entry".into())]),
+                library_id: None,
+            },
+        );
+        stream.schemas.insert(
+            20,
+            ClassSchema {
+                name: "Entry".into(),
+                member_names: vec!["value".into()],
+                member_types: Some(vec![BinaryType::String]),
+                library_id: None,
+            },
+        );
+        stream.objects.insert(
+            1,
+            NrbfObject::Class(NrbfClass {
+                object_id: 1,
+                schema_id: 1,
+                members: vec![NrbfValue::Reference(30)],
+            }),
+        );
+        for (id, string_id, value) in [(20, 21, "owner"), (30, 31, "instance")] {
+            stream.objects.insert(
+                id,
+                NrbfObject::Class(NrbfClass {
+                    object_id: id,
+                    schema_id: 20,
+                    members: vec![NrbfValue::Reference(string_id)],
+                }),
+            );
+            stream
+                .objects
+                .insert(string_id, NrbfObject::String(value.into()));
+        }
+
+        let encoded = write_nrbf(&stream, &NrbfLimits::default()).expect("write reordered schema");
+        let parsed = parse_nrbf_prefix(&encoded, &NrbfLimits::default())
+            .expect("parse reordered schema")
+            .stream;
+        let NrbfObject::Class(instance) = &parsed.objects[&30] else {
+            panic!("missing instance")
+        };
+        let NrbfObject::Class(owner) = &parsed.objects[&20] else {
+            panic!("missing owner")
+        };
+        assert_eq!(instance.schema_id, 30);
+        assert_eq!(owner.schema_id, 30);
+        assert_eq!(parsed.objects[&31], NrbfObject::String("instance".into()));
+        assert_eq!(parsed.objects[&21], NrbfObject::String("owner".into()));
+    }
+
+    #[test]
     fn writer_round_trip_preserves_the_independent_fixture_graph() {
         let fixture = class_fixture();
         let first = parse_nrbf_prefix(&fixture, &NrbfLimits::default()).expect("parse fixture");
@@ -459,10 +520,7 @@ mod tests {
         dangling.push(11);
         assert!(matches!(
             parse_nrbf_prefix(&dangling, &NrbfLimits::default()),
-            Err(NrbfError::Malformed {
-                reason: "dangling object reference",
-                ..
-            })
+            Err(NrbfError::DanglingReference { id: 99, .. })
         ));
 
         let mut duplicate = byte_array_fixture(b"a");
@@ -493,6 +551,37 @@ mod tests {
             parse_nrbf_prefix(&fixture, &NrbfLimits::default()),
             Err(NrbfError::Malformed {
                 reason: "null run exceeds member count",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn negative_inline_object_id_is_valid_but_negative_member_reference_is_not() {
+        let mut fixture = header(1);
+        fixture.push(4);
+        push_i32(&mut fixture, 1);
+        push_string(&mut fixture, "Root");
+        push_i32(&mut fixture, 1);
+        push_string(&mut fixture, "value");
+        fixture.push(1); // String
+        let inline_record_offset = fixture.len();
+        fixture.push(6); // inline BinaryObjectString
+        push_i32(&mut fixture, -8);
+        push_string(&mut fixture, "inline");
+        fixture.push(11);
+        let parsed = parse_nrbf_prefix(&fixture, &NrbfLimits::default())
+            .expect("negative inline id is permitted by MS-NRBF");
+        let encoded = write_nrbf(&parsed.stream, &NrbfLimits::default()).expect("write inline id");
+        let reparsed =
+            parse_nrbf_prefix(&encoded, &NrbfLimits::default()).expect("reparse inline id");
+        assert_eq!(reparsed.stream, parsed.stream);
+
+        fixture[inline_record_offset] = 9; // MemberReference instead of inline string
+        assert!(matches!(
+            parse_nrbf_prefix(&fixture, &NrbfLimits::default()),
+            Err(NrbfError::Malformed {
+                reason: "object reference id must be positive",
                 ..
             })
         ));

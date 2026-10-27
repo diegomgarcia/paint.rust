@@ -653,9 +653,12 @@ impl<'a> Parser<'a> {
 
     fn validate_value(&self, value: &NrbfValue) -> Result<(), NrbfError> {
         if let NrbfValue::Reference(id) = value
-            && (*id <= 0 || !self.stream.objects.contains_key(id))
+            && !self.stream.objects.contains_key(id)
         {
-            return Err(self.malformed("dangling object reference"));
+            return Err(NrbfError::DanglingReference {
+                offset: self.position,
+                id: *id,
+            });
         }
         Ok(())
     }

@@ -5,7 +5,7 @@ pub(super) fn write(stream: &NrbfStream, limits: &NrbfLimits) -> Result<Vec<u8>,
         output: Vec::new(),
         limits,
         emitted_objects: BTreeSet::new(),
-        emitted_schemas: BTreeSet::new(),
+        emitted_schemas: BTreeMap::new(),
     }
     .write_stream(stream)
 }
@@ -14,7 +14,7 @@ struct Writer<'a> {
     output: Vec<u8>,
     limits: &'a NrbfLimits,
     emitted_objects: BTreeSet<ObjectId>,
-    emitted_schemas: BTreeSet<ObjectId>,
+    emitted_schemas: BTreeMap<ObjectId, ObjectId>,
 }
 
 impl Writer<'_> {
@@ -53,6 +53,9 @@ impl Writer<'_> {
             return Err(self.limit("object depth", depth, self.limits.max_depth));
         }
         if self.emitted_objects.contains(&id) {
+            if id <= 0 {
+                return Err(self.malformed("cannot write a member reference to a non-positive id"));
+            }
             self.write_u8(9)?;
             return self.write_i32(id);
         }
@@ -73,14 +76,8 @@ impl Writer<'_> {
                 self.write_array(stream, id, &array, depth)?;
             }
             NrbfObject::Class(class) => {
-                if class.object_id != id || class.schema_id != id {
-                    if !self.emitted_schemas.contains(&class.schema_id) {
-                        self.write_object(stream, class.schema_id, depth + 1)?;
-                    }
-                    if self.emitted_objects.contains(&id) {
-                        self.write_u8(9)?;
-                        return self.write_i32(id);
-                    }
+                if class.object_id != id {
+                    return Err(self.malformed("class object id does not match its map key"));
                 }
                 let schema = stream
                     .schemas
@@ -97,14 +94,11 @@ impl Writer<'_> {
                     return Err(self.malformed("class library is missing"));
                 }
                 self.emitted_objects.insert(id);
-                if self.emitted_schemas.contains(&class.schema_id) {
+                if let Some(wire_schema_id) = self.emitted_schemas.get(&class.schema_id).copied() {
                     self.write_u8(1)?;
                     self.write_i32(id)?;
-                    self.write_i32(class.schema_id)?;
+                    self.write_i32(wire_schema_id)?;
                 } else {
-                    if id != class.schema_id {
-                        return Err(self.malformed("first class instance does not own its schema"));
-                    }
                     match (schema.library_id, schema.member_types.is_some()) {
                         (Some(_), true) => self.write_u8(5)?,
                         (Some(_), false) => self.write_u8(3)?,
@@ -118,7 +112,7 @@ impl Writer<'_> {
                     if let Some(library_id) = schema.library_id {
                         self.write_i32(library_id)?;
                     }
-                    self.emitted_schemas.insert(class.schema_id);
+                    self.emitted_schemas.insert(class.schema_id, id);
                 }
                 for (index, value) in class.members.iter().enumerate() {
                     let primitive =
