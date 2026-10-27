@@ -1,0 +1,11 @@
+# xtask scan-stubs default allowlist
+#
+# Syntax (one exception per line):
+#   relative/path/glob.rs::rule
+#
+# Rules: todo, unimplemented, placeholder-success, trivial-assert, ignored-test
+# Globs: '*' and '?' match within a path component; '**' matches components.
+# Paths are workspace-relative and use '/'. Comments must occupy a whole line.
+#
+# Keep exceptions narrow, rule-specific, and limited to documentation or test
+# fixtures with a reviewable reason. No source exceptions are enabled by default.
