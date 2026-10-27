@@ -1,0 +1,91 @@
+{
+  "archive": {
+    "bytes": 9150775,
+    "name": "paint-r-0.1.0-linux-x86_64.tar.gz",
+    "sha256": "072c5672d404020d044f8aaa093b591b4404b15314ef0919c37627e0db33d5f2",
+    "sidecar_sha256": "e052e89bc8ec5d18e37288117af920358214870f7721216cbb9bf59cf930cb0f",
+    "verification_sha256": "623ba525897e62248583a88b31b334ef28a8261a99a4726b9d1d63c740252bda"
+  },
+  "archive_promoted_path": "artifacts/preview/linux-x64-a9f185d/paint-r-0.1.0-linux-x86_64.tar.gz",
+  "binary": {
+    "bytes": 22870960,
+    "executable_after_independent_extract": true,
+    "format": "ELF 64",
+    "machine": "0x003e",
+    "sha256": "9f359d9446a63e40201f6077e8f8957944416f78784d1afe725bd3005c6303e2"
+  },
+  "binary_reproduction": {
+    "bytes": 22870960,
+    "kind": "file",
+    "sha256": "9f359d9446a63e40201f6077e8f8957944416f78784d1afe725bd3005c6303e2",
+    "status": "pass"
+  },
+  "environment": {
+    "container": "rust:1.95.0 linux/amd64",
+    "host": "Apple Silicon macOS",
+    "native_x86_64_hardware": false,
+    "userspace": "x86_64 Linux",
+    "vm": "Lima VZ ARM64 with Rosetta"
+  },
+  "format": "paint.r.linux-x64-emulated-artifact",
+  "limitations": [
+    "Emulated x86_64 userspace under Rosetta, not native Linux x86_64 hardware.",
+    "Headless/package gates only; no native Linux window/input acceptance.",
+    "Hosted three-OS CI remains unexecuted.",
+    "Unsigned internal preview; public distribution remains blocked."
+  ],
+  "package_output_tree": {
+    "entries": 3,
+    "files": [
+      {
+        "bytes": 9150775,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz",
+        "sha256": "072c5672d404020d044f8aaa093b591b4404b15314ef0919c37627e0db33d5f2"
+      },
+      {
+        "bytes": 100,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz.sha256",
+        "sha256": "e052e89bc8ec5d18e37288117af920358214870f7721216cbb9bf59cf930cb0f"
+      },
+      {
+        "bytes": 573,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz.verification.json",
+        "sha256": "623ba525897e62248583a88b31b334ef28a8261a99a4726b9d1d63c740252bda"
+      }
+    ],
+    "kind": "directory",
+    "status": "pass",
+    "tree_sha256": "7ad060e4620bf09d034b827ef2021b0dfb9667f4eb26e47f7a6c54ffbbcbe2c3"
+  },
+  "payload": {
+    "all_hashes_verified": true,
+    "entries": 822,
+    "manifest_hash_records": 821,
+    "notices": {
+      "curated_supplements": 50,
+      "packages_with_texts": 447,
+      "remaining_gaps": 10
+    },
+    "updated_ledger_embedded": true
+  },
+  "post_extract_smoke": {
+    "repeat": 2,
+    "status": "pass",
+    "trace_count": 2
+  },
+  "public_release": false,
+  "source_commit": "a9f185de82a08405d354e2438b021cd9852e6cb4",
+  "status": "PASS_LINUX_X64_EMULATED_BUILD_PACKAGE_AND_STRICT_WORKSPACE_GATE_NOT_NATIVE_HARDWARE",
+  "strict_gate": {
+    "clippy_all_targets_all_features_deny_warnings": "pass",
+    "failed": 0,
+    "fmt": "pass",
+    "log": {
+      "path": "artifacts/reference-local/linux-x64-round14/linux-strict-gate-final3.log",
+      "sha256": "3b30c981a9fc33791f6eb66d5a3ba450aed227d52acffbd4523ea57f722dbb07"
+    },
+    "test_result_records": 40,
+    "workspace_tests_passed": 213
+  },
+  "version": 1
+}
