@@ -1,1 +1,3 @@
-#![doc = "Versioned PDN3 container and semantic interoperability."]
+#![doc = "Bounded, versioned PDN3 container and semantic interoperability."]
+
+pub mod nrbf;
