@@ -17,6 +17,14 @@ sys.path.insert(0, str(REFERENCE_DIR))
 from collect_environment import decode_logfont  # noqa: E402
 from png_evidence import PngError, decode_png, rgba_evidence  # noqa: E402
 from observe_pdn_fixture import edit_distance, require_open_filename  # noqa: E402
+from observe_writer_acceptance import (  # noqa: E402
+    accepted_title,
+    classify_open_result,
+    rejection_dialog,
+    require_not_already_open,
+)
+from guest_jobs import guest_absolute, start_guest_job  # noqa: E402
+from run_windows_arm64_gate import TRIPLE, command, environment  # noqa: E402
 from utm import ReferenceCommandError  # noqa: E402
 from validate_observations import ValidationError, validate_manifest  # noqa: E402
 
@@ -195,6 +203,62 @@ class PdnUiGateTests(unittest.TestCase):
         require_open_filename({"ocr_text": "File name: |ficture-abc.pdn"}, "fixture-abc.pdn")
         with self.assertRaises(ReferenceCommandError):
             require_open_filename({"ocr_text": "File name: |other.pdn"}, "fixture-abc.pdn")
+
+
+class WriterAcceptanceTests(unittest.TestCase):
+    filename = "clone-normal-2x2-raw.pdn"
+
+    def test_open_title_requires_near_exact_filename(self) -> None:
+        self.assertTrue(accepted_title({"ocr_text": f"{self.filename} - Paint.NET"}, self.filename))
+        self.assertTrue(accepted_title({"ocr_text": "clone-normal-2x2-r4w.pdn - Paint.NET"}, self.filename))
+        self.assertFalse(accepted_title({"ocr_text": "other.pdn - Paint.NET"}, self.filename))
+
+    def test_rejection_and_acceptance_are_unambiguous(self) -> None:
+        accepted = {"ocr_text": f"{self.filename} - Paint.NET\nBackground"}
+        rejected = {"ocr_text": "Paint.NET\nError: could not open file\nOK"}
+        self.assertEqual(classify_open_result(accepted, self.filename), (True, False))
+        self.assertEqual(classify_open_result(rejected, self.filename), (False, True))
+        self.assertTrue(rejection_dialog(rejected))
+        with self.assertRaises(ReferenceCommandError):
+            classify_open_result({"ocr_text": accepted["ocr_text"] + "\nError\nOK"}, self.filename)
+        with self.assertRaises(ReferenceCommandError):
+            classify_open_result({"ocr_text": "Paint.NET\nUntitled"}, self.filename)
+
+    def test_stale_open_title_is_rejected_before_file_open(self) -> None:
+        with self.assertRaises(ReferenceCommandError):
+            require_not_already_open({"ocr_text": f"{self.filename} - Paint.NET"}, self.filename)
+        require_not_already_open({"ocr_text": "Untitled - Paint.NET"}, self.filename)
+
+
+class GuestJobAndGateTests(unittest.TestCase):
+    def test_guest_paths_and_secret_environment_are_rejected(self) -> None:
+        guest_absolute(r"C:\PaintR-Reference\final-src")
+        with self.assertRaises(ValueError):
+            guest_absolute(r"C:\PaintR-Reference\..\outside")
+        with self.assertRaises(ValueError):
+            start_guest_job(
+                "unit-secret",
+                r"C:\PaintR-Reference\tools\node\node.exe",
+                ["--version"],
+                working_directory=r"C:\PaintR-Reference",
+                environment={"DEEPSEEK_API_KEY": "must-not-be-recorded"},
+            )
+
+    def test_gate_commands_preserve_target_and_fatal_checks(self) -> None:
+        root = r"C:\PaintR-Reference\final-src"
+        target = r"C:\PaintR-Reference\target-final-gnullvm"
+        executable, arguments = command("clippy", root, target, r"C:\PaintR-Reference\evidence\smoke")
+        self.assertTrue(executable.endswith("cargo.exe"))
+        self.assertEqual(arguments[-2:], ["-D", "warnings"])
+        self.assertIn("--all-features", arguments)
+        self.assertIn("--locked", arguments)
+        executable, arguments = command("smoke", root, target, r"C:\PaintR-Reference\evidence\smoke")
+        self.assertIn(TRIPLE, executable)
+        self.assertEqual(arguments[0], "--headless-smoke")
+        self.assertIn("invert-800x600.json", arguments[arguments.index("--trace") + 1])
+        env = environment(target)
+        self.assertEqual(env["CARGO_BUILD_TARGET"], TRIPLE)
+        self.assertNotIn("DEEPSEEK_API_KEY", env)
 
 
 if __name__ == "__main__":
