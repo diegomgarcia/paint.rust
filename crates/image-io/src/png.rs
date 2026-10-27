@@ -130,8 +130,18 @@ pub fn decode_png_with_limits(bytes: &[u8], limits: &PngLimits) -> Result<Surfac
         .ok()
         .and_then(|width| width.checked_mul(channels))
         .ok_or(PngError::InvalidData("decoded row length overflow"))?;
-    if output.line_size != row_bytes || output.buffer_size() > raw.len() {
-        return Err(PngError::InvalidData("decoded row stride is not packed"));
+    let height = usize::try_from(height)
+        .map_err(|_| PngError::InvalidData("height does not fit the host address space"))?;
+    let expected_decoded_bytes = row_bytes
+        .checked_mul(height)
+        .ok_or(PngError::InvalidData("decoded byte length overflow"))?;
+    if output.line_size != row_bytes
+        || output.buffer_size() != expected_decoded_bytes
+        || raw.len() < expected_decoded_bytes
+    {
+        return Err(PngError::InvalidData(
+            "decoded byte length or row stride is not exact",
+        ));
     }
     let pixel_count = size.checked_pixel_count()?;
     let requested_bytes = size.checked_buffer_len()?;
@@ -142,8 +152,6 @@ pub fn decode_png_with_limits(bytes: &[u8], limits: &PngLimits) -> Result<Surfac
             buffer: "BGRA pixel buffer",
             requested: requested_bytes,
         })?;
-    let height = usize::try_from(height)
-        .map_err(|_| PngError::InvalidData("height does not fit the host address space"))?;
     for row in 0..height {
         let start = row
             .checked_mul(row_bytes)
@@ -448,6 +456,24 @@ mod tests {
             decoded.pixels(),
             &[Bgra::new(3, 2, 1, 255), Bgra::new(7, 128, 250, 0)]
         );
+    }
+
+    #[test]
+    fn stock_paint_net_one_bit_palette_reference_is_opaque_black_bgra() {
+        let encoded =
+            include_bytes!("../../../artifacts/reference-local/paintnet-5.1.12-invert.png");
+        let decoder = png::Decoder::new(Cursor::new(encoded.as_slice()));
+        let reader = decoder.read_info().expect("reference PNG header");
+        assert_eq!(reader.info().size(), (800, 600));
+        assert_eq!(reader.info().color_type, png::ColorType::Indexed);
+        assert_eq!(reader.info().bit_depth, png::BitDepth::One);
+        drop(reader);
+
+        let decoded = decode_png(encoded).expect("decode stock Paint.NET PNG");
+
+        assert_eq!(decoded.size(), Size::new(800, 600).expect("reference size"));
+        assert_eq!(decoded.pixels().len(), 480_000);
+        assert!(decoded.pixels().iter().all(|pixel| *pixel == Bgra::BLACK));
     }
 
     #[test]
