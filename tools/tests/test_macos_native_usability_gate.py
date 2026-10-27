@@ -1,0 +1,477 @@
+"""Cross-platform tests for the macOS native gate's orchestration.
+
+No test launches Paint.R, accesses AppKit, or sends native input. Native transport
+is replaced by a deterministic fake; production failures therefore cannot be
+hidden behind a headless/session-only acceptance result.
+"""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import struct
+import subprocess
+import sys
+import tempfile
+import unittest
+import zlib
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import macos_native_usability_gate as gate
+
+
+WINDOW_TITLE = "Paint.R Development Preview"
+INVERTED = "Inverted colors on the active layer"
+CLOSE_EXPLANATION = "Closing Paint.R will discard the modified document and its undo history."
+
+
+def png_bytes(red: int, green: int, blue: int) -> bytes:
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    return b"".join(
+        [
+            b"\x89PNG\r\n\x1a\n",
+            chunk(b"IHDR", header),
+            chunk(b"IDAT", zlib.compress(bytes([0, red, green, blue]))),
+            chunk(b"IEND", b""),
+        ]
+    )
+
+
+def preflight(**changes: object) -> dict[str, object]:
+    result: dict[str, object] = {
+        "console_session": True,
+        "session_dictionary_available": True,
+        "screen_locked": False,
+        "screen_lock_state_known": True,
+        "accessibility_trusted": True,
+        "screen_recording": True,
+    }
+    result.update(changes)
+    return result
+
+
+def observation(
+    pid: int,
+    *,
+    running: bool = True,
+    modified: bool = False,
+    dialog: bool = False,
+    window_id: int = 71,
+    truncated: bool = False,
+) -> dict[str, object]:
+    status = INVERTED if modified else "New 800×600 opaque-white document"
+    nodes: list[dict[str, object]] = [
+        {"path": [0], "role": "AXStaticText", "value": "Modified" if modified else "Clean"},
+        {"path": [1], "role": "AXStaticText", "value": status},
+        {"path": [2], "role": "AXImage", "description": "Composed document canvas"},
+    ]
+    if dialog:
+        nodes.extend(
+            [
+                {"path": [3], "role": "AXWindow", "title": "Discard unsaved changes?"},
+                {"path": [4], "role": "AXStaticText", "value": CLOSE_EXPLANATION},
+                {"path": [5], "role": "AXButton", "title": "Cancel", "enabled": True, "focused": True},
+                {"path": [6], "role": "AXButton", "title": "Discard", "enabled": True, "focused": False},
+            ]
+        )
+    windows = []
+    if running:
+        windows.append(
+            {
+                "id": window_id,
+                "pid": pid,
+                "title": WINDOW_TITLE,
+                "on_screen": True,
+                "main": True,
+                "focused": True,
+                "bounds": {"x": 10.0, "y": 20.0, "width": 1280.0, "height": 900.0},
+            }
+        )
+    return {
+        "schema_version": 1,
+        "process": {"pid": pid, "running": running, "frontmost": running},
+        "windows": windows,
+        "ax": {"node_count": len(nodes), "truncated": truncated, "nodes": nodes},
+    }
+
+
+class FakeProcess:
+    def __init__(self, pid: int = 4242) -> None:
+        self.pid = pid
+        self.returncode: int | None = None
+        self.terminate_calls = 0
+        self.kill_calls = 0
+        self.stubborn = False
+        self.never_die = False
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def wait(self, timeout: float | None = None) -> int:
+        del timeout
+        if self.returncode is None:
+            raise subprocess.TimeoutExpired("paint-ui", 0)
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+        if not self.stubborn and not self.never_die:
+            self.returncode = -15
+
+    def kill(self) -> None:
+        self.kill_calls += 1
+        if not self.never_die:
+            self.returncode = -9
+
+
+class FakeBackend:
+    """In-memory native model used only to test orchestration decisions."""
+
+    def __init__(self) -> None:
+        self.preflight_result = preflight()
+        self.process = FakeProcess()
+        self.modified = False
+        self.dialog = False
+        self.actions: list[tuple[object, ...]] = []
+        self.ignore_invert = False
+        self.exit_on_dirty_close = False
+        self.cancel_clears_modified = False
+        self.discard_exit_code = 0
+        self.ignore_discard = False
+        self.fail_cleanup = False
+        self.blank_screenshots = False
+        self.fail_screenshots = False
+        self.truncated_ax = False
+        self.window_id = 71
+        self.lock_during_invert = False
+
+    def launch(self, binary: Path, log_path: Path) -> FakeProcess:
+        self.actions.append(("launch", binary, log_path))
+        Path(log_path).write_text("fake native process log\n", encoding="utf-8")
+        return self.process
+
+    def preflight(self) -> dict[str, object]:
+        self.actions.append(("preflight",))
+        return copy.deepcopy(self.preflight_result)
+
+    def _check_lock(self) -> None:
+        if self.lock_during_invert and self.modified:
+            raise gate.NativeCommandError("SCREEN_LOCKED", "screen became locked")
+
+    def observe(self, pid: int) -> dict[str, object]:
+        self._check_lock()
+        self.actions.append(("observe", pid))
+        return observation(
+            pid,
+            running=self.process.returncode is None,
+            modified=self.modified,
+            dialog=self.dialog,
+            window_id=self.window_id,
+            truncated=self.truncated_ax,
+        )
+
+    def key(self, pid: int, name: str, modifiers: tuple[str, ...] = ()) -> dict[str, object]:
+        self._check_lock()
+        self.actions.append(("key", pid, name, modifiers))
+        if self.fail_cleanup:
+            return {"event": "simulated native command failure"}
+        if (name, modifiers) == ("i", ("command",)):
+            if not self.ignore_invert:
+                self.modified = True
+            if self.lock_during_invert:
+                raise gate.NativeCommandError("SCREEN_LOCKED", "screen became locked")
+        elif (name, modifiers) == ("q", ("command",)):
+            if self.modified:
+                if self.exit_on_dirty_close:
+                    self.process.returncode = 0
+                else:
+                    self.dialog = True
+            else:
+                self.process.returncode = 0
+        elif (name, modifiers) == ("escape", ()):
+            self.dialog = False
+            if self.cancel_clears_modified:
+                self.modified = False
+        else:
+            raise AssertionError(f"unexpected native key {name} {modifiers}")
+        return {"event": "fake CGEvent", "pid": pid, "key": name, "modifiers": list(modifiers)}
+
+    def press(self, pid: int, title: str) -> dict[str, object]:
+        self._check_lock()
+        self.actions.append(("press", pid, title))
+        if title != "Discard" or not self.dialog:
+            raise gate.NativeCommandError("AX_ACTION_FAILED", "Discard confirmation is absent")
+        if not self.fail_cleanup and not self.ignore_discard:
+            self.dialog = False
+            self.process.returncode = self.discard_exit_code
+        return {"event": "fake AXPress", "pid": pid, "title": title}
+
+    def capture(self, observed: dict[str, object], output: Path) -> None:
+        self.actions.append(("capture", observed["windows"][0]["id"], output.name))
+        if self.fail_screenshots:
+            raise gate.NativeCommandError("SCREENSHOT_FAILED", "simulated capture failure")
+        if self.blank_screenshots:
+            color = (0, 0, 0)
+        elif observed["ax"]["nodes"][-1]["title"] == "Discard" if observed["ax"]["nodes"][-1].get("title") else False:
+            color = (128, 128, 128)
+        elif any(node.get("title") == "Discard unsaved changes?" for node in observed["ax"]["nodes"]):
+            color = (128, 128, 128)
+        elif any(node.get("value") == "Modified" for node in observed["ax"]["nodes"]):
+            color = (255, 255, 255)
+        else:
+            color = (0, 0, 0)
+        output.write_bytes(png_bytes(*color))
+
+
+class NativeGateTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="paint-r-native-gate-test-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.binary = self.root / "paint-ui"
+        self.binary.write_bytes(b"fake test binary; never executed\n")
+        self.binary.chmod(0o755)
+        self.backend = FakeBackend()
+        self.config = gate.GateConfig(
+            startup_timeout=0.05,
+            observation_timeout=0.05,
+            quit_timeout=0.05,
+            cleanup_timeout=0.05,
+            command_timeout=0.05,
+            overall_timeout=2.0,
+            confirmation_hold=0.0,
+            poll_interval=0.002,
+        )
+
+    def run_gate(self) -> dict[str, object]:
+        output = self.root / "evidence"
+        runner = gate.NativeUsabilityGate(self.backend, self.binary, output, config=self.config)
+        result = runner.run()
+        self.assertEqual(result, json.loads((output / "manifest.json").read_text(encoding="utf-8")))
+        return result
+
+    def test_complete_native_sequence_passes_only_with_all_evidence(self) -> None:
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "PASS")
+        self.assertEqual(result["native_execution"], "COMPLETED")
+        self.assertEqual(result["process"]["exit_code"], 0)
+        self.assertEqual(self.backend.process.terminate_calls, 0)
+        self.assertEqual(self.backend.process.kill_calls, 0)
+        native_actions = [action for action in self.backend.actions if action[0] in {"key", "press"}]
+        self.assertEqual(
+            native_actions,
+            [
+                ("key", 4242, "i", ("command",)),
+                ("key", 4242, "q", ("command",)),
+                ("key", 4242, "escape", ()),
+                ("key", 4242, "q", ("command",)),
+                ("press", 4242, "Discard"),
+            ],
+        )
+        self.assertEqual(len(result["screenshots"]), 5)
+        self.assertEqual(len(result["observations"]), 5)
+        self.assertTrue(all(path.is_file() for path in (self.root / "evidence").rglob("*.png")))
+        self.assertNotEqual(result["screenshots"][0]["sha256"], result["screenshots"][1]["sha256"])
+        assertion_names = {item["name"] for item in result["assertions"] if item["passed"]}
+        self.assertTrue(
+            {
+                "initial_clean_native_window",
+                "command_i_modified_document",
+                "dirty_close_blocked_by_confirmation",
+                "cancel_preserved_modified_session",
+                "second_dirty_close_confirmation",
+                "explicit_discard_exit_zero",
+            }.issubset(assertion_names)
+        )
+
+    def test_locked_screen_is_blocked_before_process_launch(self) -> None:
+        self.backend.preflight_result = preflight(screen_locked=True)
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "BLOCKED")
+        self.assertEqual(result["native_execution"], "NOT_RUN")
+        self.assertEqual(result["error"]["code"], "SCREEN_LOCKED")
+        self.assertFalse(any(action[0] == "launch" for action in self.backend.actions))
+        self.assertFalse(any(action[0] in {"key", "press"} for action in self.backend.actions))
+
+    def test_unavailable_permissions_and_inconclusive_session_are_not_run(self) -> None:
+        cases = [
+            (preflight(accessibility_trusted=False), "ACCESSIBILITY_UNAVAILABLE"),
+            (preflight(screen_recording=False), "SCREEN_RECORDING_UNAVAILABLE"),
+            (preflight(console_session=False), "NO_CONSOLE_SESSION"),
+            (preflight(session_dictionary_available=False), "SESSION_STATE_UNAVAILABLE"),
+            (preflight(screen_lock_state_known=False), "SESSION_STATE_UNAVAILABLE"),
+        ]
+        for state, code in cases:
+            with self.subTest(code=code):
+                self.setUp()
+                self.backend.preflight_result = state
+                result = self.run_gate()
+                self.assertEqual(result["outcome"], "BLOCKED")
+                self.assertEqual(result["native_execution"], "NOT_RUN")
+                self.assertEqual(result["error"]["code"], code)
+                self.assertFalse(any(action[0] == "launch" for action in self.backend.actions))
+
+    def test_process_exit_on_dirty_close_is_failure_not_success(self) -> None:
+        self.backend.exit_on_dirty_close = True
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(result["native_execution"], "INCOMPLETE")
+        self.assertEqual(result["error"]["code"], "UNEXPECTED_PROCESS_EXIT")
+
+    def test_process_alive_without_modified_ax_state_does_not_pass(self) -> None:
+        self.backend.ignore_invert = True
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(result["error"]["code"], "OBSERVATION_TIMEOUT")
+        self.assertFalse(any(item["name"] == "command_i_modified_document" and item["passed"] for item in result["assertions"]))
+
+    def test_cancel_must_preserve_modified_session_and_window(self) -> None:
+        self.backend.cancel_clears_modified = True
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(result["error"]["code"], "OBSERVATION_TIMEOUT")
+        self.assertFalse(any(item["name"] == "cancel_preserved_modified_session" and item["passed"] for item in result["assertions"]))
+
+    def test_explicit_discard_must_exit_zero(self) -> None:
+        self.backend.discard_exit_code = 7
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(result["error"]["code"], "NONZERO_NATIVE_EXIT")
+        self.assertEqual(result["process"]["exit_code"], 7)
+
+    def test_no_exit_after_discard_cannot_pass(self) -> None:
+        self.backend.ignore_discard = True
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(result["error"]["code"], "NATIVE_EXIT_TIMEOUT")
+        self.assertGreaterEqual(self.backend.process.terminate_calls, 1)
+
+    def test_blank_or_failed_screenshots_fail_closed(self) -> None:
+        for attribute in ("blank_screenshots", "fail_screenshots"):
+            with self.subTest(attribute=attribute):
+                self.setUp()
+                setattr(self.backend, attribute, True)
+                result = self.run_gate()
+                self.assertEqual(result["outcome"], "FAIL")
+                self.assertIn(result["error"]["code"], {"SCREENSHOT_NOT_DISTINCT", "NATIVE_COMMAND_FAILED"})
+
+    def test_truncated_ax_evidence_is_inconclusive(self) -> None:
+        self.backend.truncated_ax = True
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(result["error"]["code"], "INCONCLUSIVE_AX")
+
+    def test_lock_after_launch_is_blocked_incomplete_not_not_run(self) -> None:
+        self.backend.lock_during_invert = True
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "BLOCKED")
+        self.assertEqual(result["native_execution"], "INCOMPLETE")
+        self.assertEqual(result["error"]["code"], "SCREEN_LOCKED")
+
+    def test_failed_graceful_cleanup_uses_only_spawned_process_and_force_last(self) -> None:
+        self.backend.ignore_discard = True
+        self.backend.fail_cleanup = True
+        self.backend.process.stubborn = True
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(self.backend.process.terminate_calls, 1)
+        self.assertEqual(self.backend.process.kill_calls, 1)
+        cleanup = result["cleanup"]
+        self.assertEqual(cleanup["pid"], 4242)
+        self.assertEqual(cleanup["sigterm_sent"], True)
+        self.assertEqual(cleanup["sigkill_sent"], True)
+        self.assertFalse(any(action[0] == "kill_other" for action in self.backend.actions))
+
+    def test_graceful_failure_cleanup_does_not_send_signals(self) -> None:
+        self.backend.ignore_invert = True
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(self.backend.process.terminate_calls, 0)
+        self.assertEqual(self.backend.process.kill_calls, 0)
+        self.assertTrue(any(action[0] == "key" and action[2:] == ("q", ("command",)) for action in self.backend.actions))
+
+    def test_output_directory_is_never_reused(self) -> None:
+        output = self.root / "evidence"
+        output.mkdir()
+
+        with self.assertRaises(FileExistsError):
+            gate.NativeUsabilityGate(self.backend, self.binary, output, config=self.config)
+
+    def test_configuration_has_hard_upper_bounds(self) -> None:
+        invalid = [
+            {"startup_timeout": 0},
+            {"startup_timeout": gate.MAX_STARTUP_TIMEOUT + 1},
+            {"overall_timeout": gate.MAX_OVERALL_TIMEOUT + 1},
+            {"poll_interval": 0},
+            {"confirmation_hold": -1},
+            {"quit_timeout": gate.MAX_QUIT_TIMEOUT + 1},
+        ]
+        for changes in invalid:
+            with self.subTest(changes=changes):
+                with self.assertRaises(ValueError):
+                    gate.GateConfig(**changes).validate()
+
+    def test_native_command_wrapper_is_bounded_and_does_not_use_a_shell(self) -> None:
+        completed = subprocess.CompletedProcess(["helper"], 0, stdout=b"{}\n", stderr=b"")
+        with mock.patch.object(gate.subprocess, "run", return_value=completed) as run:
+            result = gate.run_native_command(["/helper", "preflight"], timeout=1.25)
+
+        self.assertEqual(result.stdout, b"{}\n")
+        self.assertEqual(run.call_args.kwargs["timeout"], 1.25)
+        self.assertEqual(run.call_args.kwargs["check"], False)
+        self.assertNotIn("shell", run.call_args.kwargs)
+
+    def test_native_command_wrapper_rejects_timeout_and_oversized_output(self) -> None:
+        with mock.patch.object(gate.subprocess, "run", side_effect=subprocess.TimeoutExpired("helper", 1)):
+            with self.assertRaisesRegex(gate.NativeCommandError, "timed out") as caught:
+                gate.run_native_command(["/helper"], timeout=1)
+        self.assertEqual(caught.exception.code, "COMMAND_TIMEOUT")
+
+        completed = subprocess.CompletedProcess(["helper"], 0, stdout=b"x" * 20, stderr=b"")
+        with mock.patch.object(gate.subprocess, "run", return_value=completed):
+            with self.assertRaisesRegex(gate.NativeCommandError, "output exceeded") as caught:
+                gate.run_native_command(["/helper"], timeout=1, max_output_bytes=10)
+        self.assertEqual(caught.exception.code, "COMMAND_OUTPUT_LIMIT")
+
+    def test_manifest_and_binary_identity_are_structured(self) -> None:
+        result = self.run_gate()
+
+        manifest_path = self.root / "evidence" / "manifest.json"
+        self.assertEqual(result["binary"]["sha256"], hashlib.sha256(self.binary.read_bytes()).hexdigest())
+        self.assertEqual(result["schema_version"], 1)
+        self.assertEqual(result["gate"], "macos-native-keyboard-dirty-close")
+        self.assertTrue((self.root / "evidence" / "events.jsonl").is_file())
+        self.assertTrue((self.root / "evidence" / "paint-ui.log").is_file())
+        self.assertTrue(manifest_path.is_file())
+
+
+if __name__ == "__main__":
+    unittest.main()
