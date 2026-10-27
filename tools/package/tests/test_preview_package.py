@@ -722,6 +722,78 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                 "madsmtm/objc2",
             ),
         }
+        third_objc2 = {
+            ("objc2-io-surface", "0.3.2"): (
+                "180788110936d59bab6bd83b6060ffdfffb3b922ba1396b312ae795e1de9d81d",
+                "https://github.com/madsmtm/objc2",
+                "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+                "framework-crates/objc2-io-surface",
+                "madsmtm/objc2",
+            ),
+            ("objc2-link-presentation", "0.2.2"): (
+                "a1a1ae721c5e35be65f01a03b6d2ac13a54cb4fa70d8a5da293d7b0020261398",
+                "https://github.com/madsmtm/objc2",
+                "e282618be4c3a3b9542957e0c8540e9588472ce8",
+                "framework-crates/objc2-link-presentation",
+                "madsmtm/objc2",
+            ),
+            ("objc2-quartz-core", "0.2.2"): (
+                "e42bee7bff906b14b167da2bac5efe6b6a07e6f7c0a21a7308d40c960242dc7a",
+                "https://github.com/madsmtm/objc2",
+                "e282618be4c3a3b9542957e0c8540e9588472ce8",
+                "framework-crates/objc2-quartz-core",
+                "madsmtm/objc2",
+            ),
+            ("objc2-quartz-core", "0.3.2"): (
+                "96c1358452b371bf9f104e21ec536d37a650eb10f7ee379fff67d2e08d537f1f",
+                "https://github.com/madsmtm/objc2",
+                "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+                "framework-crates/objc2-quartz-core",
+                "madsmtm/objc2",
+            ),
+            ("objc2-symbols", "0.2.2"): (
+                "0a684efe3dec1b305badae1a28f6555f6ddd3bb2c2267896782858d5a78404dc",
+                "https://github.com/madsmtm/objc2",
+                "e282618be4c3a3b9542957e0c8540e9588472ce8",
+                "framework-crates/objc2-symbols",
+                "madsmtm/objc2",
+            ),
+            ("objc2-ui-kit", "0.2.2"): (
+                "b8bb46798b20cd6b91cbd113524c490f1686f4c4e8f49502431415f3512e2b6f",
+                "https://github.com/madsmtm/objc2",
+                "e282618be4c3a3b9542957e0c8540e9588472ce8",
+                "framework-crates/objc2-ui-kit",
+                "madsmtm/objc2",
+            ),
+            ("objc2-ui-kit", "0.3.2"): (
+                "d87d638e33c06f577498cbcc50491496a3ed4246998a7fbba7ccb98b1e7eab22",
+                "https://github.com/madsmtm/objc2",
+                "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+                "framework-crates/objc2-ui-kit",
+                "madsmtm/objc2",
+            ),
+            ("objc2-uniform-type-identifiers", "0.2.2"): (
+                "44fa5f9748dbfe1ca6c0b79ad20725a11eca7c2218bceb4b005cb1be26273bfe",
+                "https://github.com/madsmtm/objc2",
+                "e282618be4c3a3b9542957e0c8540e9588472ce8",
+                "framework-crates/objc2-uniform-type-identifiers",
+                "madsmtm/objc2",
+            ),
+            ("objc2-user-notifications", "0.2.2"): (
+                "76cfcbf642358e8689af64cee815d139339f3ed8ad05103ed5eaf73db8d84cb3",
+                "https://github.com/madsmtm/objc2",
+                "e282618be4c3a3b9542957e0c8540e9588472ce8",
+                "framework-crates/objc2-user-notifications",
+                "madsmtm/objc2",
+            ),
+            ("objc-sys", "0.3.5"): (
+                "cdb91bdd390c7ce1a8607f35f3ca7151b65afc0ff5ff3b34fa350f7d7c7e4310",
+                "https://github.com/madsmtm/objc2",
+                "4fc083f1c6d6784577e38b0ee8dbd344481e2fd2",
+                "crates/objc-sys",
+                "madsmtm/objc2",
+            ),
+        }
         additional_hashes = {
             ("block2", "0.5.1"): {
                 "LICENSE.txt": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
@@ -761,6 +833,9 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
             "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b": {
                 "LICENSE.md": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
             },
+            "4fc083f1c6d6784577e38b0ee8dbd344481e2fd2": {
+                "LICENSE.txt": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+            },
         }
         accesskit_hashes = {
             "LICENSE-APACHE": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
@@ -795,11 +870,13 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
 
         preexisting = set(accesskit) | set(egui) | set(android) | set(additional)
         self.assertEqual(len(preexisting), 20)
+        self.assertEqual(len(frameworks), 12)
+        self.assertEqual(len(third_objc2), 10)
         self.assertEqual(
             {identity[:2] for identity in supplement.packages},
-            preexisting | set(gpu) | set(frameworks),
+            preexisting | set(gpu) | set(frameworks) | set(third_objc2),
         )
-        self.assertEqual(len(supplement.packages), 38)
+        self.assertEqual(len(supplement.packages), 48)
         for identity, curated in supplement.packages.items():
             with self.subTest(package=identity[:2]):
                 self.assertEqual(identity[2], NoticeProvenanceSupplementTests.SOURCE)
@@ -822,6 +899,10 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                     expected_checksum, repository, commit, path_in_vcs, raw_repository = gpu[identity[:2]]
                     self.assertEqual(curated.checksum, expected_checksum)
                     expected_hashes = gpu_hashes[identity[:2]]
+                elif identity[:2] in third_objc2:
+                    expected_checksum, repository, commit, path_in_vcs, raw_repository = third_objc2[identity[:2]]
+                    self.assertEqual(curated.checksum, expected_checksum)
+                    expected_hashes = framework_hashes[commit]
                 elif identity[:2] in frameworks:
                     expected_checksum, repository, commit, path_in_vcs, raw_repository = frameworks[identity[:2]]
                     self.assertEqual(curated.checksum, expected_checksum)
@@ -1175,6 +1256,161 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
             md_content,
         )
         self.assertIn(b"`objc2`, `block2`, `objc2-foundation` and `objc2-encode`", md_content)
+
+    def test_third_objc2_batch_pins_each_locked_identity_and_root_resource(self) -> None:
+        repo = Path(package.__file__).resolve().parents[2]
+        supplement = package.load_notice_supplement(repo / "tools/package/notice_supplement")
+        checksums = package.load_locked_package_checksums(repo / "Cargo.lock")
+        source = NoticeProvenanceSupplementTests.SOURCE
+        txt_commit = "e282618be4c3a3b9542957e0c8540e9588472ce8"
+        md_commit = "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b"
+        objc_sys_commit = "4fc083f1c6d6784577e38b0ee8dbd344481e2fd2"
+        txt_hash = "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5"
+        md_hash = "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+        txt_blob = "e9ab3babc0d8602b83dccde8a462f8f3dc1e52ad"
+        md_blob = "540ae4c81adb5f64a9f61e222b688880da24300e"
+        expected = {
+            ("objc2-io-surface", "0.3.2"): (
+                "180788110936d59bab6bd83b6060ffdfffb3b922ba1396b312ae795e1de9d81d",
+                md_commit,
+                "framework-crates/objc2-io-surface",
+                "LICENSE.md",
+                md_hash,
+                md_blob,
+            ),
+            ("objc2-link-presentation", "0.2.2"): (
+                "a1a1ae721c5e35be65f01a03b6d2ac13a54cb4fa70d8a5da293d7b0020261398",
+                txt_commit,
+                "framework-crates/objc2-link-presentation",
+                "LICENSE.txt",
+                txt_hash,
+                txt_blob,
+            ),
+            ("objc2-quartz-core", "0.2.2"): (
+                "e42bee7bff906b14b167da2bac5efe6b6a07e6f7c0a21a7308d40c960242dc7a",
+                txt_commit,
+                "framework-crates/objc2-quartz-core",
+                "LICENSE.txt",
+                txt_hash,
+                txt_blob,
+            ),
+            ("objc2-quartz-core", "0.3.2"): (
+                "96c1358452b371bf9f104e21ec536d37a650eb10f7ee379fff67d2e08d537f1f",
+                md_commit,
+                "framework-crates/objc2-quartz-core",
+                "LICENSE.md",
+                md_hash,
+                md_blob,
+            ),
+            ("objc2-symbols", "0.2.2"): (
+                "0a684efe3dec1b305badae1a28f6555f6ddd3bb2c2267896782858d5a78404dc",
+                txt_commit,
+                "framework-crates/objc2-symbols",
+                "LICENSE.txt",
+                txt_hash,
+                txt_blob,
+            ),
+            ("objc2-ui-kit", "0.2.2"): (
+                "b8bb46798b20cd6b91cbd113524c490f1686f4c4e8f49502431415f3512e2b6f",
+                txt_commit,
+                "framework-crates/objc2-ui-kit",
+                "LICENSE.txt",
+                txt_hash,
+                txt_blob,
+            ),
+            ("objc2-ui-kit", "0.3.2"): (
+                "d87d638e33c06f577498cbcc50491496a3ed4246998a7fbba7ccb98b1e7eab22",
+                md_commit,
+                "framework-crates/objc2-ui-kit",
+                "LICENSE.md",
+                md_hash,
+                md_blob,
+            ),
+            ("objc2-uniform-type-identifiers", "0.2.2"): (
+                "44fa5f9748dbfe1ca6c0b79ad20725a11eca7c2218bceb4b005cb1be26273bfe",
+                txt_commit,
+                "framework-crates/objc2-uniform-type-identifiers",
+                "LICENSE.txt",
+                txt_hash,
+                txt_blob,
+            ),
+            ("objc2-user-notifications", "0.2.2"): (
+                "76cfcbf642358e8689af64cee815d139339f3ed8ad05103ed5eaf73db8d84cb3",
+                txt_commit,
+                "framework-crates/objc2-user-notifications",
+                "LICENSE.txt",
+                txt_hash,
+                txt_blob,
+            ),
+            ("objc-sys", "0.3.5"): (
+                "cdb91bdd390c7ce1a8607f35f3ca7151b65afc0ff5ff3b34fa350f7d7c7e4310",
+                objc_sys_commit,
+                "crates/objc-sys",
+                "LICENSE.txt",
+                txt_hash,
+                txt_blob,
+            ),
+        }
+        self.assertEqual(len(expected), 10)
+        names = {name for name, _ in expected}
+        self.assertEqual(
+            {identity for identity in supplement.packages if identity[0] in names},
+            {(*name_version, source) for name_version in expected},
+        )
+        for name_version, identity_expected in expected.items():
+            with self.subTest(package=name_version[0], version=name_version[1]):
+                identity = (*name_version, source)
+                checksum, commit, path_in_vcs, filename, digest, blob = identity_expected
+                curated = supplement.packages[identity]
+                self.assertEqual(checksums[identity], checksum)
+                self.assertEqual(
+                    (curated.checksum, curated.repository, curated.vcs_commit, curated.path_in_vcs),
+                    (checksum, "https://github.com/madsmtm/objc2", commit, path_in_vcs),
+                )
+                self.assertEqual(len(curated.files), 1)
+                resource = curated.files[0]
+                on_disk = repo.joinpath("tools/package/notice_supplement", resource.path).read_bytes()
+                self.assertEqual(resource.content, on_disk)
+                self.assertEqual(
+                    (
+                        resource.source_path.as_posix(),
+                        resource.path.as_posix(),
+                        resource.source_url,
+                        resource.sha256,
+                        hashlib.sha256(resource.content).hexdigest(),
+                    ),
+                    (
+                        filename,
+                        f"files/objc2/{commit}/{filename}",
+                        f"https://raw.githubusercontent.com/madsmtm/objc2/{commit}/{filename}",
+                        digest,
+                        digest,
+                    ),
+                )
+                verified_blob = hashlib.sha1(b"blob %d\0" % len(resource.content) + resource.content).hexdigest()
+                self.assertEqual(verified_blob, blob)
+                self.assertNotIn("framework-crates", resource.path.as_posix())
+                self.assertNotIn("framework-crates", resource.source_url)
+                self.assertNotIn(path_in_vcs, resource.path.as_posix())
+                self.assertNotIn(path_in_vcs, resource.source_url)
+        self.assertEqual(
+            {
+                commit: sum(
+                    supplement.packages[(*name_version, source)].vcs_commit == commit
+                    for name_version in expected
+                )
+                for commit in (txt_commit, md_commit, objc_sys_commit)
+            },
+            {txt_commit: 6, md_commit: 3, objc_sys_commit: 1},
+        )
+        txt_content = supplement.packages[("objc2-symbols", "0.2.2", source)].files[0].content
+        self.assertTrue(txt_content.startswith(b"MIT License\n"))
+        self.assertIn(b"Copyright (c) Steven Sheldon", txt_content)
+        md_content = supplement.packages[("objc2-io-surface", "0.3.2", source)].files[0].content
+        self.assertIn(
+            b"All other crates are trio-licensed under the [Zlib], [Apache-2.0] or [MIT]",
+            md_content,
+        )
 
 
 class BinaryArchitectureTests(DisposableFixtureMixin):
