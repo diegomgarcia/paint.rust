@@ -1,0 +1,150 @@
+{
+  "external_gates": {
+    "hosted_three_os_ci": "NOT_RUN",
+    "native_windows_linux_window_usability": "NOT_RUN",
+    "paintnet_5_1_12_full_parity": "OPEN",
+    "real_macos_window_keyboard": "NOT_RUN_HOST_LOCKED; current harness-identity revision not executed live",
+    "remaining_notice_legal_asset_font_review": "OPEN",
+    "signing_notarization_installer": "OPEN",
+    "stock_writer_open": "NOT_RUN",
+    "windows_qga_round7_probe": "NOT_REPEATED; last bounded probe failed with UTM RPC -2700",
+    "windows_x64_product_execution": "NOT_RUN"
+  },
+  "failed": 0,
+  "format": "paint.r.round7-integration",
+  "goal_complete": false,
+  "ignored": 0,
+  "integrated_log": {
+    "path": "artifacts/reference-local/round7-fe36f85/integrated-final.log",
+    "sha256": "b1b67d32f4b8a52517153e93129d3ce7ecac843a476609d7ebef8370be7b4b6f"
+  },
+  "native_devmode_resource_warnings": 0,
+  "native_harness_commit": "5ed18020be564c0d88a16e34594924dd29df4dd6",
+  "native_harness_identity": {
+    "expected_red_old_behavior": "manifest lacked harness identities (KeyError: 'harness')",
+    "manifest_identity": {
+      "capture_stage": "gate_initialization",
+      "fields": [
+        "source-relative path",
+        "bytes",
+        "SHA-256"
+      ],
+      "files": [
+        "tools/macos_native_usability_gate.py",
+        "tools/macos_native_usability_gate.swift",
+        "tests/e2e/png_rgba.py"
+      ],
+      "present_in_pass_and_blocked_not_run_manifests": true
+    },
+    "not_clean_checkout_or_immutable_execution_proof": true,
+    "orchestration_passed": 24,
+    "present_in_blocked_not_run_manifest": true,
+    "receipt": "artifacts/validation/2026-10-27-native-harness-identity-5ed1802.json",
+    "round7_native_execution": "NOT_RUN"
+  },
+  "native_process_lifecycle": {
+    "current_real_child_stress_passed": 50,
+    "devmode_log": {
+      "path": "artifacts/reference-local/round7-fe36f85/harness-devmode.log",
+      "sha256": "565f0b0c6cd088fd529205140c731bac29f08d87106340bf8a5931ebb1f39160"
+    },
+    "devmode_passed": 24,
+    "resource_warnings": 0
+  },
+  "notice_merge_commit": "30ab4b98d9677db01cf51e5fb352187516947307",
+  "notice_provenance": {
+    "archived_and_unpacked_vcs_match": true,
+    "curated_emitted_files": 44,
+    "curated_supplements": 26,
+    "deterministic_tree_entries": 791,
+    "deterministic_tree_sha256": "ab6dc052f1663cf3d32ef5bf94b018567ab2e0e09dc95e8d52276607a17badec",
+    "extraction_complete": false,
+    "fallback_or_moving_license_used": false,
+    "independent_upstream_files_verified": 6,
+    "new_package_identities": [
+      "gl_generator@0.14.0",
+      "khronos_api@3.1.0",
+      "objc2-encode@4.1.0",
+      "objc2@0.5.3",
+      "objc2@0.6.5",
+      "spirv@0.4.0+sdk-1.4.341.0"
+    ],
+    "package_count": 457,
+    "public_packaging": "REFUSED",
+    "receipt": "artifacts/validation/2026-10-27-gpu-core-notices-30ab4b9.json",
+    "remaining_gaps": 34,
+    "requested_six_package_batch_completed": true,
+    "with_texts": 423
+  },
+  "package_logs": [
+    {
+      "path": "artifacts/reference-local/round7-fe36f85/package-a.log",
+      "sha256": "1d9e1b1de43f790496c6b689646842bd52ff5df8dff210de37e3fb5a33cd29fc"
+    },
+    {
+      "path": "artifacts/reference-local/round7-fe36f85/package-b.log",
+      "sha256": "aaa5c2b634bd64a76e0bf658b66ce7c0bb8c86d7a6db69454c726b827ea1cb1b"
+    }
+  ],
+  "property_stress": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 93,
+    "proptest_cases": 8192,
+    "scope": [
+      "paint-core",
+      "paint-document",
+      "paint-raster",
+      "paint-pdn3",
+      "paint-plugin-bridge"
+    ],
+    "source_commit": "00d8819ca662afb20e24c375503aef37839d4617",
+    "suite_records": 21
+  },
+  "real_package_integration": {
+    "archive": {
+      "bytes": 7238389,
+      "path": "artifacts/preview/round7-bece09e-a/paint-r-0.1.0-macos-aarch64.zip",
+      "sha256": "bb9d2a71be0e1f8c5c88265d173425b1708e3cfdb9539324349c55d832d4f696"
+    },
+    "binary_sha256": "ad69dcd9dbbe22d9fef3bc8e31265fcd87220a1764ee8fbff3b5eedb86e1d922",
+    "curated_files_verified_inside_archive": 44,
+    "embedded_ledger_matches_source": true,
+    "embedded_ledger_sha256": "55b7a0a80b6336b9ab5e2a94a01785d555790cc0a2611e2ce94ff5fcc9c281ec",
+    "fresh_binary_reproduction": "NOT_RUN_IN_THIS_INTEGRATION",
+    "native_window": "NOT_RUN_HOST_LOCKED",
+    "package_output_tree_sha256": "db68c40bb05244cd983e4107503e400a8eccb321d58bc7bada38f7a53cefc6d5",
+    "post_extract_smoke": {
+      "repeat": 2,
+      "status": "pass",
+      "trace_count": 2
+    },
+    "public_release": false
+  },
+  "rust_full_gate": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 205,
+    "product_tree_unchanged_at_round7_head": true,
+    "source_commit": "01dcbb8f4a99d50115f26747acf1ddb509d1bedc",
+    "suite_records": 40
+  },
+  "source_commit": "bece09e7352a41d952eae125ca8f7e5c76167941",
+  "static_checks": {
+    "actionlint": "pass",
+    "launcher_shellcheck": "pass",
+    "swift_typecheck": "pass"
+  },
+  "status": "PASS_ENGINEERING_ROUND_NOT_A_PUBLIC_RELEASE",
+  "tests": {
+    "cross_language_live": 8,
+    "dotnet": 12,
+    "native_devmode": 24,
+    "native_orchestration": 24,
+    "native_real_child_stress": 50,
+    "package_workflow": 47,
+    "python_end_to_end": 18,
+    "reference_tools": 30
+  },
+  "version": 1
+}
