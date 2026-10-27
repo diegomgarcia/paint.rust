@@ -20,13 +20,14 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 import uuid
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Sequence
-from urllib.parse import quote
+from typing import Mapping, Sequence
+from urllib.parse import quote, urlsplit
 
 DEFAULT_EPOCH = 946_684_800  # 2000-01-01T00:00:00Z; valid for ZIP and tar.
 PLATFORMS = {
@@ -66,6 +67,29 @@ class PackageResult:
     verification: Path
     version: str
     notice_extraction_complete: bool
+
+
+@dataclass(frozen=True)
+class CuratedNoticeFile:
+    path: PurePosixPath
+    source_path: PurePosixPath
+    source_url: str
+    sha256: str
+    content: bytes
+
+
+@dataclass(frozen=True)
+class CuratedNoticePackage:
+    checksum: str
+    repository: str
+    vcs_commit: str
+    path_in_vcs: str
+    files: tuple[CuratedNoticeFile, ...]
+
+
+@dataclass(frozen=True)
+class NoticeSupplement:
+    packages: Mapping[tuple[str, str, str], CuratedNoticePackage]
 
 
 def _json_bytes(value: object) -> bytes:
@@ -324,11 +348,269 @@ def _notice_candidates(root: Path, record: dict[str, object]) -> list[Path]:
     return sorted(candidates, key=lambda path: path.relative_to(root).as_posix())
 
 
-def collect_third_party_notices(metadata: dict[str, object], payload_root: Path) -> dict[str, object]:
-    """Copy discoverable license/notice texts and explicitly inventory every gap.
+def _exact_record(value: object, fields: set[str], label: str) -> dict[str, object]:
+    if not isinstance(value, dict) or set(value) != fields:
+        raise PackagingError(f"{label} has invalid fields")
+    return value
 
-    Discovery is heuristic and is not represented as legal verification. Public
-    packaging remains blocked even if every package has a discovered file.
+
+def _supplement_relative_path(value: object, label: str) -> PurePosixPath:
+    if not isinstance(value, str) or not value or "\\" in value or ":" in value or "\x00" in value:
+        raise PackagingError(f"unsafe supplement file path in {label}")
+    path = PurePosixPath(value)
+    if path.is_absolute() or path.as_posix() != value or any(part in ("", ".", "..") for part in path.parts):
+        raise PackagingError(f"unsafe supplement file path in {label}")
+    return path
+
+
+def _sha256_value(value: object, label: str) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise PackagingError(f"{label} must be a lowercase SHA-256 digest")
+    return value
+
+
+def load_locked_package_checksums(lockfile: Path) -> dict[tuple[str, str, str], str]:
+    """Return exact registry/package checksums from the locked Cargo graph."""
+    try:
+        with lockfile.open("rb") as source:
+            locked = tomllib.load(source)
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise PackagingError(f"could not read Cargo.lock for notice provenance: {error}") from error
+    records = locked.get("package")
+    if not isinstance(records, list):
+        raise PackagingError("Cargo.lock has no package records for notice provenance")
+    checksums: dict[tuple[str, str, str], str] = {}
+    for record in records:
+        if not isinstance(record, dict) or not isinstance(record.get("name"), str) or not isinstance(record.get("version"), str):
+            raise PackagingError("Cargo.lock has an invalid package record for notice provenance")
+        source = record.get("source")
+        checksum = record.get("checksum")
+        if source is None and checksum is None:
+            continue
+        if not isinstance(source, str) or not source:
+            raise PackagingError("Cargo.lock checksummed package has no exact source")
+        identity = (record["name"], record["version"], source)
+        digest = _sha256_value(checksum, f"Cargo.lock checksum for {record['name']} {record['version']}")
+        if identity in checksums:
+            raise PackagingError(f"duplicate Cargo.lock package identity for notice provenance: {identity}")
+        checksums[identity] = digest
+    return checksums
+
+
+def load_notice_supplement(root: Path) -> NoticeSupplement:
+    """Load and hash curated notice bytes; never retrieve or synthesize text.
+
+    Every source URL is checked again against the consuming package's exact VCS
+    commit. Curated bytes are retained so later emission cannot observe changed
+    source files between validation and packaging.
+    """
+    index_path = root / "index.json"
+    try:
+        manifest = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as error:
+        raise PackagingError(f"could not read curated notice supplement: {error}") from error
+    manifest = _exact_record(manifest, {"format", "version", "files", "packages"}, "notice supplement")
+    if manifest["format"] != "paint.r.notice-provenance-supplement" or type(manifest["version"]) is not int:
+        raise PackagingError("notice supplement has an unsupported format or version")
+    if manifest["version"] != 1 or not isinstance(manifest["files"], list) or not isinstance(manifest["packages"], list):
+        raise PackagingError("notice supplement has an unsupported format or version")
+
+    resolved_root = root.resolve()
+    resources: dict[str, CuratedNoticeFile] = {}
+    for raw_resource in manifest["files"]:
+        resource = _exact_record(
+            raw_resource,
+            {"id", "path", "source_path", "source_url", "sha256"},
+            "notice supplement file",
+        )
+        resource_id = resource["id"]
+        if not isinstance(resource_id, str) or not resource_id or resource_id in resources:
+            raise PackagingError("notice supplement file id is empty or duplicated")
+        relative = _supplement_relative_path(resource["path"], f"file {resource_id}")
+        source_path = _supplement_relative_path(resource["source_path"], f"source_path for {resource_id}")
+        source_url = resource["source_url"]
+        if not isinstance(source_url, str):
+            raise PackagingError(f"notice supplement source URL for {resource_id} is invalid")
+        parsed_url = urlsplit(source_url)
+        if (
+            parsed_url.scheme != "https"
+            or not parsed_url.hostname
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+            or parsed_url.query
+            or parsed_url.fragment
+        ):
+            raise PackagingError(f"notice supplement source URL for {resource_id} must be immutable HTTPS")
+        digest = _sha256_value(resource["sha256"], f"notice supplement hash for {resource_id}")
+        source_file = resolved_root.joinpath(*relative.parts)
+        try:
+            source_file.resolve().relative_to(resolved_root)
+        except ValueError as error:
+            raise PackagingError(f"unsafe supplement file path in file {resource_id}") from error
+        cursor = resolved_root
+        for part in relative.parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                raise PackagingError(f"unsafe supplement file path in file {resource_id}: symbolic link")
+        if not source_file.is_file():
+            raise PackagingError(f"curated notice supplement file is unavailable: {relative.as_posix()}")
+        try:
+            content = source_file.read_bytes()
+        except OSError as error:
+            raise PackagingError(f"could not read curated notice supplement file {resource_id}: {error}") from error
+        if not content or hashlib.sha256(content).hexdigest() != digest:
+            raise PackagingError(f"curated notice supplement SHA-256 mismatch for {resource_id}")
+        resources[resource_id] = CuratedNoticeFile(relative, source_path, source_url, digest, content)
+
+    packages: dict[tuple[str, str, str], CuratedNoticePackage] = {}
+    used_resources: set[str] = set()
+    for raw_package in manifest["packages"]:
+        record = _exact_record(
+            raw_package,
+            {
+                "name",
+                "version",
+                "source",
+                "checksum",
+                "repository",
+                "vcs_commit",
+                "path_in_vcs",
+                "file_ids",
+            },
+            "notice supplement package",
+        )
+        string_fields = ("name", "version", "source", "repository", "vcs_commit", "path_in_vcs")
+        if any(not isinstance(record[key], str) for key in string_fields):
+            raise PackagingError("notice supplement package identity has invalid strings")
+        if any(not record[key] for key in ("name", "version", "source", "repository", "vcs_commit")):
+            raise PackagingError("notice supplement package identity has an empty field")
+        if not str(record["source"]).startswith("registry+"):
+            raise PackagingError("notice supplement packages must have an exact registry source")
+        repository_url = urlsplit(str(record["repository"]))
+        if repository_url.scheme != "https" or not repository_url.hostname or repository_url.query or repository_url.fragment:
+            raise PackagingError("notice supplement package repository must be an HTTPS URL")
+        commit = str(record["vcs_commit"])
+        if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+            raise PackagingError("notice supplement VCS commit must be a full lowercase Git commit")
+        checksum = _sha256_value(record["checksum"], f"notice supplement checksum for {record['name']}")
+        raw_ids = record["file_ids"]
+        if (
+            not isinstance(raw_ids, list)
+            or not raw_ids
+            or any(not isinstance(resource_id, str) for resource_id in raw_ids)
+            or len(set(raw_ids)) != len(raw_ids)
+        ):
+            raise PackagingError(f"notice supplement file ids are invalid for {record['name']} {record['version']}")
+        identity = (str(record["name"]), str(record["version"]), str(record["source"]))
+        if identity in packages:
+            raise PackagingError(f"duplicate notice supplement package identity: {identity}")
+        selected: list[CuratedNoticeFile] = []
+        for resource_id in raw_ids:
+            resource = resources.get(resource_id)
+            if resource is None:
+                raise PackagingError(f"notice supplement references unknown file id: {resource_id}")
+            parsed_url = urlsplit(resource.source_url)
+            expected_suffix = (commit, *resource.source_path.parts)
+            url_parts = tuple(part for part in parsed_url.path.split("/") if part)
+            if len(url_parts) < len(expected_suffix) or url_parts[-len(expected_suffix) :] != expected_suffix:
+                raise PackagingError(
+                    f"notice supplement source URL for {resource_id} must be commit-pinned to {commit} "
+                    "and end at its source_path"
+                )
+            selected.append(resource)
+            used_resources.add(resource_id)
+        packages[identity] = CuratedNoticePackage(
+            checksum=checksum,
+            repository=str(record["repository"]),
+            vcs_commit=commit,
+            path_in_vcs=str(record["path_in_vcs"]),
+            files=tuple(selected),
+        )
+    if used_resources != set(resources):
+        raise PackagingError("notice supplement contains unreferenced files")
+    return NoticeSupplement(packages)
+
+
+def _apply_notice_supplement(
+    *,
+    entry: dict[str, object],
+    record: dict[str, object],
+    root: Path,
+    destination_key: str,
+    payload_root: Path,
+    supplement: NoticeSupplement,
+    locked_checksums: Mapping[tuple[str, str, str], str],
+) -> None:
+    name = str(entry["name"])
+    version = str(entry["version"])
+    identity = (name, version, str(record.get("source") or ""))
+    curated = supplement.packages.get(identity)
+    if curated is None:
+        return
+    errors = entry["errors"]
+    assert isinstance(errors, list)
+    actual_checksum = locked_checksums.get(identity)
+    if actual_checksum != curated.checksum:
+        errors.append("curated notice supplement rejected: exact Cargo.lock checksum is unavailable or mismatched")
+        return
+    if str(record.get("repository") or "") != curated.repository:
+        errors.append("curated notice supplement rejected: package repository is unavailable or mismatched")
+        return
+    try:
+        vcs = json.loads((root / ".cargo_vcs_info.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as error:
+        errors.append(f"curated notice supplement rejected: .cargo_vcs_info.json is unavailable or invalid: {error}")
+        return
+    git = vcs.get("git") if isinstance(vcs, dict) else None
+    actual_commit = git.get("sha1") if isinstance(git, dict) else None
+    actual_path = vcs.get("path_in_vcs", "") if isinstance(vcs, dict) else None
+    if actual_commit != curated.vcs_commit or actual_path != curated.path_in_vcs:
+        errors.append("curated notice supplement rejected: exact VCS commit or package path is mismatched")
+        return
+
+    file_records = entry["files"]
+    assert isinstance(file_records, list)
+    for resource in curated.files:
+        filename = f"{len(file_records):03d}-{_safe_component(resource.source_path.name)}"
+        destination = Path("third-party-notices/files") / destination_key / filename
+        target = payload_root / destination
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(resource.content)
+        target.chmod(0o644)
+        emitted_digest = _sha256_file(target)
+        if emitted_digest != resource.sha256 or target.read_bytes() != resource.content:
+            raise PackagingError(f"emitted curated notice SHA-256 mismatch for {name} {version}: {resource.source_path}")
+        file_records.append(
+            {
+                "path": destination.as_posix(),
+                "source_path": resource.source_path.as_posix(),
+                "source_kind": "curated-upstream-vcs",
+                "source_url": resource.source_url,
+                "vcs_commit": curated.vcs_commit,
+                "sha256": emitted_digest,
+            }
+        )
+    entry["provenance"] = {
+        "kind": "curated-upstream-vcs",
+        "registry_source": identity[2],
+        "cargo_checksum": actual_checksum,
+        "repository": curated.repository,
+        "vcs_commit": curated.vcs_commit,
+        "path_in_vcs": curated.path_in_vcs,
+    }
+
+
+def collect_third_party_notices(
+    metadata: dict[str, object],
+    payload_root: Path,
+    *,
+    supplement: NoticeSupplement | None = None,
+    locked_checksums: Mapping[tuple[str, str, str], str] | None = None,
+) -> dict[str, object]:
+    """Copy discoverable or exactly curated license/notice texts and inventory gaps.
+
+    Discovery is heuristic and curated retrieval is not represented as legal
+    verification. Public packaging remains blocked even with complete file coverage.
     """
     workspace = set(metadata.get("workspace_members", []))
     packages = [
@@ -387,6 +669,16 @@ def collect_third_party_notices(metadata: dict[str, object], payload_root: Path)
                         "sha256": _sha256_file(target),
                     }
                 )
+            if supplement is not None and not entry["files"] and not entry["errors"]:
+                _apply_notice_supplement(
+                    entry=entry,
+                    record=record,
+                    root=root,
+                    destination_key=key,
+                    payload_root=payload_root,
+                    supplement=supplement,
+                    locked_checksums=locked_checksums or {},
+                )
         entries.append(entry)
 
     extraction_complete = bool(entries) and all(
@@ -395,10 +687,11 @@ def collect_third_party_notices(metadata: dict[str, object], payload_root: Path)
     index: dict[str, object] = {
         "format": "paint.r.third-party-notice-inventory",
         "version": 1,
-        "verification": "heuristic-extraction-only-not-legal-review",
+        "verification": "heuristic-and-curated-upstream-extraction-not-legal-review",
         "extraction_complete": extraction_complete,
         "package_count": len(entries),
         "packages_with_discovered_texts": sum(bool(entry["files"]) for entry in entries),
+        "packages_with_curated_supplements": sum("provenance" in entry for entry in entries),
         "packages": entries,
     }
     index_path = payload_root / "third-party-notices/index.json"
@@ -409,14 +702,17 @@ def collect_third_party_notices(metadata: dict[str, object], payload_root: Path)
         "# Third-party notices — internal development preview",
         "",
         "Paint.R has no selected public project license. This inventory does not grant one.",
-        "This is heuristic extraction from locked Cargo package sources, **not a legal review**",
-        "or a claim that redistribution obligations are satisfied. Public packaging is blocked.",
+        "Package-source discovery is heuristic; curated supplements contain hash-verified bytes from",
+        "commit-pinned upstream URLs. This is **not a legal review** or a claim that redistribution",
+        "obligations are satisfied. Cargo license expressions are metadata, not license texts.",
+        "Public packaging is blocked.",
         "",
         f"Resolved third-party packages: {len(entries)}.",
-        f"Packages with discovered notice texts: {index['packages_with_discovered_texts']}.",
-        f"Heuristic file coverage complete: {'yes' if extraction_complete else 'no'}.",
+        f"Packages with package-source or curated notice texts: {index['packages_with_discovered_texts']}.",
+        f"Packages with curated upstream supplements: {index['packages_with_curated_supplements']}.",
+        f"Notice text file coverage complete: {'yes' if extraction_complete else 'no'}.",
         "The Cargo SBOM is a locked-workspace inventory, not an exact linked-binary or native-dependency audit.",
-        "See `third-party-notices/index.json` for paths, source-relative names, hashes, and extraction errors.",
+        "See `third-party-notices/index.json` for paths, sources, hashes, provenance, and extraction errors.",
         "",
     ]
     for entry in entries:
@@ -425,9 +721,17 @@ def collect_third_party_notices(metadata: dict[str, object], payload_root: Path)
         lines.append("")
         lines.append(f"Cargo license expression: `{expression}`")
         lines.append("")
+        if "provenance" in entry:
+            provenance = entry["provenance"]
+            lines.append(
+                f"Curated provenance: Cargo checksum `{provenance['cargo_checksum']}`; "
+                f"VCS commit `{provenance['vcs_commit']}`; package path `{provenance['path_in_vcs'] or '.'}`."
+            )
+            lines.append("")
         if entry["files"]:
             for record in entry["files"]:
-                lines.append(f"- [`{record['source_path']}`]({record['path']})")
+                upstream = f" — [immutable upstream]({record['source_url']})" if "source_url" in record else ""
+                lines.append(f"- [`{record['source_path']}`]({record['path']}){upstream}")
         else:
             lines.append("- **No license/notice text discovered; redistribution review remains required.**")
         for error in entry["errors"]:
@@ -946,7 +1250,12 @@ def package_release(
             )
         )
         (payload / "sbom.cdx.json").write_bytes(_json_bytes(generate_sbom(metadata, epoch)))
-        notice_index = collect_third_party_notices(metadata, payload)
+        supplement_root = repo_root / "tools/package/notice_supplement"
+        supplement = load_notice_supplement(supplement_root) if supplement_root.exists() else None
+        locked_checksums = load_locked_package_checksums(repo_root / "Cargo.lock") if supplement is not None else {}
+        notice_index = collect_third_party_notices(
+            metadata, payload, supplement=supplement, locked_checksums=locked_checksums
+        )
         if platform == "macos-aarch64":
             resources = payload / "Paint.R.app/Contents/Resources/Preview"
             resources.mkdir(parents=True, exist_ok=True)

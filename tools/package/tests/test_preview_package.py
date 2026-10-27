@@ -257,7 +257,8 @@ class MetadataAndNoticeTests(DisposableFixtureMixin):
         index = package.collect_third_party_notices(metadata, payload)
 
         self.assertFalse(index["extraction_complete"])
-        self.assertEqual(index["verification"], "heuristic-extraction-only-not-legal-review")
+        self.assertEqual(index["verification"], "heuristic-and-curated-upstream-extraction-not-legal-review")
+        self.assertEqual(index["packages_with_curated_supplements"], 0)
         discovered = next(entry for entry in index["packages"] if entry["name"] == "epaint_default_fonts")
         self.assertEqual(len(discovered["files"]), 3)
         for record in discovered["files"]:
@@ -266,6 +267,263 @@ class MetadataAndNoticeTests(DisposableFixtureMixin):
         self.assertEqual(absent["files"], [])
         self.assertIn("not a legal review", (payload / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8"))
         self.assertNotIn(str(self.root), json.dumps(index))
+
+
+class NoticeProvenanceSupplementTests(DisposableFixtureMixin):
+    """Exercise curated upstream notices without network or real license fixtures."""
+
+    COMMIT = "a" * 40
+    CHECKSUM = "b" * 64
+    SOURCE = "registry+https://github.com/rust-lang/crates.io-index"
+    REPOSITORY = "https://github.com/example/project"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.crate = self.root / "registry/example"
+        self.crate.mkdir(parents=True)
+        (self.crate / "Cargo.toml").write_text("# disposable package fixture\n", encoding="utf-8")
+        self.write_vcs(self.COMMIT, "crates/example")
+        self.missing = self.root / "registry/missing"
+        self.missing.mkdir(parents=True)
+        self.supplement = self.root / "supplement"
+        (self.supplement / "files").mkdir(parents=True)
+        self.notice = b"disposable curated upstream notice fixture; not a license\n"
+        (self.supplement / "files/NOTICE").write_bytes(self.notice)
+        self.manifest = {
+            "format": "paint.r.notice-provenance-supplement",
+            "version": 1,
+            "files": [
+                {
+                    "id": "example-notice",
+                    "path": "files/NOTICE",
+                    "source_path": "NOTICE",
+                    "source_url": f"https://raw.githubusercontent.com/example/project/{self.COMMIT}/NOTICE",
+                    "sha256": hashlib.sha256(self.notice).hexdigest(),
+                }
+            ],
+            "packages": [
+                {
+                    "name": "example",
+                    "version": "1.2.3",
+                    "source": self.SOURCE,
+                    "checksum": self.CHECKSUM,
+                    "repository": self.REPOSITORY,
+                    "vcs_commit": self.COMMIT,
+                    "path_in_vcs": "crates/example",
+                    "file_ids": ["example-notice"],
+                }
+            ],
+        }
+        self.write_manifest(self.manifest)
+        self.lockfile = self.root / "Cargo.lock"
+        self.lockfile.write_text(
+            "\n".join(
+                [
+                    "version = 4",
+                    "",
+                    "[[package]]",
+                    'name = "example"',
+                    'version = "1.2.3"',
+                    f'source = "{self.SOURCE}"',
+                    f'checksum = "{self.CHECKSUM}"',
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+    def write_vcs(self, commit: str, path_in_vcs: str) -> None:
+        (self.crate / ".cargo_vcs_info.json").write_text(
+            json.dumps({"git": {"sha1": commit}, "path_in_vcs": path_in_vcs}), encoding="utf-8"
+        )
+
+    def write_manifest(self, manifest: dict[str, object]) -> None:
+        (self.supplement / "index.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    def metadata(self) -> dict[str, object]:
+        return {
+            "packages": [
+                {
+                    "id": "registry+example#example@1.2.3",
+                    "name": "example",
+                    "version": "1.2.3",
+                    "license": "MIT",
+                    "license_file": None,
+                    "source": self.SOURCE,
+                    "repository": self.REPOSITORY,
+                    "manifest_path": str(self.crate / "Cargo.toml"),
+                },
+                {
+                    "id": "registry+example#missing@1.0.0",
+                    "name": "missing",
+                    "version": "1.0.0",
+                    "license": "Apache-2.0",
+                    "license_file": None,
+                    "source": self.SOURCE,
+                    "manifest_path": str(self.missing / "Cargo.toml"),
+                },
+            ],
+            "workspace_members": [],
+        }
+
+    def load_supplement(self) -> tuple[dict[tuple[str, str, str], str], object]:
+        checksums = package.load_locked_package_checksums(self.lockfile)
+        return checksums, package.load_notice_supplement(self.supplement)
+
+    def collect(self, payload_name: str = "payload") -> tuple[dict[str, object], Path]:
+        checksums, supplement = self.load_supplement()
+        payload = self.root / payload_name
+        index = package.collect_third_party_notices(
+            self.metadata(), payload, supplement=supplement, locked_checksums=checksums
+        )
+        return index, payload
+
+    def test_commit_pinned_supplement_is_offline_deterministic_and_auditable(self) -> None:
+        first, first_payload = self.collect("first-payload")
+        second, second_payload = self.collect("second-payload")
+
+        self.assertEqual(first, second)
+        self.assertFalse(first["extraction_complete"])
+        self.assertEqual(first["package_count"], 2)
+        self.assertEqual(first["packages_with_discovered_texts"], 1)
+        self.assertEqual(first["packages_with_curated_supplements"], 1)
+        curated = next(entry for entry in first["packages"] if entry["name"] == "example")
+        self.assertEqual(
+            curated["provenance"],
+            {
+                "kind": "curated-upstream-vcs",
+                "registry_source": self.SOURCE,
+                "cargo_checksum": self.CHECKSUM,
+                "repository": self.REPOSITORY,
+                "vcs_commit": self.COMMIT,
+                "path_in_vcs": "crates/example",
+            },
+        )
+        self.assertEqual(len(curated["files"]), 1)
+        record = curated["files"][0]
+        self.assertEqual(record["source_path"], "NOTICE")
+        self.assertEqual(record["source_kind"], "curated-upstream-vcs")
+        self.assertEqual(
+            record["source_url"],
+            f"https://raw.githubusercontent.com/example/project/{self.COMMIT}/NOTICE",
+        )
+        self.assertEqual(record["vcs_commit"], self.COMMIT)
+        self.assertEqual(record["sha256"], hashlib.sha256(self.notice).hexdigest())
+        self.assertEqual((first_payload / record["path"]).read_bytes(), self.notice)
+        self.assertEqual((second_payload / record["path"]).read_bytes(), self.notice)
+        unresolved = next(entry for entry in first["packages"] if entry["name"] == "missing")
+        self.assertEqual(unresolved["files"], [])
+        self.assertNotIn("provenance", unresolved)
+        self.assertEqual(unresolved["license_expression"], "Apache-2.0")
+        self.assertNotIn(str(self.root), json.dumps(first))
+
+    def test_supplement_requires_exact_lock_repository_and_vcs_identity(self) -> None:
+        identity = ("example", "1.2.3", self.SOURCE)
+        cases = ("checksum-mismatch", "checksum-unavailable", "vcs-mismatch", "path-mismatch", "repository-mismatch")
+        for case in cases:
+            with self.subTest(case=case):
+                self.write_vcs(self.COMMIT, "crates/example")
+                metadata = self.metadata()
+                checksums, supplement = self.load_supplement()
+                if case == "checksum-mismatch":
+                    checksums[identity] = "0" * 64
+                elif case == "checksum-unavailable":
+                    del checksums[identity]
+                elif case == "vcs-mismatch":
+                    self.write_vcs("c" * 40, "crates/example")
+                elif case == "path-mismatch":
+                    self.write_vcs(self.COMMIT, "different/path")
+                elif case == "repository-mismatch":
+                    metadata["packages"][0]["repository"] = "https://github.com/example/other"
+                payload = self.root / f"payload-{case}"
+                index = package.collect_third_party_notices(
+                    metadata, payload, supplement=supplement, locked_checksums=checksums
+                )
+                curated = next(entry for entry in index["packages"] if entry["name"] == "example")
+                self.assertEqual(curated["files"], [])
+                self.assertNotIn("provenance", curated)
+                self.assertTrue(any("curated notice supplement" in error for error in curated["errors"]))
+                self.assertFalse(index["extraction_complete"])
+                self.assertEqual(index["packages_with_curated_supplements"], 0)
+
+    def test_supplement_rejects_unpinned_urls_bad_hashes_and_unsafe_paths(self) -> None:
+        cases = ("moving-url", "hash-mismatch", "path-traversal", "source-path-mismatch")
+        for case in cases:
+            with self.subTest(case=case):
+                manifest = copy.deepcopy(self.manifest)
+                resource = manifest["files"][0]
+                if case == "moving-url":
+                    resource["source_url"] = "https://raw.githubusercontent.com/example/project/main/NOTICE"
+                    diagnostic = "commit-pinned"
+                elif case == "hash-mismatch":
+                    resource["sha256"] = "0" * 64
+                    diagnostic = "SHA-256 mismatch"
+                elif case == "path-traversal":
+                    resource["path"] = "../NOTICE"
+                    diagnostic = "unsafe supplement file path"
+                else:
+                    resource["source_path"] = "docs/NOTICE"
+                    diagnostic = "source URL"
+                self.write_manifest(manifest)
+                with self.assertRaisesRegex(package.PackagingError, diagnostic):
+                    package.load_notice_supplement(self.supplement)
+
+    def test_local_package_notice_takes_precedence_over_supplement(self) -> None:
+        local_notice = b"disposable package-source notice\n"
+        (self.crate / "NOTICE").write_bytes(local_notice)
+
+        index, payload = self.collect()
+
+        curated = next(entry for entry in index["packages"] if entry["name"] == "example")
+        self.assertEqual(len(curated["files"]), 1)
+        self.assertNotIn("provenance", curated)
+        self.assertNotIn("source_kind", curated["files"][0])
+        self.assertEqual((payload / curated["files"][0]["path"]).read_bytes(), local_notice)
+        self.assertEqual(index["packages_with_curated_supplements"], 0)
+
+    def test_emitted_supplement_hash_is_checked_again(self) -> None:
+        checksums, supplement = self.load_supplement()
+        with mock.patch.object(package, "_sha256_file", return_value="0" * 64):
+            with self.assertRaisesRegex(package.PackagingError, "emitted.*SHA-256 mismatch"):
+                package.collect_third_party_notices(
+                    self.metadata(),
+                    self.root / "tampered-output",
+                    supplement=supplement,
+                    locked_checksums=checksums,
+                )
+
+
+class CheckedInNoticeSupplementTests(unittest.TestCase):
+    def test_accesskit_bundle_is_hash_valid_and_matches_the_real_lockfile(self) -> None:
+        repo = Path(package.__file__).resolve().parents[2]
+        supplement = package.load_notice_supplement(repo / "tools/package/notice_supplement")
+        checksums = package.load_locked_package_checksums(repo / "Cargo.lock")
+        expected = {
+            ("accesskit", "0.25.2"),
+            ("accesskit_atspi_common", "0.21.1"),
+            ("accesskit_consumer", "0.39.2"),
+            ("accesskit_ios", "0.2.2"),
+            ("accesskit_macos", "0.27.2"),
+            ("accesskit_unix", "0.24.1"),
+            ("accesskit_windows", "0.35.2"),
+            ("accesskit_winit", "0.34.2"),
+        }
+
+        self.assertEqual({identity[:2] for identity in supplement.packages}, expected)
+        for identity, curated in supplement.packages.items():
+            with self.subTest(package=identity[:2]):
+                self.assertEqual(identity[2], NoticeProvenanceSupplementTests.SOURCE)
+                self.assertEqual(checksums[identity], curated.checksum)
+                self.assertEqual(curated.repository, "https://github.com/AccessKit/accesskit")
+                self.assertEqual(curated.vcs_commit, "f3026222559c7f5f46d8f25cb7404de68eb149f0")
+                self.assertEqual(len(curated.files), 2)
+                self.assertEqual(
+                    {resource.source_path.as_posix() for resource in curated.files},
+                    {"LICENSE-APACHE", "LICENSE-MIT"},
+                )
+                for resource in curated.files:
+                    self.assertEqual(hashlib.sha256(resource.content).hexdigest(), resource.sha256)
+                    self.assertIn(f"/{curated.vcs_commit}/", resource.source_url)
 
 
 class BinaryArchitectureTests(DisposableFixtureMixin):

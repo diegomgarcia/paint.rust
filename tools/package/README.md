@@ -151,8 +151,25 @@ may not be linked into the delivered binary; it is not an exact native/link/asse
 The notice collector copies conventional license, licence, copying, notice, copyright,
 OFL/UFL, and font-directory text files from locally resolved third-party Cargo sources.
 The index includes source-relative paths and hashes and lists packages with no discovered
-text. Discovery is heuristic, not a legal review. Incomplete extraction is disclosed in
-internal artifacts; public packaging remains refused. No first-party license is invented.
+text. Discovery is heuristic, not a legal review. Cargo license expressions remain metadata;
+they are never substituted for license or notice texts.
+
+For registry packages whose crate archives omit those files, the optional checked-in
+`notice_supplement/index.json` associates curated upstream bytes with an exact package name,
+version, registry source, `Cargo.lock` checksum, declared repository, `.cargo_vcs_info.json`
+commit, and package path in that commit. Each resource has a safe local path, source-relative
+path, full-commit HTTPS source URL, and SHA-256. The loader rejects malformed identities,
+moving or source-path-mismatched URLs, unsafe paths, missing files, and hash mismatches. Collection performs
+no network access, uses validated in-memory bytes, and verifies every emitted file's hash
+again. Package-source texts take precedence; a failed identity match produces no supplemented
+text and leaves the package incomplete.
+
+The current curated bundle is deliberately limited to the eight AccessKit package versions
+listed in the manifest. Their two repository-root license files were retrieved separately
+from the exact commit URLs recorded in the manifest and hash-verified before being checked in.
+Other package gaps remain explicit. Curated retrieval and file coverage are not legal review
+or a claim of redistribution compliance. Incomplete extraction is disclosed in internal
+artifacts; public packaging remains refused. No first-party license is invented.
 
 ## Tests
 
@@ -162,7 +179,8 @@ python3 -m unittest discover -s tools/package/tests -p 'test_*.py' -v
 
 Tests use clearly named temporary, disposable non-product fixtures. They cover ZIP and
 tar.gz byte determinism, timestamps/modes/order, exact SHA-256 manifests and sidecars,
-SBOM path independence, font notice extraction and gap reporting, platform layouts,
+SBOM path independence, font notice extraction and gap reporting, offline curated-notice
+identity/hash/provenance checks, the checked-in AccessKit bundle, platform layouts,
 PE/Mach-O/ELF architecture acceptance and rejection, exact smoke-run validation,
 public-release refusal, and mandatory-smoke failure handling. A complete `package_release`
 integration test additionally compares two deterministic archives, sidecars, binary
