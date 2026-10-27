@@ -8,15 +8,15 @@ screenshots. This is separate from the semantic `egui_kittest` usability tests a
 headless trace smoke.
 
 The latest live run used the packaged `.app` at product source
-`6f816a73f98c17b9506d877347b6ee586a4e8a25`, package source
-`2676aae27f9cbf75559f8938f700a7e366f8856b`, and native-gate source
+`a9f185de82a08405d354e2438b021cd9852e6cb4`, package source
+`25eab5a1e333262697940c575c5218474f250fe1`, and native-gate source
 `3471a735756df3251572d0b5071fc3feec19f513`. It produced `PASS`,
 `native_execution=COMPLETED`, process exit status 0, ten passing assertions, and five captured
 PNGs, covering Command-Q and the native `AXCloseButton`. Independent decoding confirmed all
 RGBA hashes and the expected transitions: before != modified, modified == canceled, and first
 confirmation == second confirmation. A focused native probe separately confirmed Command-W
 opens the dirty guard. Evidence is in
-[`2026-10-27-packaged-app-round13-2676aae.json`](../../../artifacts/validation/2026-10-27-packaged-app-round13-2676aae.json)
+[`2026-10-27-packaged-app-refreshed-25eab5a.json`](../../../artifacts/validation/2026-10-27-packaged-app-refreshed-25eab5a.json)
 and [`2026-10-27-command-w-da49c9a.json`](../../../artifacts/validation/2026-10-27-command-w-da49c9a.json).
 Earlier unlocked-host and locked-host runs remain recorded, with locked runs fail-closed
 `BLOCKED`/`NOT_RUN`. This proves only the macOS native keyboard/window slice; it is not

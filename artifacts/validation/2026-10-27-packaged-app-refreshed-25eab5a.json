@@ -1,0 +1,178 @@
+{
+  "archive": {
+    "bytes": 7323981,
+    "path": "artifacts/preview/round15-25eab5a-a/paint-r-0.1.0-macos-aarch64.zip",
+    "sha256": "be523a636c93e28b2f906e06fa1b45f1dcccb919af8af3ca5ef18f795e7ada4c"
+  },
+  "binary": "f8e82b531f2fee95029c74cc7ccc4821f709ba2e04c230549209774c1760c842",
+  "extracted_app_native_gate": {
+    "assertions": [
+      {
+        "name": "initial_clean_native_window",
+        "passed": true
+      },
+      {
+        "name": "command_i_modified_document",
+        "passed": true
+      },
+      {
+        "message": "before/after native screenshot RGBA pixels are identical; visual modification is inconclusive",
+        "name": "before_after_screenshots_differ",
+        "passed": true
+      },
+      {
+        "name": "dirty_close_confirmation_observed",
+        "passed": true
+      },
+      {
+        "message": "dirty close confirmation did not remain observable",
+        "name": "dirty_close_blocked_by_confirmation",
+        "passed": true
+      },
+      {
+        "name": "cancel_preserved_modified_session",
+        "passed": true
+      },
+      {
+        "message": "accessible document text changed while canceling the dirty close",
+        "name": "cancel_preserved_accessible_document_state",
+        "passed": true
+      },
+      {
+        "message": "confirmation and canceled screenshot RGBA pixels are identical",
+        "name": "cancel_screenshot_differs_from_confirmation",
+        "passed": true
+      },
+      {
+        "name": "second_dirty_close_confirmation",
+        "passed": true
+      },
+      {
+        "exit_code": 0,
+        "name": "explicit_discard_exit_zero",
+        "passed": true
+      }
+    ],
+    "binary": {
+      "bytes": 12609088,
+      "path": "/Users/diegogarcia/Projects/Paint .R/artifacts/reference-local/packaged-app-refreshed-round15/paint-r-0.1.0-macos-aarch64/Paint.R.app/Contents/MacOS/paint-ui",
+      "sha256": "f8e82b531f2fee95029c74cc7ccc4821f709ba2e04c230549209774c1760c842"
+    },
+    "independent_rgba": [
+      "e2821b318e7695fe5cbba700895684905d85f9e8cb309981ffcdf854ee7a40fd",
+      "2821733f265244d7e657a075c567ff15cdd666cf82d0a6401f602e4d39eca353",
+      "c291bf15e895e0d086ccbdf8507bc1047a9a17c5972c0829d994e44ca75d36a1",
+      "2821733f265244d7e657a075c567ff15cdd666cf82d0a6401f602e4d39eca353",
+      "c291bf15e895e0d086ccbdf8507bc1047a9a17c5972c0829d994e44ca75d36a1"
+    ],
+    "native_execution": "COMPLETED",
+    "outcome": "PASS",
+    "process": {
+      "exit_code": 0,
+      "pid": 47659
+    },
+    "screenshots": [
+      {
+        "bytes": 870926,
+        "height": 2088,
+        "path": "00-before.png",
+        "pid": 47659,
+        "rgba_sha256": "e2821b318e7695fe5cbba700895684905d85f9e8cb309981ffcdf854ee7a40fd",
+        "sha256": "518ba4bba152fb3809c83621dc7a80aef63444c1e564d744f17679c9517cd3b7",
+        "width": 2784,
+        "window_id": 7506
+      },
+      {
+        "bytes": 866723,
+        "height": 2088,
+        "path": "01-modified.png",
+        "pid": 47659,
+        "rgba_sha256": "2821733f265244d7e657a075c567ff15cdd666cf82d0a6401f602e4d39eca353",
+        "sha256": "2b85f3301cc6bfa553d844c50ca59550ac6fc3f1b96c6b1a9111e87c9b6acf3c",
+        "width": 2784,
+        "window_id": 7506
+      },
+      {
+        "bytes": 894403,
+        "height": 2088,
+        "path": "02-close-confirmation.png",
+        "pid": 47659,
+        "rgba_sha256": "c291bf15e895e0d086ccbdf8507bc1047a9a17c5972c0829d994e44ca75d36a1",
+        "sha256": "305fe2780224f3bd96be092898fa56114ed6753a1ff408ca7dfae46470c68302",
+        "width": 2784,
+        "window_id": 7506
+      },
+      {
+        "bytes": 866723,
+        "height": 2088,
+        "path": "03-canceled.png",
+        "pid": 47659,
+        "rgba_sha256": "2821733f265244d7e657a075c567ff15cdd666cf82d0a6401f602e4d39eca353",
+        "sha256": "2b85f3301cc6bfa553d844c50ca59550ac6fc3f1b96c6b1a9111e87c9b6acf3c",
+        "width": 2784,
+        "window_id": 7506
+      },
+      {
+        "bytes": 894403,
+        "height": 2088,
+        "path": "04-second-close-confirmation.png",
+        "pid": 47659,
+        "rgba_sha256": "c291bf15e895e0d086ccbdf8507bc1047a9a17c5972c0829d994e44ca75d36a1",
+        "sha256": "305fe2780224f3bd96be092898fa56114ed6753a1ff408ca7dfae46470c68302",
+        "width": 2784,
+        "window_id": 7506
+      }
+    ]
+  },
+  "format": "paint.r.packaged-app-live",
+  "limitations": [
+    "Unsigned internal artifact only.",
+    "Ten irreducible notice/legal gaps remain.",
+    "Windows/Linux-native-window, hosted CI, signing, and parity gates remain open."
+  ],
+  "notice_inventory": {
+    "curated_supplements": 50,
+    "packages_with_texts": 447,
+    "remaining_gaps": 10
+  },
+  "package_output_tree": {
+    "entries": 3,
+    "files": [
+      {
+        "bytes": 7323981,
+        "path": "paint-r-0.1.0-macos-aarch64.zip",
+        "sha256": "be523a636c93e28b2f906e06fa1b45f1dcccb919af8af3ca5ef18f795e7ada4c"
+      },
+      {
+        "bytes": 98,
+        "path": "paint-r-0.1.0-macos-aarch64.zip.sha256",
+        "sha256": "90d6a3d68db534fbad2ec7a388116da00aa808de65332f6eabc24145b5ece916"
+      },
+      {
+        "bytes": 572,
+        "path": "paint-r-0.1.0-macos-aarch64.zip.verification.json",
+        "sha256": "8d8146a12ec14a7f4e170ce68791c5d1de8bdb4b8688de0724c3d92ea7b53edc"
+      }
+    ],
+    "kind": "directory",
+    "status": "pass",
+    "tree_sha256": "e2e2ccc5da4374d3d0076acfd3de55c0ea0a30516b7fcea7ec63d16f4da3aa35"
+  },
+  "package_source_commit": "25eab5a1e333262697940c575c5218474f250fe1",
+  "post_extract_smoke": {
+    "repeat": 2,
+    "status": "pass",
+    "trace_count": 2
+  },
+  "product_source_commit": "a9f185de82a08405d354e2438b021cd9852e6cb4",
+  "public_release": false,
+  "status": "PASS_REFRESHED_MACOS_PACKAGE_AND_EXTRACTED_APP",
+  "ui_features": [
+    "HSV color wheel",
+    "palette",
+    "zoom/fit",
+    "PNG browser preview",
+    "Command-Q/W dirty guards"
+  ],
+  "version": 1
+}

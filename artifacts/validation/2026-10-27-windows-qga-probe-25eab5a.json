@@ -1,0 +1,17 @@
+{
+  "error": {
+    "guest_command_executed": false,
+    "stage": "osascript guest_exec",
+    "utm_rpc": "Timed out waiting for RPC. (-2700)"
+  },
+  "format": "paint.r.windows-qga-probe",
+  "probe": "bounded read-only PowerShell hostname probe through existing guest agent",
+  "product_failure": false,
+  "source_commit": "25eab5a1e333262697940c575c5218474f250fe1",
+  "status": "BLOCKED_UTM_RPC_BEFORE_GUEST_EXECUTION",
+  "timestamp_local": "2026-10-27T17:13:31-04:00",
+  "unlock_bypass_attempted": false,
+  "version": 1,
+  "vm_name": "Windows",
+  "vm_reset_or_configuration_change": false
+}
