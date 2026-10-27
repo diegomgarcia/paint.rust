@@ -1,0 +1,157 @@
+{
+  "agent_commit": "20b03a060a1d0f7a0934ea4221de606efc30eb4d",
+  "fallback_or_moving_license_used": false,
+  "format": "paint.r.gpu-core-notice-provenance",
+  "independent_upstream_verification": {
+    "path": "artifacts/reference-local/round7-fe36f85/gpu-core-upstream-verification.json",
+    "sha256": "d59b8eb79a98776e5c9f8c2a5e123ef5de1b621e9e102a05146772e3de228f7e"
+  },
+  "limitations": [
+    "34 locked-package notice gaps remain and extraction_complete is false.",
+    "Curated/heuristic extraction is not legal compliance or a linked-binary/native dependency audit.",
+    "Public packaging remains refused; no release or parity status changed."
+  ],
+  "merged_package_workflow_tests": {
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round7-fe36f85/merged-package-tests.log",
+      "sha256": "1825f2ed02f3443566bcd5b626de9f8e413053808014f867cc0cd5b7bbae6104"
+    },
+    "passed": 47
+  },
+  "real_collection": {
+    "added_notice_files": [
+      "third-party-notices/files/gl_generator-0.14.0-2d35384ee2/000-LICENSE",
+      "third-party-notices/files/khronos_api-3.1.0-999e17ab44/000-LICENSE",
+      "third-party-notices/files/objc2-0.5.3-1948d59330/000-LICENSE.txt",
+      "third-party-notices/files/objc2-0.6.5-1e78fb879c/000-LICENSE.md",
+      "third-party-notices/files/objc2-encode-4.1.0-672dc10ff1/000-LICENSE.md",
+      "third-party-notices/files/spirv-0.4.0_sdk-1.4.341.0-9075b98245/000-LICENSE"
+    ],
+    "changed_global_files": [
+      "THIRD_PARTY_NOTICES.md",
+      "third-party-notices/index.json"
+    ],
+    "changed_package_entries": [
+      "gl_generator@0.14.0",
+      "khronos_api@3.1.0",
+      "objc2-encode@4.1.0",
+      "objc2@0.5.3",
+      "objc2@0.6.5",
+      "spirv@0.4.0+sdk-1.4.341.0"
+    ],
+    "curated_emitted_files": 44,
+    "curated_supplements": 26,
+    "deterministic_tree": {
+      "entries": 791,
+      "status": "pass",
+      "tree_sha256": "ab6dc052f1663cf3d32ef5bf94b018567ab2e0e09dc95e8d52276607a17badec"
+    },
+    "extraction_complete": false,
+    "network_socket_calls": "disabled and not attempted; Cargo metadata offline",
+    "package_count": 457,
+    "packages_with_texts": 423,
+    "remaining_gaps": 34,
+    "removed_files": []
+  },
+  "requested_package_count": 6,
+  "skipped_packages": [],
+  "source_commit": "30ab4b98d9677db01cf51e5fb352187516947307",
+  "status": "PASS_SIX_PACKAGE_BATCH_NOT_LEGAL_CLEARANCE",
+  "supplemented_package_count": 6,
+  "supplemented_packages": [
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "1a95dfc23a2b4a9a2f5ab41d194f8bfda3cabec42af4e39f08c339eb2a0c124d",
+      "name": "gl_generator",
+      "path_in_vcs": "",
+      "repository": "https://github.com/brendanzab/gl-rs/",
+      "vcs_commit": "ea503e8d5fb6d73c6030e6191ce738cd3bf3433e",
+      "version": "0.14.0"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc",
+      "name": "khronos_api",
+      "path_in_vcs": "",
+      "repository": "https://github.com/brendanzab/gl-rs/",
+      "vcs_commit": "f150967b1c44ae888e6676f93f639ebc82771bdc",
+      "version": "3.1.0"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "19d5490aaf8f1d7cf7688dfa9b0ce07900e168852c45cd2c03f534dfd27cfd0b",
+      "name": "objc2",
+      "path_in_vcs": "crates/objc2",
+      "repository": "https://github.com/madsmtm/objc2",
+      "vcs_commit": "5237cbf081d04ef75a1f6a207b4018e7c1ae7438",
+      "version": "0.5.3"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "08849bbd4767dfae9457696856ae1c84fe4e0281bbe4a7abff2d0e06fb7981f8",
+      "name": "objc2",
+      "path_in_vcs": "crates/objc2",
+      "repository": "https://github.com/madsmtm/objc2",
+      "vcs_commit": "d7d2fa23ceaa5e6096c923b081040e5d81b3b9df",
+      "version": "0.6.5"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33",
+      "name": "objc2-encode",
+      "path_in_vcs": "crates/objc2-encode",
+      "repository": "https://github.com/madsmtm/objc2",
+      "vcs_commit": "8d214f5477365ffcbcbb7de058c86ed9a518efb7",
+      "version": "4.1.0"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f",
+      "name": "spirv",
+      "path_in_vcs": "spirv",
+      "repository": "https://github.com/gfx-rs/rspirv",
+      "vcs_commit": "8afc3d0ac8e158128cd1410bb2e4b4c26ab11bb4",
+      "version": "0.4.0+sdk-1.4.341.0"
+    }
+  ],
+  "upstream_files": [
+    {
+      "bytes": 11358,
+      "matches_checked_in_bytes": true,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "source_url": "https://raw.githubusercontent.com/brendanzab/gl-rs/ea503e8d5fb6d73c6030e6191ce738cd3bf3433e/LICENSE"
+    },
+    {
+      "bytes": 11358,
+      "matches_checked_in_bytes": true,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "source_url": "https://raw.githubusercontent.com/brendanzab/gl-rs/f150967b1c44ae888e6676f93f639ebc82771bdc/LICENSE"
+    },
+    {
+      "bytes": 11358,
+      "matches_checked_in_bytes": true,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "source_url": "https://raw.githubusercontent.com/gfx-rs/rspirv/8afc3d0ac8e158128cd1410bb2e4b4c26ab11bb4/LICENSE"
+    },
+    {
+      "bytes": 1066,
+      "matches_checked_in_bytes": true,
+      "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+      "source_url": "https://raw.githubusercontent.com/madsmtm/objc2/5237cbf081d04ef75a1f6a207b4018e7c1ae7438/LICENSE.txt"
+    },
+    {
+      "bytes": 1339,
+      "matches_checked_in_bytes": true,
+      "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+      "source_url": "https://raw.githubusercontent.com/madsmtm/objc2/d7d2fa23ceaa5e6096c923b081040e5d81b3b9df/LICENSE.md"
+    },
+    {
+      "bytes": 1339,
+      "matches_checked_in_bytes": true,
+      "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+      "source_url": "https://raw.githubusercontent.com/madsmtm/objc2/8d214f5477365ffcbcbb7de058c86ed9a518efb7/LICENSE.md"
+    }
+  ],
+  "version": 1
+}
