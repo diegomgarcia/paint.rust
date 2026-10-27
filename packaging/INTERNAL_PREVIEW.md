@@ -16,11 +16,14 @@ or a claim of license compliance.
 
 ## Verification represented by this archive
 
-The packager required the real `paint-ui` executable and successfully ran
-`tests/e2e/preview_smoke.py` against that binary and the repository command traces before
-creating this archive. `PREVIEW_SMOKE.json` contains normalized evidence, including exact
-PNG/RGBA semantic results and rejection-path status. `SHA256SUMS.txt` covers the packaged
-payload; a separate `.sha256` sidecar covers the archive.
+The packager required the real `paint-ui` executable, checked its platform-specific
+PE/Mach-O/ELF machine header, and successfully ran `tests/e2e/preview_smoke.py` against
+that binary and the repository command traces before creating this archive.
+`PREVIEW_BINARY.json` records the staged executable's format, machine, size, and hash;
+this header evidence does not prove native/non-emulated execution. `PREVIEW_SMOKE.json`
+contains normalized evidence with exact PNG/RGBA results, complete repeated-run metadata,
+and rejection-path status. `SHA256SUMS.txt` covers the packaged payload; a separate
+`.sha256` sidecar covers the archive.
 
 This is not a broad Paint.NET compatibility claim. The included `PARITY_LEDGER.md` is the
 authoritative per-feature disclosure. A trace passing against Paint.R is not itself

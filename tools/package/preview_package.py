@@ -30,9 +30,27 @@ from urllib.parse import quote
 
 DEFAULT_EPOCH = 946_684_800  # 2000-01-01T00:00:00Z; valid for ZIP and tar.
 PLATFORMS = {
-    "windows-x86_64": {"binary": "paint-ui.exe", "suffix": ".zip"},
-    "macos-aarch64": {"binary": "paint-ui", "suffix": ".zip"},
-    "linux-x86_64": {"binary": "paint-ui", "suffix": ".tar.gz"},
+    "windows-x86_64": {
+        "binary": "paint-ui.exe",
+        "suffix": ".zip",
+        "format": "PE",
+        "machine": 0x8664,
+        "architecture": "x86_64",
+    },
+    "macos-aarch64": {
+        "binary": "paint-ui",
+        "suffix": ".zip",
+        "format": "Mach-O 64",
+        "machine": 0x0100000C,
+        "architecture": "aarch64",
+    },
+    "linux-x86_64": {
+        "binary": "paint-ui",
+        "suffix": ".tar.gz",
+        "format": "ELF 64",
+        "machine": 62,
+        "architecture": "x86_64",
+    },
 }
 NOTICE_TOKENS = ("license", "licence", "copying", "notice", "copyright")
 
@@ -447,6 +465,47 @@ def normalize_smoke_report(
         runs = record.get("runs")
         if not isinstance(runs, list) or len(runs) != repeat or not all(isinstance(run, dict) for run in runs):
             raise PackagingError(f"preview smoke repeat evidence is invalid for trace: {trace}")
+        run_fields = {"width", "height", "decoded_rgba_sha256", "png_sha256", "snapshot_sha256", "snapshot"}
+        hash_fields = ("decoded_rgba_sha256", "png_sha256", "snapshot_sha256")
+        snapshot_fields = {"layer_count", "active_layer_index", "dirty", "can_undo", "can_redo"}
+        normalized_runs: list[dict[str, object]] = []
+        for run in runs:
+            if set(run) != run_fields:
+                raise PackagingError(f"preview smoke run evidence has invalid fields for trace: {trace}")
+            if any(
+                not isinstance(run[key], str) or re.fullmatch(r"[0-9a-f]{64}", run[key]) is None
+                for key in hash_fields
+            ):
+                raise PackagingError(f"preview smoke run hashes are invalid for trace: {trace}")
+            if any(type(run[key]) is not int or run[key] <= 0 for key in ("width", "height")):
+                raise PackagingError(f"preview smoke run dimensions are invalid for trace: {trace}")
+            snapshot = run["snapshot"]
+            if not isinstance(snapshot, dict) or set(snapshot) != snapshot_fields:
+                raise PackagingError(f"preview smoke snapshot evidence is invalid for trace: {trace}")
+            if type(snapshot["layer_count"]) is not int or snapshot["layer_count"] < 1:
+                raise PackagingError(f"preview smoke snapshot layer count is invalid for trace: {trace}")
+            if (
+                type(snapshot["active_layer_index"]) is not int
+                or not 0 <= snapshot["active_layer_index"] < snapshot["layer_count"]
+            ):
+                raise PackagingError(f"preview smoke active layer is invalid for trace: {trace}")
+            if any(type(snapshot[key]) is not bool for key in ("dirty", "can_undo", "can_redo")):
+                raise PackagingError(f"preview smoke snapshot history metadata is invalid for trace: {trace}")
+            if run != runs[0]:
+                raise PackagingError(f"preview smoke repeated evidence is not deterministic for trace: {trace}")
+            normalized_runs.append(
+                {
+                    "width": run["width"],
+                    "height": run["height"],
+                    "decoded_rgba_sha256": run["decoded_rgba_sha256"],
+                    "png_sha256": run["png_sha256"],
+                    "snapshot_sha256": run["snapshot_sha256"],
+                    "snapshot": {
+                        key: snapshot[key]
+                        for key in ("layer_count", "active_layer_index", "dirty", "can_undo", "can_redo")
+                    },
+                }
+            )
         for key in ("unknown_command_error", "invalid_rect_error"):
             if not isinstance(record.get(key), str) or not record[key].strip():
                 raise PackagingError(f"preview smoke negative-path evidence is missing for trace: {trace}")
@@ -454,7 +513,7 @@ def normalize_smoke_report(
             {
                 "trace": _relative_to_repo(trace, repo_root),
                 "status": "pass",
-                "runs": runs,
+                "runs": normalized_runs,
                 "negative_paths": {"unknown_command": "pass", "invalid_rectangle": "pass"},
             }
         )
@@ -551,6 +610,67 @@ def load_locked_metadata(cargo_command: Sequence[str], repo_root: Path) -> dict[
     return metadata
 
 
+def inspect_binary_architecture(binary: Path, platform: str) -> dict[str, object]:
+    """Return executable-header evidence and reject a mislabeled target machine.
+
+    This identifies the file's declared format/machine only. It does not prove native
+    execution, runner architecture, code signing, or application behavior.
+    """
+    if platform not in PLATFORMS:
+        raise PackagingError(f"unsupported preview platform: {platform}")
+    if not binary.is_file():
+        raise PackagingError(f"binary is missing: {binary}")
+    expected = PLATFORMS[platform]
+    format_name = str(expected["format"])
+    try:
+        with binary.open("rb") as source:
+            if format_name == "PE":
+                dos = source.read(64)
+                if len(dos) != 64 or dos[:2] != b"MZ":
+                    raise PackagingError(f"binary format mismatch for {platform}: expected PE with an MZ header")
+                pe_offset = int.from_bytes(dos[0x3C:0x40], "little")
+                if pe_offset < 64:
+                    raise PackagingError(f"binary format mismatch for {platform}: invalid PE header offset")
+                source.seek(pe_offset)
+                header = source.read(24)
+                if len(header) != 24 or header[:4] != b"PE\0\0":
+                    raise PackagingError(f"binary format mismatch for {platform}: expected a complete PE/COFF header")
+                machine = int.from_bytes(header[4:6], "little")
+            elif format_name == "Mach-O 64":
+                header = source.read(8)
+                if len(header) != 8 or int.from_bytes(header[:4], "little") != 0xFEEDFACF:
+                    raise PackagingError(f"binary format mismatch for {platform}: expected a thin 64-bit Mach-O header")
+                machine = int.from_bytes(header[4:8], "little")
+            else:
+                header = source.read(20)
+                if (
+                    len(header) != 20
+                    or header[:4] != b"\x7fELF"
+                    or header[4] != 2
+                    or header[5] != 1
+                ):
+                    raise PackagingError(f"binary format mismatch for {platform}: expected a little-endian 64-bit ELF header")
+                machine = int.from_bytes(header[18:20], "little")
+        size = binary.stat().st_size
+        digest = _sha256_file(binary)
+    except OSError as error:
+        raise PackagingError(f"could not inspect binary architecture for {platform}: {error}") from error
+    expected_machine = int(expected["machine"])
+    if machine != expected_machine:
+        raise PackagingError(
+            f"binary architecture mismatch for {platform}: expected {format_name} machine "
+            f"0x{expected_machine:04x}, got 0x{machine:04x}"
+        )
+    return {
+        "architecture": str(expected["architecture"]),
+        "bytes": size,
+        "format": format_name,
+        "machine": f"0x{machine:04x}",
+        "sha256": digest,
+        "scope": "executable-header-only-not-native-execution-proof",
+    }
+
+
 def stage_platform_files(platform: str, version: str, binary: Path, payload_root: Path) -> None:
     if platform not in PLATFORMS:
         raise PackagingError(f"unsupported preview platform: {platform}")
@@ -606,6 +726,7 @@ def package_release(
     expected_binary = str(PLATFORMS[platform]["binary"])
     if binary.name != expected_binary:
         raise PackagingError(f"expected paint-ui binary named {expected_binary}, got {binary.name}")
+    binary_evidence = inspect_binary_architecture(binary, platform)
     selected_traces = [Path(trace) for trace in traces]
     if not selected_traces:
         selected_traces = sorted((repo_root / "tests/e2e/traces").glob("*.json"))
@@ -642,19 +763,30 @@ def package_release(
             if platform == "macos-aarch64"
             else payload / expected_binary
         )
-        if _sha256_file(staged_binary) != smoke_evidence["binary_sha256"]:
-            raise PackagingError("paint-ui binary changed between preview smoke and packaging")
+        staged_evidence = inspect_binary_architecture(staged_binary, platform)
+        if staged_evidence != binary_evidence or staged_evidence["sha256"] != smoke_evidence["binary_sha256"]:
+            raise PackagingError("paint-ui binary changed between architecture inspection, preview smoke, and packaging")
         readme = template_path.read_text(encoding="utf-8")
         readme = readme.replace("{{VERSION}}", version).replace("{{PLATFORM}}", platform)
         (payload / "README-PREVIEW.md").write_bytes(readme.encode("utf-8"))
         shutil.copyfile(parity_path, payload / "PARITY_LEDGER.md")
         (payload / "PREVIEW_SMOKE.json").write_bytes(_json_bytes(smoke_evidence))
+        (payload / "PREVIEW_BINARY.json").write_bytes(
+            _json_bytes(
+                {
+                    "format": "paint.r.preview-binary-evidence",
+                    "version": 1,
+                    "platform": platform,
+                    "binary": staged_evidence,
+                }
+            )
+        )
         (payload / "sbom.cdx.json").write_bytes(_json_bytes(generate_sbom(metadata, epoch)))
         notice_index = collect_third_party_notices(metadata, payload)
         if platform == "macos-aarch64":
             resources = payload / "Paint.R.app/Contents/Resources/Preview"
             resources.mkdir(parents=True, exist_ok=True)
-            for name in ("README-PREVIEW.md", "PARITY_LEDGER.md", "PREVIEW_SMOKE.json", "THIRD_PARTY_NOTICES.md", "sbom.cdx.json"):
+            for name in ("README-PREVIEW.md", "PARITY_LEDGER.md", "PREVIEW_SMOKE.json", "PREVIEW_BINARY.json", "THIRD_PARTY_NOTICES.md", "sbom.cdx.json"):
                 shutil.copyfile(payload / name, resources / name)
         for path, _ in _payload_files(payload):
             if path.stat().st_mode & 0o111 == 0:

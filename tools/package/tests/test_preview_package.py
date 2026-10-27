@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import copy
 import gzip
 import hashlib
 import json
 import os
 import plistlib
+import struct
 import subprocess
 import sys
 import tarfile
@@ -22,6 +24,26 @@ import preview_package as package
 
 
 EPOCH = 946_684_800  # 2000-01-01T00:00:00Z
+
+
+def elf_header(machine: int = 62) -> bytes:
+    data = bytearray(64)
+    data[:7] = b"\x7fELF\x02\x01\x01"
+    struct.pack_into("<H", data, 18, machine)
+    return bytes(data)
+
+
+def macho_header(cpu_type: int = 0x0100000C) -> bytes:
+    return struct.pack("<IIIIIIII", 0xFEEDFACF, cpu_type, 0, 2, 0, 0, 0, 0)
+
+
+def pe_header(machine: int = 0x8664) -> bytes:
+    data = bytearray(0x100)
+    data[:2] = b"MZ"
+    struct.pack_into("<I", data, 0x3C, 0x80)
+    data[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<H", data, 0x84, machine)
+    return bytes(data)
 
 
 class DisposableFixtureMixin(unittest.TestCase):
@@ -213,6 +235,71 @@ class MetadataAndNoticeTests(DisposableFixtureMixin):
         self.assertNotIn(str(self.root), json.dumps(index))
 
 
+class BinaryArchitectureTests(DisposableFixtureMixin):
+    def test_exact_pe_macho_and_elf_architectures_are_identified(self) -> None:
+        cases = (
+            ("windows-x86_64", "paint-ui.exe", pe_header(), "PE", "0x8664", "x86_64"),
+            ("macos-aarch64", "paint-ui", macho_header(), "Mach-O 64", "0x100000c", "aarch64"),
+            ("linux-x86_64", "paint-ui", elf_header(), "ELF 64", "0x003e", "x86_64"),
+        )
+        for platform, name, content, format_name, machine, architecture in cases:
+            with self.subTest(platform=platform):
+                binary = self.root / platform / name
+                binary.parent.mkdir()
+                binary.write_bytes(content)
+                evidence = package.inspect_binary_architecture(binary, platform)
+                self.assertEqual(evidence["format"], format_name)
+                self.assertEqual(evidence["machine"], machine)
+                self.assertEqual(evidence["architecture"], architecture)
+                self.assertEqual(evidence["bytes"], len(content))
+                self.assertEqual(evidence["sha256"], hashlib.sha256(content).hexdigest())
+
+    def test_wrong_architecture_is_rejected_with_expected_and_actual_machines(self) -> None:
+        cases = (
+            ("windows-x86_64", "paint-ui.exe", pe_header(0xAA64)),
+            ("macos-aarch64", "paint-ui", macho_header(0x01000007)),
+            ("linux-x86_64", "paint-ui", elf_header(183)),
+        )
+        for platform, name, content in cases:
+            with self.subTest(platform=platform):
+                binary = self.root / f"wrong-{platform}" / name
+                binary.parent.mkdir()
+                binary.write_bytes(content)
+                with self.assertRaisesRegex(package.PackagingError, "architecture mismatch.*expected.*got"):
+                    package.inspect_binary_architecture(binary, platform)
+
+    def test_invalid_or_truncated_headers_are_typed_errors(self) -> None:
+        for platform, name in (("windows-x86_64", "paint-ui.exe"), ("macos-aarch64", "paint-ui"), ("linux-x86_64", "paint-ui")):
+            with self.subTest(platform=platform):
+                binary = self.root / f"invalid-{platform}" / name
+                binary.parent.mkdir()
+                binary.write_bytes(b"not an executable")
+                with self.assertRaisesRegex(package.PackagingError, platform):
+                    package.inspect_binary_architecture(binary, platform)
+
+    def test_package_rejects_wrong_architecture_before_smoke_or_metadata(self) -> None:
+        binary = self.root / "paint-ui"
+        binary.write_bytes(elf_header(183))
+        with (
+            mock.patch.object(package, "run_preview_smoke") as smoke,
+            mock.patch.object(package, "load_locked_metadata") as metadata,
+        ):
+            with self.assertRaisesRegex(package.PackagingError, "architecture mismatch"):
+                package.package_release(
+                    repo_root=self.root,
+                    binary=binary,
+                    platform="linux-x86_64",
+                    output_dir=self.root / "dist",
+                    traces=[],
+                    repeat=1,
+                    timeout=1.0,
+                    cargo_command=["must-not-run"],
+                )
+        smoke.assert_not_called()
+        metadata.assert_not_called()
+        self.assertFalse((self.root / "dist").exists())
+
+
 class PlatformLayoutTests(DisposableFixtureMixin):
     def test_macos_layout_is_an_app_zip_payload(self) -> None:
         binary = self.root / "paint-ui"
@@ -236,6 +323,186 @@ class PlatformLayoutTests(DisposableFixtureMixin):
                 payload = self.root / f"{platform}-payload"
                 package.stage_platform_files(platform, "0.1.0", binary, payload)
                 self.assertEqual((payload / binary_name).read_bytes(), binary.read_bytes())
+
+
+class SmokeEvidenceValidationTests(DisposableFixtureMixin):
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = self.root / "repo"
+        self.trace = self.repo / "tests/e2e/traces/invert.json"
+        self.trace.parent.mkdir(parents=True)
+        self.trace.write_text("{}\n", encoding="utf-8")
+        self.binary = self.repo / "paint-ui"
+        self.binary.write_bytes(b"disposable smoke evidence binary\n")
+        self.run = {
+            "width": 800,
+            "height": 600,
+            "decoded_rgba_sha256": "a" * 64,
+            "png_sha256": "b" * 64,
+            "snapshot_sha256": "c" * 64,
+            "snapshot": {
+                "layer_count": 1,
+                "active_layer_index": 0,
+                "dirty": True,
+                "can_undo": True,
+                "can_redo": False,
+            },
+        }
+
+    def report(self) -> dict[str, object]:
+        return {
+            "status": "pass",
+            "traces": [
+                {
+                    "trace": str(self.trace),
+                    "status": "pass",
+                    "runs": [copy.deepcopy(self.run), copy.deepcopy(self.run)],
+                    "unknown_command_error": "expected unknown-command rejection",
+                    "invalid_rect_error": "expected invalid-rectangle rejection",
+                }
+            ],
+        }
+
+    def normalize(self, report: dict[str, object]) -> dict[str, object]:
+        return package.normalize_smoke_report(report, [self.trace], self.binary, self.repo, 2)
+
+    def test_fully_populated_repeat_evidence_is_preserved(self) -> None:
+        report = self.report()
+        normalized = self.normalize(report)
+        self.assertEqual(normalized["status"], "pass")
+        self.assertEqual(normalized["repeat"], 2)
+        self.assertEqual(normalized["binary_sha256"], hashlib.sha256(self.binary.read_bytes()).hexdigest())
+        self.assertEqual(normalized["traces"][0]["trace"], "tests/e2e/traces/invert.json")
+        self.assertEqual(normalized["traces"][0]["runs"], report["traces"][0]["runs"])
+
+    def test_empty_missing_invalid_or_extra_run_evidence_is_rejected(self) -> None:
+        missing_hash = copy.deepcopy(self.run)
+        del missing_hash["snapshot_sha256"]
+        empty_hash = copy.deepcopy(self.run)
+        empty_hash["decoded_rgba_sha256"] = ""
+        non_hex_hash = copy.deepcopy(self.run)
+        non_hex_hash["png_sha256"] = "A" * 64
+        invalid_snapshot = copy.deepcopy(self.run)
+        del invalid_snapshot["snapshot"]["dirty"]
+        invalid_dimensions = copy.deepcopy(self.run)
+        invalid_dimensions["width"] = True
+        extra_field = copy.deepcopy(self.run)
+        extra_field["absolute_path"] = "/must-not-be-retained"
+        cases = (
+            ("empty", {}),
+            ("missing hash", missing_hash),
+            ("empty hash", empty_hash),
+            ("non-hex hash", non_hex_hash),
+            ("invalid snapshot", invalid_snapshot),
+            ("invalid dimensions", invalid_dimensions),
+            ("extra field", extra_field),
+        )
+        for name, run in cases:
+            with self.subTest(case=name):
+                report = self.report()
+                report["traces"][0]["runs"] = [run, copy.deepcopy(run)]
+                with self.assertRaises(package.PackagingError):
+                    self.normalize(report)
+
+    def test_differing_repeat_entries_are_rejected(self) -> None:
+        report = self.report()
+        report["traces"][0]["runs"][1]["png_sha256"] = "d" * 64
+        with self.assertRaisesRegex(package.PackagingError, "not deterministic"):
+            self.normalize(report)
+
+
+class PackageReleaseIntegrationTests(DisposableFixtureMixin):
+    """Exercise packaging end to end with disposable external-command doubles.
+
+    The archive and manifest logic is real; this is not a product smoke or native-binary claim.
+    """
+
+    def test_package_release_is_deterministic_and_embeds_binary_evidence(self) -> None:
+        repo = self.root / "repo"
+        (repo / "packaging").mkdir(parents=True)
+        (repo / "docs").mkdir()
+        (repo / "packaging/INTERNAL_PREVIEW.md").write_text(
+            "Internal disposable preview {{VERSION}} {{PLATFORM}}\n", encoding="utf-8"
+        )
+        (repo / "docs/PARITY_LEDGER.md").write_text("Disposable unverified ledger\n", encoding="utf-8")
+        trace = repo / "trace.json"
+        trace.write_text("{}\n", encoding="utf-8")
+        binary = repo / "target/release/paint-ui"
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(elf_header())
+        digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+        package_id = "path+file:///disposable#paint-ui@0.1.0"
+        metadata = {
+            "packages": [
+                {
+                    "id": package_id,
+                    "name": "paint-ui",
+                    "version": "0.1.0",
+                    "license": None,
+                    "license_file": None,
+                    "source": None,
+                    "manifest_path": str(repo / "crates/ui/Cargo.toml"),
+                }
+            ],
+            "workspace_members": [package_id],
+            "resolve": {"nodes": [{"id": package_id, "deps": []}]},
+        }
+        smoke_evidence = {
+            "format": "paint.r.preview-smoke-evidence",
+            "version": 1,
+            "status": "pass",
+            "binary_sha256": digest,
+            "repeat": 1,
+            "traces": [],
+        }
+
+        def invoke(output: Path) -> package.PackageResult:
+            return package.package_release(
+                repo_root=repo,
+                binary=binary,
+                platform="linux-x86_64",
+                output_dir=output,
+                traces=[trace],
+                repeat=1,
+                timeout=1.0,
+                cargo_command=["must-not-run"],
+            )
+
+        with (
+            mock.patch.dict(os.environ, {"SOURCE_DATE_EPOCH": str(EPOCH)}),
+            mock.patch.object(package, "run_preview_smoke", return_value=smoke_evidence) as smoke,
+            mock.patch.object(package, "load_locked_metadata", return_value=metadata) as load_metadata,
+        ):
+            first = invoke(self.root / "dist/first")
+            second = invoke(self.root / "dist/second")
+        self.assertEqual(smoke.call_count, 2)
+        self.assertEqual(load_metadata.call_count, 2)
+        self.assertEqual(first.archive.read_bytes(), second.archive.read_bytes())
+        self.assertEqual(first.sidecar.read_bytes(), second.sidecar.read_bytes())
+        self.assertEqual(first.archive.name, "paint-r-0.1.0-linux-x86_64.tar.gz")
+
+        with tarfile.open(first.archive, "r:gz") as archive:
+            files = {
+                member.name.split("/", 1)[1]: archive.extractfile(member).read()
+                for member in archive.getmembers()
+                if member.isfile()
+            }
+        binary_evidence = json.loads(files["PREVIEW_BINARY.json"])
+        self.assertEqual(binary_evidence["format"], "paint.r.preview-binary-evidence")
+        self.assertEqual(binary_evidence["version"], 1)
+        self.assertEqual(binary_evidence["platform"], "linux-x86_64")
+        self.assertEqual(binary_evidence["binary"]["format"], "ELF 64")
+        self.assertEqual(binary_evidence["binary"]["machine"], "0x003e")
+        self.assertEqual(binary_evidence["binary"]["architecture"], "x86_64")
+        self.assertEqual(binary_evidence["binary"]["sha256"], digest)
+        self.assertEqual(binary_evidence["binary"]["scope"], "executable-header-only-not-native-execution-proof")
+        manifest = files["SHA256SUMS.txt"].decode("utf-8")
+        expected = "".join(
+            f"{hashlib.sha256(files[path]).hexdigest()}  {path}\n"
+            for path in sorted(files)
+            if path != "SHA256SUMS.txt"
+        )
+        self.assertEqual(manifest, expected)
 
 
 class MandatorySmokeFailureTests(DisposableFixtureMixin):
@@ -299,7 +566,7 @@ class MandatorySmokeFailureTests(DisposableFixtureMixin):
         repo = self.root / "repo"
         binary = repo / "target/release/paint-ui"
         binary.parent.mkdir(parents=True)
-        binary.write_bytes(b"disposable failure fixture")
+        binary.write_bytes(elf_header())
         output = self.root / "dist"
         with mock.patch.object(package, "run_preview_smoke", side_effect=package.PackagingError("smoke failed")):
             with self.assertRaisesRegex(package.PackagingError, "smoke failed"):

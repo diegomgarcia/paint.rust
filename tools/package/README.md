@@ -22,11 +22,17 @@ default). A missing or wrongly named binary, missing runner/trace, nonzero exit,
 missing report, non-pass report, incomplete repeat evidence, or missing negative-path
 evidence aborts packaging. There is no skip-smoke option and no placeholder-binary path.
 The normalized `PREVIEW_SMOKE.json` is derived from the real report and omits absolute
-paths and wall-clock data. Raw rejection diagnostics are not presented as product output.
+paths and wall-clock data. Every run must have the exact dimension/hash/snapshot schema,
+three lowercase SHA-256 values, valid layer/history metadata, and identical repeated
+evidence. Missing, malformed, extra, or nondeterministic entries abort packaging. Raw
+rejection diagnostics are not presented as product output.
 
 The expected executable names are `paint-ui.exe` for Windows and `paint-ui` for macOS and
-Linux. The executable's SHA-256 is recorded in the smoke evidence, and the staged executable
-must still have that hash immediately after it is copied for packaging.
+Linux. Before smoke, the packager inspects the exact PE x86_64, thin ARM64 Mach-O, or ELF
+x86_64 machine header required by the selected platform. It re-inspects the staged binary
+and requires its complete identity and SHA-256 to match both the original and smoke
+evidence. `PREVIEW_BINARY.json` records this executable-header evidence. It does not prove
+native/non-emulated execution, runner architecture, signing, or application behavior.
 
 ## Build and package
 
@@ -67,13 +73,14 @@ payload includes:
 - `README-PREVIEW.md` with internal-distribution and platform limitations;
 - the unmodified `PARITY_LEDGER.md` disclosure;
 - `PREVIEW_SMOKE.json` from the mandatory real smoke;
+- `PREVIEW_BINARY.json` with executable format, machine, size, and hash evidence;
 - `sbom.cdx.json` from locked Cargo metadata;
 - `THIRD_PARTY_NOTICES.md`, `third-party-notices/index.json`, and discovered source
   license/notice texts under `third-party-notices/files/`;
 - `SHA256SUMS.txt` covering every other payload file.
 
 The macOS ZIP also places the summary README, parity ledger, smoke evidence, notice
-summary, and SBOM in `Paint.R.app/Contents/Resources/Preview/`. A `<archive>.sha256`
+summary, binary evidence, and SBOM in `Paint.R.app/Contents/Resources/Preview/`. A `<archive>.sha256`
 sidecar is written next to every archive. No installer, signing identity, notarization
 ticket, or update mechanism is fabricated.
 
@@ -125,5 +132,9 @@ python3 -m unittest discover -s tools/package/tests -p 'test_*.py' -v
 Tests use clearly named temporary, disposable non-product fixtures. They cover ZIP and
 tar.gz byte determinism, timestamps/modes/order, exact SHA-256 manifests and sidecars,
 SBOM path independence, font notice extraction and gap reporting, platform layouts,
-public-release refusal, and mandatory-smoke failure handling. They do not claim a real
-product smoke. Only a native build of the actual `paint-ui` binary can satisfy that gate.
+PE/Mach-O/ELF architecture acceptance and rejection, exact smoke-run validation,
+public-release refusal, and mandatory-smoke failure handling. A complete `package_release`
+integration test additionally compares two deterministic archives and their binary
+evidence while doubling only the external smoke/metadata commands. These fixtures do not
+claim a real product smoke or native execution. Only a native build of the actual
+`paint-ui` binary can satisfy that product gate.
