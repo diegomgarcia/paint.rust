@@ -1,5 +1,7 @@
 mod common;
 
+use std::path::Path;
+
 use common::TestTree;
 use xtask::scanner::{Rule, scan_workspace};
 
@@ -30,7 +32,7 @@ fn active_violations_have_precise_relative_diagnostics() {
     assert!(rules.contains(&Rule::IgnoredTest));
 
     let first = &report.violations[0];
-    assert_eq!(first.path.to_string_lossy(), "src/lib.rs");
+    assert_eq!(first.path, Path::new("src").join("lib.rs"));
     assert_eq!((first.line, first.column), (2, 5));
     let diagnostic = first.diagnostic();
     assert!(diagnostic.contains("src/lib.rs:2:5"), "{diagnostic}");
@@ -173,5 +175,5 @@ fn allowlist_does_not_leak_to_production_source() {
     let report = scan_workspace(tree.root(), &[allowlist]).expect("scan should run");
     assert_eq!(report.allowed.len(), 1);
     assert_eq!(report.violations.len(), 1);
-    assert_eq!(report.violations[0].path.to_string_lossy(), "src/lib.rs");
+    assert_eq!(report.violations[0].path, Path::new("src").join("lib.rs"));
 }
