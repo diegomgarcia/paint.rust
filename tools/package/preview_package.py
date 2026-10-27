@@ -24,7 +24,7 @@ import uuid
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Sequence
 from urllib.parse import quote
 
@@ -63,6 +63,7 @@ class PackagingError(RuntimeError):
 class PackageResult:
     archive: Path
     sidecar: Path
+    verification: Path
     version: str
     notice_extraction_complete: bool
 
@@ -171,14 +172,18 @@ def create_tar_gz_archive(payload_root: Path, destination: Path, epoch: int = DE
                         archive.addfile(info, source)
 
 
-def write_sha256_manifest(payload_root: Path) -> Path:
-    """Hash every payload file except the manifest itself, in POSIX-path order."""
+def _render_sha256_manifest(payload_root: Path) -> str:
     records = [
         (path, relative)
         for path, relative in _payload_files(payload_root)
         if relative != "SHA256SUMS.txt"
     ]
-    rendered = "".join(f"{_sha256_file(path)}  {relative}\n" for path, relative in records)
+    return "".join(f"{_sha256_file(path)}  {relative}\n" for path, relative in records)
+
+
+def write_sha256_manifest(payload_root: Path) -> Path:
+    """Hash every payload file except the manifest itself, in POSIX-path order."""
+    rendered = _render_sha256_manifest(payload_root)
     manifest = payload_root / "SHA256SUMS.txt"
     manifest.write_bytes(rendered.encode("utf-8"))
     manifest.chmod(0o644)
@@ -699,6 +704,165 @@ def stage_platform_files(platform: str, version: str, binary: Path, payload_root
     executable.chmod(0o755)
 
 
+def _extract_verified_archive(
+    archive: Path,
+    platform: str,
+    payload_root: Path,
+    destination: Path,
+    epoch: int,
+) -> Path:
+    """Extract only the exact staged payload, preserving and checking every byte/mode."""
+    expected = {relative: path for path, relative in _payload_files(payload_root)}
+    extracted_root = destination / payload_root.name
+    extracted_root.mkdir()
+
+    def archive_relative(name: str) -> str:
+        pure = PurePosixPath(name)
+        if (
+            not name
+            or pure.is_absolute()
+            or pure.as_posix() != name
+            or "\\" in name
+            or ":" in name
+            or "\x00" in name
+            or len(pure.parts) < 2
+            or pure.parts[0] != payload_root.name
+            or any(part in ("", ".", "..") for part in pure.parts)
+        ):
+            raise PackagingError(f"unsafe archive entry path: {name!r}")
+        return PurePosixPath(*pure.parts[1:]).as_posix()
+
+    def write_entry(relative: str, data: bytes, mode: int) -> None:
+        source = expected[relative]
+        if mode != _portable_mode(source):
+            raise PackagingError(f"archive executable/file mode mismatch for {relative}")
+        if len(data) != source.stat().st_size or data != source.read_bytes():
+            raise PackagingError(f"archived payload bytes differ from staged payload: {relative}")
+        target = extracted_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        target.chmod(mode)
+
+    try:
+        if platform == "linux-x86_64":
+            with tarfile.open(archive, "r:gz") as source:
+                members: dict[str, tarfile.TarInfo] = {}
+                for member in source.getmembers():
+                    relative = archive_relative(member.name)
+                    if not member.isfile() or relative in members:
+                        raise PackagingError(f"archive contains a duplicate or non-regular entry: {member.name}")
+                    if (
+                        member.uid != 0
+                        or member.gid != 0
+                        or member.mtime != epoch
+                        or member.uname
+                        or member.gname
+                    ):
+                        raise PackagingError(f"archive ownership/timestamp mismatch for {member.name}")
+                    members[relative] = member
+                if set(members) != set(expected):
+                    raise PackagingError("archive payload entries differ from the staged payload")
+                for relative in sorted(members):
+                    member = members[relative]
+                    if member.size != expected[relative].stat().st_size:
+                        raise PackagingError(f"archive payload size mismatch for {relative}")
+                    extracted = source.extractfile(member)
+                    if extracted is None:
+                        raise PackagingError(f"archive payload is unreadable: {relative}")
+                    write_entry(relative, extracted.read(), member.mode)
+        else:
+            with zipfile.ZipFile(archive) as source:
+                entries: dict[str, zipfile.ZipInfo] = {}
+                modes: dict[str, int] = {}
+                for entry in source.infolist():
+                    relative = archive_relative(entry.filename)
+                    mode = entry.external_attr >> 16
+                    if entry.is_dir() or not stat.S_ISREG(mode) or relative in entries:
+                        raise PackagingError(f"archive contains a duplicate or non-regular entry: {entry.filename}")
+                    entries[relative] = entry
+                    modes[relative] = mode & 0o777
+                if set(entries) != set(expected):
+                    raise PackagingError("archive payload entries differ from the staged payload")
+                for relative in sorted(entries):
+                    entry = entries[relative]
+                    if entry.file_size != expected[relative].stat().st_size:
+                        raise PackagingError(f"archive payload size mismatch for {relative}")
+                    write_entry(relative, source.read(entry), modes[relative])
+        archived_manifest = (extracted_root / "SHA256SUMS.txt").read_text(encoding="utf-8")
+        if (
+            archived_manifest != _render_sha256_manifest(payload_root)
+            or archived_manifest != _render_sha256_manifest(extracted_root)
+        ):
+            raise PackagingError("archive SHA-256 manifest mismatch after extraction")
+    except (OSError, EOFError, UnicodeError, zipfile.BadZipFile, tarfile.TarError) as error:
+        raise PackagingError(f"archive verification failed: {error}") from error
+    return extracted_root
+
+
+def verify_packaged_archive(
+    *,
+    archive: Path,
+    sidecar: Path,
+    payload_root: Path,
+    platform: str,
+    traces: Sequence[Path],
+    smoke_script: Path,
+    repo_root: Path,
+    smoke_evidence: dict[str, object],
+    repeat: int,
+    timeout: float,
+    epoch: int,
+) -> dict[str, object]:
+    """Verify final archive bytes and smoke the extracted executable before publication."""
+    try:
+        archive_sha256 = _sha256_file(archive)
+        expected_sidecar = f"{archive_sha256}  {archive.name}\n"
+        if sidecar.read_text(encoding="utf-8") != expected_sidecar:
+            raise PackagingError("archive sidecar does not match the archive bytes")
+        archive_bytes = archive.stat().st_size
+    except (OSError, UnicodeError) as error:
+        raise PackagingError(f"archive sidecar verification failed: {error}") from error
+
+    with tempfile.TemporaryDirectory(prefix="paint-r-archive-verify-") as temporary:
+        extracted_root = _extract_verified_archive(archive, platform, payload_root, Path(temporary), epoch)
+        binary_relative = (
+            "Paint.R.app/Contents/MacOS/paint-ui"
+            if platform == "macos-aarch64"
+            else str(PLATFORMS[platform]["binary"])
+        )
+        extracted_binary = extracted_root / binary_relative
+        if platform != "windows-x86_64" and extracted_binary.stat().st_mode & 0o111 == 0:
+            raise PackagingError("extracted executable is not executable")
+        extracted_evidence = inspect_binary_architecture(extracted_binary, platform)
+        staged_evidence = inspect_binary_architecture(payload_root / binary_relative, platform)
+        if extracted_evidence != staged_evidence:
+            raise PackagingError("extracted executable identity differs from the staged binary")
+        post_smoke = run_preview_smoke(
+            binary=extracted_binary,
+            traces=traces,
+            smoke_script=smoke_script,
+            repeat=repeat,
+            timeout=timeout,
+            repo_root=repo_root,
+        )
+        if post_smoke != smoke_evidence:
+            raise PackagingError("post-archive smoke evidence differs from pre-archive evidence")
+
+    return {
+        "format": "paint.r.preview-package-verification",
+        "version": 1,
+        "status": "pass",
+        "archive_name": archive.name,
+        "archive_bytes": archive_bytes,
+        "archive_sha256": archive_sha256,
+        "payload_entries": len(_payload_files(payload_root)),
+        "binary_sha256": extracted_evidence["sha256"],
+        "architecture": extracted_evidence["architecture"],
+        "post_extract_smoke": {"status": "pass", "repeat": repeat, "trace_count": len(traces)},
+        "scope": "archive-sidecar-payload-modes-and-headless-only-no-native-window",
+    }
+
+
 def package_release(
     *,
     repo_root: Path,
@@ -711,7 +875,7 @@ def package_release(
     cargo_command: Sequence[str] = ("./tools/cargo-pinned.sh",),
     distribution: str = "internal-preview",
 ) -> PackageResult:
-    """Smoke the actual binary, then build an internal-only deterministic archive."""
+    """Build, reopen, and smoke an internal-only deterministic archive before returning it."""
     if distribution != "internal-preview":
         raise PackagingError(
             "public redistribution is blocked: the project license/asset rights are unresolved "
@@ -798,13 +962,32 @@ def package_release(
         else:
             create_zip_archive(payload, temporary_archive, epoch)
         temporary_sidecar = write_archive_sidecar(temporary_archive)
+        verification_report = verify_packaged_archive(
+            archive=temporary_archive,
+            sidecar=temporary_sidecar,
+            payload_root=payload,
+            platform=platform,
+            traces=selected_traces,
+            smoke_script=repo_root / "tests/e2e/preview_smoke.py",
+            repo_root=repo_root,
+            smoke_evidence=smoke_evidence,
+            repeat=repeat,
+            timeout=timeout,
+            epoch=epoch,
+        )
+        temporary_verification = work / f"{archive_name}.verification.json"
+        temporary_verification.write_bytes(_json_bytes(verification_report))
+        temporary_verification.chmod(0o644)
         archive = output_dir / archive_name
         sidecar = output_dir / temporary_sidecar.name
+        verification = output_dir / temporary_verification.name
         os.replace(temporary_archive, archive)
         os.replace(temporary_sidecar, sidecar)
+        os.replace(temporary_verification, verification)
     return PackageResult(
         archive=archive,
         sidecar=sidecar,
+        verification=verification,
         version=version,
         notice_extraction_complete=bool(notice_index["extraction_complete"]),
     )
@@ -853,6 +1036,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     print(f"internal preview archive: {result.archive}")
     print(f"archive SHA-256: {result.sidecar}")
+    print(f"post-archive verification: {result.verification}")
     print(f"locked Cargo/SBOM version: {result.version}")
     print(f"third-party notice extraction complete: {str(result.notice_extraction_complete).lower()}")
     print("public redistribution: blocked; no installer, signing, notarization, or release publication performed")

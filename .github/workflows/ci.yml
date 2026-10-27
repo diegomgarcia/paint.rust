@@ -13,13 +13,28 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: never
+  RUST_BACKTRACE: "1"
+  SOURCE_DATE_EPOCH: "946684800"
+
 jobs:
   rust:
     name: Rust / ${{ matrix.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022, macos-14]
+        include:
+          - os: windows-2022
+            platform: windows-x86_64
+            binary: target/release/paint-ui.exe
+          - os: macos-14
+            platform: macos-aarch64
+            binary: target/release/paint-ui
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+            binary: target/release/paint-ui
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -59,3 +74,13 @@ jobs:
         run: python3 -m unittest discover -s tools/reference/tests -p 'test_*.py' -v
       - name: Release build
         run: bash ./tools/cargo-pinned.sh build --workspace --release --all-features --locked
+      - name: Verify release binary and complete internal package
+        run: |
+          python3 tools/package/preview_package.py \
+            --binary "${{ matrix.binary }}" \
+            --platform "${{ matrix.platform }}" \
+            --output-dir ci-dist \
+            --repeat 2 \
+            --timeout 30 \
+            --distribution internal-preview \
+            --cargo-command bash ./tools/cargo-pinned.sh

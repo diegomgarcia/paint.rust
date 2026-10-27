@@ -86,7 +86,7 @@ python3 tools/package/preview_package.py \
   --repeat 2 --cargo-command ./tools/cargo-pinned.sh
 ```
 
-Packaging always runs the real-binary smoke gate. Internal archives are unsigned and unnotarized. `public` packaging is deliberately refused while project licensing, asset/font rights, and required notices remain unresolved.
+Packaging always runs the real-binary smoke gate, then reopens the archive and repeats that smoke against the extracted executable before writing its verification receipt. This remains headless, not native-window, evidence. Internal archives are unsigned and unnotarized. `public` packaging is deliberately refused while project licensing, asset/font rights, and required notices remain unresolved.
 
 ## Engineering rules
 

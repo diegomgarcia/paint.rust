@@ -142,6 +142,39 @@ class ArchiveDeterminismTests(DisposableFixtureMixin):
         package.write_sha256_manifest(root)
         self.assertEqual(manifest.read_bytes(), first)
 
+    def test_post_archive_reader_rejects_missing_extra_and_unsafe_entries(self) -> None:
+        payload = self.payload("entry-validation")
+        valid = [
+            "paint-r-test/docs/README.txt",
+            "paint-r-test/docs/nested/parity.txt",
+            "paint-r-test/paint-ui",
+        ]
+
+        def write_entries(path: Path, names: list[str]) -> None:
+            with zipfile.ZipFile(path, "w") as archive:
+                for name in names:
+                    info = zipfile.ZipInfo(name)
+                    info.create_system = 3
+                    info.external_attr = 0o100644 << 16
+                    archive.writestr(info, b"disposable archive entry\n")
+
+        cases = (
+            ("missing", valid[:-1], "entries differ"),
+            ("extra", [*valid, "paint-r-test/extra.txt"], "entries differ"),
+            ("traversal", [*valid, "paint-r-test/../escape.txt"], "unsafe archive entry"),
+            ("absolute", [*valid, "/tmp/escape.txt"], "unsafe archive entry"),
+            ("backslash", [*valid, "paint-r-test\\..\\escape.txt"], "unsafe archive entry"),
+        )
+        for name, entries, diagnostic in cases:
+            with self.subTest(case=name):
+                archive = self.root / f"{name}.zip"
+                destination = self.root / f"extract-{name}"
+                destination.mkdir()
+                write_entries(archive, entries)
+                with self.assertRaisesRegex(package.PackagingError, diagnostic):
+                    package._extract_verified_archive(archive, "macos-aarch64", payload, destination, EPOCH)
+        self.assertFalse((self.root / "escape.txt").exists())
+
     def test_archive_sidecar_contains_only_basename_and_digest(self) -> None:
         archive = self.root / "preview.zip"
         archive.write_bytes(b"archive fixture")
@@ -417,22 +450,23 @@ class PackageReleaseIntegrationTests(DisposableFixtureMixin):
     The archive and manifest logic is real; this is not a product smoke or native-binary claim.
     """
 
-    def test_package_release_is_deterministic_and_embeds_binary_evidence(self) -> None:
-        repo = self.root / "repo"
-        (repo / "packaging").mkdir(parents=True)
-        (repo / "docs").mkdir()
-        (repo / "packaging/INTERNAL_PREVIEW.md").write_text(
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = self.root / "repo"
+        (self.repo / "packaging").mkdir(parents=True)
+        (self.repo / "docs").mkdir()
+        (self.repo / "packaging/INTERNAL_PREVIEW.md").write_text(
             "Internal disposable preview {{VERSION}} {{PLATFORM}}\n", encoding="utf-8"
         )
-        (repo / "docs/PARITY_LEDGER.md").write_text("Disposable unverified ledger\n", encoding="utf-8")
-        trace = repo / "trace.json"
-        trace.write_text("{}\n", encoding="utf-8")
-        binary = repo / "target/release/paint-ui"
-        binary.parent.mkdir(parents=True)
-        binary.write_bytes(elf_header())
-        digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+        (self.repo / "docs/PARITY_LEDGER.md").write_text("Disposable unverified ledger\n", encoding="utf-8")
+        self.trace = self.repo / "trace.json"
+        self.trace.write_text("{}\n", encoding="utf-8")
+        self.binary = self.repo / "target/release/paint-ui"
+        self.binary.parent.mkdir(parents=True)
+        self.binary.write_bytes(elf_header())
+        self.digest = hashlib.sha256(self.binary.read_bytes()).hexdigest()
         package_id = "path+file:///disposable#paint-ui@0.1.0"
-        metadata = {
+        self.metadata = {
             "packages": [
                 {
                     "id": package_id,
@@ -441,45 +475,74 @@ class PackageReleaseIntegrationTests(DisposableFixtureMixin):
                     "license": None,
                     "license_file": None,
                     "source": None,
-                    "manifest_path": str(repo / "crates/ui/Cargo.toml"),
+                    "manifest_path": str(self.repo / "crates/ui/Cargo.toml"),
                 }
             ],
             "workspace_members": [package_id],
             "resolve": {"nodes": [{"id": package_id, "deps": []}]},
         }
-        smoke_evidence = {
+        run = {
+            "width": 800,
+            "height": 600,
+            "decoded_rgba_sha256": "a" * 64,
+            "png_sha256": "b" * 64,
+            "snapshot_sha256": "c" * 64,
+            "snapshot": {
+                "layer_count": 1,
+                "active_layer_index": 0,
+                "dirty": False,
+                "can_undo": False,
+                "can_redo": False,
+            },
+        }
+        self.smoke_evidence = {
             "format": "paint.r.preview-smoke-evidence",
             "version": 1,
             "status": "pass",
-            "binary_sha256": digest,
+            "binary_sha256": self.digest,
             "repeat": 1,
-            "traces": [],
+            "traces": [
+                {
+                    "trace": "trace.json",
+                    "status": "pass",
+                    "runs": [run],
+                    "negative_paths": {"unknown_command": "pass", "invalid_rectangle": "pass"},
+                }
+            ],
         }
+        self.archive_name = "paint-r-0.1.0-linux-x86_64.tar.gz"
 
-        def invoke(output: Path) -> package.PackageResult:
-            return package.package_release(
-                repo_root=repo,
-                binary=binary,
-                platform="linux-x86_64",
-                output_dir=output,
-                traces=[trace],
-                repeat=1,
-                timeout=1.0,
-                cargo_command=["must-not-run"],
-            )
+    def invoke(self, output: Path) -> package.PackageResult:
+        return package.package_release(
+            repo_root=self.repo,
+            binary=self.binary,
+            platform="linux-x86_64",
+            output_dir=output,
+            traces=[self.trace],
+            repeat=1,
+            timeout=1.0,
+            cargo_command=["must-not-run"],
+        )
 
+    def assert_no_success_outputs(self, output: Path) -> None:
+        self.assertFalse((output / self.archive_name).exists())
+        self.assertFalse((output / f"{self.archive_name}.sha256").exists())
+        self.assertFalse((output / f"{self.archive_name}.verification.json").exists())
+
+    def test_package_release_is_deterministic_and_embeds_binary_evidence(self) -> None:
         with (
             mock.patch.dict(os.environ, {"SOURCE_DATE_EPOCH": str(EPOCH)}),
-            mock.patch.object(package, "run_preview_smoke", return_value=smoke_evidence) as smoke,
-            mock.patch.object(package, "load_locked_metadata", return_value=metadata) as load_metadata,
+            mock.patch.object(package, "run_preview_smoke", return_value=self.smoke_evidence) as smoke,
+            mock.patch.object(package, "load_locked_metadata", return_value=self.metadata) as load_metadata,
         ):
-            first = invoke(self.root / "dist/first")
-            second = invoke(self.root / "dist/second")
-        self.assertEqual(smoke.call_count, 2)
+            first = self.invoke(self.root / "dist/first")
+            second = self.invoke(self.root / "dist/second")
+        self.assertEqual(smoke.call_count, 4)
         self.assertEqual(load_metadata.call_count, 2)
         self.assertEqual(first.archive.read_bytes(), second.archive.read_bytes())
         self.assertEqual(first.sidecar.read_bytes(), second.sidecar.read_bytes())
-        self.assertEqual(first.archive.name, "paint-r-0.1.0-linux-x86_64.tar.gz")
+        self.assertEqual(first.verification.read_bytes(), second.verification.read_bytes())
+        self.assertEqual(first.archive.name, self.archive_name)
 
         with tarfile.open(first.archive, "r:gz") as archive:
             files = {
@@ -494,7 +557,7 @@ class PackageReleaseIntegrationTests(DisposableFixtureMixin):
         self.assertEqual(binary_evidence["binary"]["format"], "ELF 64")
         self.assertEqual(binary_evidence["binary"]["machine"], "0x003e")
         self.assertEqual(binary_evidence["binary"]["architecture"], "x86_64")
-        self.assertEqual(binary_evidence["binary"]["sha256"], digest)
+        self.assertEqual(binary_evidence["binary"]["sha256"], self.digest)
         self.assertEqual(binary_evidence["binary"]["scope"], "executable-header-only-not-native-execution-proof")
         manifest = files["SHA256SUMS.txt"].decode("utf-8")
         expected = "".join(
@@ -503,6 +566,64 @@ class PackageReleaseIntegrationTests(DisposableFixtureMixin):
             if path != "SHA256SUMS.txt"
         )
         self.assertEqual(manifest, expected)
+        verification = json.loads(first.verification.read_text(encoding="utf-8"))
+        self.assertEqual(verification["status"], "pass")
+        self.assertEqual(verification["archive_sha256"], hashlib.sha256(first.archive.read_bytes()).hexdigest())
+        self.assertEqual(verification["payload_entries"], len(files))
+        self.assertEqual(verification["binary_sha256"], self.digest)
+        self.assertEqual(
+            verification["post_extract_smoke"], {"status": "pass", "repeat": 1, "trace_count": 1}
+        )
+
+    def test_post_archive_smoke_failure_leaves_no_success_outputs(self) -> None:
+        output = self.root / "dist/post-smoke-failure"
+        with (
+            mock.patch.object(
+                package,
+                "run_preview_smoke",
+                side_effect=[self.smoke_evidence, package.PackagingError("extracted smoke failed")],
+            ) as smoke,
+            mock.patch.object(package, "load_locked_metadata", return_value=self.metadata),
+        ):
+            with self.assertRaisesRegex(package.PackagingError, "extracted smoke failed"):
+                self.invoke(output)
+        self.assertEqual(smoke.call_count, 2)
+        self.assert_no_success_outputs(output)
+
+    def test_sidecar_manifest_and_mode_tampering_are_fatal(self) -> None:
+        write_sidecar = package.write_archive_sidecar
+        create_archive = package.create_tar_gz_archive
+
+        def corrupt_sidecar(archive: Path) -> Path:
+            sidecar = write_sidecar(archive)
+            sidecar.write_text(f"{'0' * 64}  {archive.name}\n", encoding="utf-8")
+            return sidecar
+
+        def stale_manifest(payload: Path, destination: Path, epoch: int) -> None:
+            (payload / "PARITY_LEDGER.md").write_bytes(b"tampered after manifest generation\n")
+            create_archive(payload, destination, epoch)
+
+        def lost_executable_mode(payload: Path, destination: Path, epoch: int) -> None:
+            (payload / "paint-ui").chmod(0o644)
+            create_archive(payload, destination, epoch)
+
+        cases = (
+            ("sidecar", "write_archive_sidecar", corrupt_sidecar, "sidecar"),
+            ("manifest", "create_tar_gz_archive", stale_manifest, "manifest"),
+            ("mode", "create_tar_gz_archive", lost_executable_mode, "not executable"),
+        )
+        for name, target, replacement, diagnostic in cases:
+            with self.subTest(case=name):
+                output = self.root / f"dist/{name}-failure"
+                with (
+                    mock.patch.object(package, "run_preview_smoke", return_value=self.smoke_evidence) as smoke,
+                    mock.patch.object(package, "load_locked_metadata", return_value=self.metadata),
+                    mock.patch.object(package, target, side_effect=replacement),
+                ):
+                    with self.assertRaisesRegex(package.PackagingError, diagnostic):
+                        self.invoke(output)
+                self.assertEqual(smoke.call_count, 1)
+                self.assert_no_success_outputs(output)
 
 
 class MandatorySmokeFailureTests(DisposableFixtureMixin):

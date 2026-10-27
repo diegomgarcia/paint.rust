@@ -73,6 +73,28 @@ class ReleaseWorkflowTests(unittest.TestCase):
             self.assertIn("bash ./tools/cargo-pinned.sh fetch --locked", text)
             self.assertIn("bash ./tools/cargo-pinned.sh test --workspace", text)
 
+    def test_ci_runs_the_release_package_gate_without_uploading(self) -> None:
+        build = self.ci.index("- name: Release build")
+        package = self.ci.index("- name: Verify release binary and complete internal package")
+        self.assertLess(build, package)
+        for fragment in (
+            'platform: windows-x86_64\n            binary: target/release/paint-ui.exe',
+            'platform: macos-aarch64\n            binary: target/release/paint-ui',
+            'platform: linux-x86_64\n            binary: target/release/paint-ui',
+            '--output-dir ci-dist',
+            '--repeat 2',
+            '--distribution internal-preview',
+            '--cargo-command bash ./tools/cargo-pinned.sh',
+        ):
+            self.assertIn(fragment, self.ci)
+        self.assertNotIn("actions/upload-artifact@", self.ci)
+
+    def test_internal_upload_is_source_qualified_and_follows_verification(self) -> None:
+        package = self.workflow.index("- name: Run real trace smoke and package internal preview")
+        upload = self.workflow.index("- name: Upload internal CI artifact")
+        self.assertLess(package, upload)
+        self.assertIn("name: paint-r-internal-preview-${{ matrix.platform }}-${{ github.sha }}", self.workflow)
+
     def test_workflow_has_no_release_or_publish_capability(self) -> None:
         self.assertIn("contents: read", self.workflow)
         self.assertNotIn("contents: write", self.workflow)

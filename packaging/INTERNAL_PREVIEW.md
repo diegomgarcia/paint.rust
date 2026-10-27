@@ -25,6 +25,12 @@ contains normalized evidence with exact PNG/RGBA results, complete repeated-run 
 and rejection-path status. `SHA256SUMS.txt` covers the packaged payload; a separate
 `.sha256` sidecar covers the archive.
 
+Before returning the archive, the packager verifies that sidecar, reopens and extracts the
+exact payload with explicit permission restoration, checks every staged byte and internal
+hash, and repeats the same real smoke against the extracted executable. Pre/post evidence
+must match. The adjacent `<archive>.verification.json` receipt records this headless
+acceptance; it does not prove native-window behavior or OS integration.
+
 This is not a broad Paint.NET compatibility claim. The included `PARITY_LEDGER.md` is the
 authoritative per-feature disclosure. A trace passing against Paint.R is not itself
 Paint.NET parity, screenshot parity, PDN round-trip acceptance, or arbitrary-plugin

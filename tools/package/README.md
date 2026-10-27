@@ -34,6 +34,15 @@ and requires its complete identity and SHA-256 to match both the original and sm
 evidence. `PREVIEW_BINARY.json` records this executable-header evidence. It does not prove
 native/non-emulated execution, runner architecture, signing, or application behavior.
 
+After archiving, the tool verifies the outer sidecar, exact entry set, safe regular-file
+paths, archived bytes and modes, tar ownership/timestamps, and the recomputed internal
+manifest. It extracts into an isolated temporary directory with explicit mode restoration,
+requires a non-Windows executable to remain executable, re-inspects its machine identity,
+and repeats the real smoke. Pre/post normalized evidence must be identical. Only then are
+the archive, sidecar, and `<archive>.verification.json` success receipt moved into the
+output directory. Any failure leaves no new success outputs. This is still headless evidence,
+not native-window, signing, notarization, or Paint.NET parity acceptance.
+
 ## Build and package
 
 Use the pinned Cargo wrapper. On all three workflow runners, including Windows, the
@@ -81,8 +90,11 @@ payload includes:
 
 The macOS ZIP also places the summary README, parity ledger, smoke evidence, notice
 summary, binary evidence, and SBOM in `Paint.R.app/Contents/Resources/Preview/`. A `<archive>.sha256`
-sidecar is written next to every archive. No installer, signing identity, notarization
-ticket, or update mechanism is fabricated.
+sidecar and a deterministic `<archive>.verification.json` post-extraction receipt are
+written next to every accepted archive. The receipt contains only archive/binary hashes,
+entry counts, platform architecture, and headless verification status—no local paths or
+wall-clock data. No installer, signing identity, notarization ticket, or update mechanism
+is fabricated.
 
 ## Determinism and verification
 
@@ -94,6 +106,10 @@ ticket, or update mechanism is fabricated.
 - JSON is UTF-8 with sorted keys and stable indentation. Manifests are sorted and exclude
   the manifest itself. The gzip header has no source archive filename.
 - Unit tests compare complete archive bytes across different creation orders and mtimes.
+- The complete package integration test also compares archive, sidecar, and verification
+  receipt bytes and exercises extracted-smoke, sidecar, manifest, and mode failures.
+- Ordinary PR/push CI runs this same verified release-package gate on all three OS lanes
+  without uploading. Manual internal artifacts are source-qualified with `github.sha`.
 
 Given identical payload bytes and epoch, these rules produce repeatable archives in the
 tested environment. Reproducing product bytes additionally requires identical Rust
@@ -134,7 +150,9 @@ tar.gz byte determinism, timestamps/modes/order, exact SHA-256 manifests and sid
 SBOM path independence, font notice extraction and gap reporting, platform layouts,
 PE/Mach-O/ELF architecture acceptance and rejection, exact smoke-run validation,
 public-release refusal, and mandatory-smoke failure handling. A complete `package_release`
-integration test additionally compares two deterministic archives and their binary
-evidence while doubling only the external smoke/metadata commands. These fixtures do not
+integration test additionally compares two deterministic archives, sidecars, binary
+evidence, and post-extraction receipts while doubling only the external smoke/metadata
+commands. Separate failure cases prove rejected archives are not moved into the output.
+These fixtures do not
 claim a real product smoke or native execution. Only a native build of the actual
 `paint-ui` binary can satisfy that product gate.
