@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paint.r/schemas/command-trace-v1.schema.json",
+  "title": "Paint.R deterministic command trace",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "initial", "commands"],
+  "properties": {
+    "format": { "const": "paint.r.command-trace" },
+    "version": { "const": 1 },
+    "initial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height", "background"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1, "maximum": 16384 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 16384 },
+        "background": { "$ref": "#/$defs/color" }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/command" }
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "decoded_rgba_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "layer_count": { "type": "integer", "minimum": 0 },
+        "active_layer_index": { "type": "integer", "minimum": 0 },
+        "dirty": { "type": "boolean" },
+        "can_undo": { "type": "boolean" },
+        "can_redo": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bgra"],
+      "properties": {
+        "bgra": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+        }
+      }
+    },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["left", "top", "right", "bottom"],
+      "properties": {
+        "left": { "type": "integer", "minimum": 0 },
+        "top": { "type": "integer", "minimum": 0 },
+        "right": { "type": "integer", "minimum": 1 },
+        "bottom": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "layerIndex": { "type": "integer", "minimum": 0 },
+    "command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op"],
+          "properties": { "op": { "enum": ["invert", "undo", "redo", "clear_selection"] } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "rect"],
+          "properties": {
+            "op": { "const": "select_rect" },
+            "rect": { "$ref": "#/$defs/rect" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "color"],
+          "properties": {
+            "op": { "const": "fill" },
+            "color": { "$ref": "#/$defs/color" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "name"],
+          "properties": {
+            "op": { "const": "add_layer" },
+            "name": { "type": "string", "minLength": 1 },
+            "opacity": { "type": "integer", "minimum": 0, "maximum": 255, "default": 255 },
+            "visible": { "type": "boolean", "default": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "index"],
+          "properties": {
+            "op": { "const": "set_active_layer" },
+            "index": { "$ref": "#/$defs/layerIndex" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "index", "visible"],
+          "properties": {
+            "op": { "const": "set_layer_visibility" },
+            "index": { "$ref": "#/$defs/layerIndex" },
+            "visible": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "index", "opacity"],
+          "properties": {
+            "op": { "const": "set_layer_opacity" },
+            "index": { "$ref": "#/$defs/layerIndex" },
+            "opacity": { "type": "integer", "minimum": 0, "maximum": 255 }
+          }
+        }
+      ]
+    }
+  }
+}

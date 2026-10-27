@@ -1,5 +1,7 @@
 /target
 /.worktrees/
+__pycache__/
+*.py[cod]
 **/*.rs.bk
 .DS_Store
 .idea/
