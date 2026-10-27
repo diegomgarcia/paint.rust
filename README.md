@@ -7,6 +7,7 @@ An original, cross-platform Rust image editor being developed against a pinned P
 ## Implemented preview slice
 
 - A real `eframe`/`egui` native window with an 800×600 opaque-white new document and an actual composed-surface canvas.
+- A denser graphite editor shell with first-party runtime-drawn New/Open/Export, Undo/Redo, selection, fill, and Add Layer icons; a primary-color preview with hex and alpha; and cached per-layer thumbnails. The icons are original geometry, not copied Paint.NET assets; see [icon provenance](docs/ICON_PROVENANCE.md).
 - Rectangle selection, chosen-BGRA fill, RGB-only Invert, undo/redo, layer creation/selection, visibility, and opacity through the single-writer `AppSession`.
 - Flat PNG open and atomic PNG export. Opening creates one layer; exporting preserves the layered session, history, and modified state. PNG is not lossless layered-document persistence.
 - Dirty New, Open, and native viewport-close paths require explicit Discard confirmation; Cancel preserves the current session, and exporting does not bypass the close guard.
@@ -15,7 +16,7 @@ An original, cross-platform Rust image editor being developed against a pinned P
 - Bounded PNG and data-only PDN3/NRBF libraries. An authentic signed Paint.NET 5.1.12 2×2 Normal/BGRA fixture passes exact reader/composite acceptance. The writer remains experimental and self-round-trip-tested only until stock acceptance is demonstrated.
 - An isolated Rust↔.NET source-owned plugin transport proof. This does not load arbitrary Paint.NET plugin DLLs.
 
-The development UI uses stock `egui` styling and a text-path PNG dialog, not a pixel-parity skin or native OS file picker. Keyboard evidence is semantic `egui_kittest` input/focus coverage, not native OS, screen-reader, or Paint.NET shortcut-parity evidence. Use disposable test documents; the preview is not a complete document-safety or Paint.NET workflow implementation.
+The development UI uses a custom dark `egui` theme, original first-party icon geometry, and a text-path PNG dialog. It is not a pixel-parity skin, does not include a native OS file picker or image-browser preview, and remains visibly simpler than Paint.NET. Keyboard evidence is semantic `egui_kittest` input/focus coverage, not native OS, screen-reader, or Paint.NET shortcut-parity evidence. Use disposable test documents; the preview is not a complete document-safety or Paint.NET workflow implementation.
 
 ## Prerequisites
 
@@ -45,11 +46,17 @@ plugin-host/test-cross-language.sh
 
 The full release gate additionally requires native platform builds, real-binary and native-window smoke tests, deterministic package checks, and the platform/reference evidence described in the parity ledger. A container result for one architecture is not evidence for another.
 
-On macOS, with accessibility permission for the calling terminal, the reusable native-window gate is:
+On macOS, with Accessibility and Screen Recording permission for the calling terminal, the
+native keyboard/dirty-close gate is:
 
 ```sh
-tools/macos_native_window_smoke.sh target/debug/paint-ui
+python3 tools/macos_native_usability_gate.py target/release/paint-ui \
+  --output-dir "artifacts/reference-local/native-usability-$(date +%Y%m%d-%H%M%S)"
 ```
+
+The output directory must not exist. See
+[MACOS_NATIVE_USABILITY.md](docs/work-packets/release/MACOS_NATIVE_USABILITY.md) for the full
+preflight, limitations, and evidence requirements.
 
 ## Run
 

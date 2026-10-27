@@ -1,0 +1,98 @@
+{
+  "features": [
+    "project-owned runtime-drawn New/Open/Export, Undo/Redo, rectangle selection, clear selection, fill, and Add Layer icons",
+    "graphite dark desktop theme with denser toolbar",
+    "primary-color preview with hex and alpha plus checkerboard alpha background",
+    "cached per-layer thumbnails driven by layer revisions",
+    "accessibly labelled icon buttons and image previews"
+  ],
+  "format": "paint.r.ui-icons-previews",
+  "icon_provenance": {
+    "copied_paintnet_assets": false,
+    "path": "docs/ICON_PROVENANCE.md",
+    "sha256": "5f1ccb774b1dccb2508ebc8b5eca66ba249602f1aadbb3fcdcfa6a68d58aa11d",
+    "third_party_icon_assets": 0
+  },
+  "limitations": [
+    "This is a first-party visual approximation, not a pixel-parity Paint.NET skin.",
+    "The text-path PNG dialog has no image preview or native file picker.",
+    "No copied Paint.NET icons, logo, or other proprietary artwork is included.",
+    "The native gate validates this slice only, not full Paint.NET parity or public release readiness."
+  ],
+  "native_gate": {
+    "binary": {
+      "bytes": 12555344,
+      "path": "/Users/diegogarcia/Projects/Paint .R/target/release/paint-ui",
+      "sha256": "a836996ed85a42cba5036ac59e5ef30a2c66bba75a7223c3b3006d95c6b5efaf"
+    },
+    "manifest": "artifacts/reference-local/ui-visual-live-20261027c/manifest.json",
+    "native_execution": "COMPLETED",
+    "outcome": "PASS",
+    "process_exit_code": 0,
+    "screenshots": [
+      {
+        "bytes": 770807,
+        "height": 2088,
+        "path": "00-before.png",
+        "pid": 22448,
+        "rgba_sha256": "d3edf1d2332d9ae2cbcc793ce8d8cebe4bd70292f852f78fd6c722a3d2441e4b",
+        "sha256": "956a81c46e009cd364509eab3004b5a3a400ba7e56d9cc9ff1dbb5c6158628dd",
+        "width": 2784,
+        "window_id": 7320
+      },
+      {
+        "bytes": 766358,
+        "height": 2088,
+        "path": "01-modified.png",
+        "pid": 22448,
+        "rgba_sha256": "d6217f0c8459be5246d8a650d2cbf136c610538af5e51e1b3fb0921bde192edb",
+        "sha256": "91a03dd19a599f88c1b3053c9c346b806bfb6ed1b78d72b5f259963bd2a76ea2",
+        "width": 2784,
+        "window_id": 7320
+      },
+      {
+        "bytes": 793322,
+        "height": 2088,
+        "path": "02-close-confirmation.png",
+        "pid": 22448,
+        "rgba_sha256": "b068d61b25867cc73f1e5f4f87841fe5afd90c53362eb4b9bf2752c88e725801",
+        "sha256": "33f3eb9cb951f3f43d88400407088eeaa163c37faca0b730261ff7ed62f0454f",
+        "width": 2784,
+        "window_id": 7320
+      },
+      {
+        "bytes": 766358,
+        "height": 2088,
+        "path": "03-canceled.png",
+        "pid": 22448,
+        "rgba_sha256": "d6217f0c8459be5246d8a650d2cbf136c610538af5e51e1b3fb0921bde192edb",
+        "sha256": "91a03dd19a599f88c1b3053c9c346b806bfb6ed1b78d72b5f259963bd2a76ea2",
+        "width": 2784,
+        "window_id": 7320
+      },
+      {
+        "bytes": 793322,
+        "height": 2088,
+        "path": "04-second-close-confirmation.png",
+        "pid": 22448,
+        "rgba_sha256": "b068d61b25867cc73f1e5f4f87841fe5afd90c53362eb4b9bf2752c88e725801",
+        "sha256": "33f3eb9cb951f3f43d88400407088eeaa163c37faca0b730261ff7ed62f0454f",
+        "width": 2784,
+        "window_id": 7320
+      }
+    ]
+  },
+  "public_release": false,
+  "source_commit": "80989f52a9f4b5445e30dda79db04eb9cf94c6a7",
+  "status": "PASS_FIRST_PARTY_VISUAL_LAYER_AND_NATIVE_SMOKE_NOT_PIXEL_PARITY",
+  "tests": {
+    "failed": 0,
+    "headless": 8,
+    "ignored": 0,
+    "keyboard": 5,
+    "strict_clippy": "pass",
+    "total": 23,
+    "usability": 10
+  },
+  "version": 1
+}
