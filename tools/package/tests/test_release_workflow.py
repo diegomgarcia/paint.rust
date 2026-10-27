@@ -73,11 +73,11 @@ class ReleaseWorkflowTests(unittest.TestCase):
             self.assertIn("bash ./tools/cargo-pinned.sh fetch --locked", text)
             self.assertIn("bash ./tools/cargo-pinned.sh test --workspace", text)
 
-    def test_linux_ci_shellchecks_build_and_plugin_launchers(self) -> None:
+    def test_linux_ci_shellchecks_build_and_native_launchers(self) -> None:
         expected = (
-            "- name: ShellCheck build and plugin launchers\n"
+            "- name: ShellCheck build and native launchers\n"
             "        if: matrix.os == 'ubuntu-24.04'\n"
-            "        run: shellcheck tools/cargo-pinned.sh plugin-host/test-cross-language.sh"
+            "        run: shellcheck tools/cargo-pinned.sh plugin-host/test-cross-language.sh tools/macos_native_window_smoke.sh"
         )
         for workflow_name, text in (("ci", self.ci), ("release", self.workflow)):
             with self.subTest(workflow=workflow_name):
