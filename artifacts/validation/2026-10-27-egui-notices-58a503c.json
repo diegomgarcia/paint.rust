@@ -1,0 +1,128 @@
+{
+  "agent_commit": "4abb476a39865625152b05d54fa701afe89a6adb",
+  "format": "paint.r.egui-notice-provenance",
+  "independent_upstream_verification": {
+    "path": "artifacts/reference-local/round4-4798c28/egui-upstream-verification.json",
+    "sha256": "1511ae4052f32573b3b2ef6b0779e2fcd0d879c30361181b9bd9f347652133fb"
+  },
+  "limitations": [
+    "Seven egui-family packages remain explicit gaps because their exact recorded upstream commit was unavailable.",
+    "49 locked-package notice gaps remain; extraction_complete is false.",
+    "Curated/heuristic extraction is not legal compliance or a linked-binary/native dependency audit.",
+    "Public packaging remains refused; no release or parity status changed."
+  ],
+  "merged_package_workflow_tests": {
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round4-4798c28/merged-package-tests.log",
+      "sha256": "4bd1e8995e1681336477a9a665dc6f1f9f84b6c900751ca7cb0bfd9624bfac0b"
+    },
+    "passed": 46
+  },
+  "original_ten_package_target_achieved": false,
+  "real_collection": {
+    "added_notice_files": [
+      "third-party-notices/files/eframe-0.37.0-3a9f293d96/000-LICENSE-APACHE",
+      "third-party-notices/files/eframe-0.37.0-3a9f293d96/001-LICENSE-MIT",
+      "third-party-notices/files/egui_kittest-0.37.0-71807323ad/000-LICENSE-APACHE",
+      "third-party-notices/files/egui_kittest-0.37.0-71807323ad/001-LICENSE-MIT",
+      "third-party-notices/files/egui_system_font_provider-0.37.0-819c6c0a20/000-LICENSE-APACHE",
+      "third-party-notices/files/egui_system_font_provider-0.37.0-819c6c0a20/001-LICENSE-MIT"
+    ],
+    "changed_global_files": [
+      "THIRD_PARTY_NOTICES.md",
+      "third-party-notices/index.json"
+    ],
+    "changed_package_entries": [
+      "eframe",
+      "egui_kittest",
+      "egui_system_font_provider"
+    ],
+    "curated_supplements": 11,
+    "deterministic_tree": {
+      "entries": 769,
+      "status": "pass",
+      "tree_sha256": "40e06560db4eb47985d697e2522b3e1655ec6a2d87bbe63f680eacdefd5f9ecf"
+    },
+    "extraction_complete": false,
+    "network_socket_calls": "disabled and not attempted; Cargo metadata offline",
+    "package_count": 457,
+    "packages_with_texts": 408,
+    "remaining_gaps": 49,
+    "removed_files": []
+  },
+  "source_commit": "58a503cfeeff40a62aa3536b8efbedc1cef08b8f",
+  "status": "PASS_THREE_PACKAGE_SUBSET_NOT_LEGAL_CLEARANCE",
+  "supplemented_packages": [
+    {
+      "crate_sha256": "9c5642501a65ca657d05f00c643a5c14ff2346cb3818032bfe23d58e1f8e5f84",
+      "identity_verified": true,
+      "name": "eframe",
+      "path_in_vcs": "crates/eframe",
+      "repository": "https://github.com/emilk/egui/tree/main/crates/eframe",
+      "vcs_commit": "3c6eb8261c3293ad9c7ea1ed58487e038860ebef",
+      "version": "0.37.0"
+    },
+    {
+      "crate_sha256": "0979c2e37860fcf13a2bea77508607f067a9a6a84ba9bd47b5e298582fb59b86",
+      "identity_verified": true,
+      "name": "egui_kittest",
+      "path_in_vcs": "crates/egui_kittest",
+      "repository": "https://github.com/emilk/egui",
+      "vcs_commit": "9d317be94fc96df23bd5d9316f357efa2d3631d8",
+      "version": "0.37.0"
+    },
+    {
+      "crate_sha256": "6f2a2fdfe3c05dd9f691d2b1388b2312d6dce1af502f217c22136d22d9bd76f6",
+      "identity_verified": true,
+      "name": "egui_system_font_provider",
+      "path_in_vcs": "crates/egui_system_font_provider",
+      "repository": "https://github.com/emilk/egui/tree/main/crates/egui_system_font_provider",
+      "vcs_commit": "3c6eb8261c3293ad9c7ea1ed58487e038860ebef",
+      "version": "0.37.0"
+    }
+  ],
+  "unresolved_core": {
+    "agent_bounded_checks": "exact raw/content/codeload unavailable; commit API 422; direct Git fetch not our ref; bounded fork check found no copy",
+    "declared_commit_url": "https://github.com/emilk/egui/commit/7c0b40402271e8d40cda69f87cf3c2617c2e4382",
+    "fallback_or_moving_license_used": false,
+    "independent_commit_page_status": 404,
+    "packages": [
+      "ecolor",
+      "egui",
+      "egui-wgpu",
+      "egui-winit",
+      "egui_glow",
+      "emath",
+      "epaint"
+    ],
+    "vcs_commit": "7c0b40402271e8d40cda69f87cf3c2617c2e4382"
+  },
+  "upstream_files": [
+    {
+      "bytes": 10850,
+      "matches_checked_in_bytes": true,
+      "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90",
+      "source_url": "https://raw.githubusercontent.com/emilk/egui/3c6eb8261c3293ad9c7ea1ed58487e038860ebef/LICENSE-APACHE"
+    },
+    {
+      "bytes": 1092,
+      "matches_checked_in_bytes": true,
+      "sha256": "95ca92f5f8ea5231f1580b3a2a799e8260af3114b900e1def5355a7f44bcf60c",
+      "source_url": "https://raw.githubusercontent.com/emilk/egui/3c6eb8261c3293ad9c7ea1ed58487e038860ebef/LICENSE-MIT"
+    },
+    {
+      "bytes": 10850,
+      "matches_checked_in_bytes": true,
+      "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90",
+      "source_url": "https://raw.githubusercontent.com/emilk/egui/9d317be94fc96df23bd5d9316f357efa2d3631d8/LICENSE-APACHE"
+    },
+    {
+      "bytes": 1092,
+      "matches_checked_in_bytes": true,
+      "sha256": "95ca92f5f8ea5231f1580b3a2a799e8260af3114b900e1def5355a7f44bcf60c",
+      "source_url": "https://raw.githubusercontent.com/emilk/egui/9d317be94fc96df23bd5d9316f357efa2d3631d8/LICENSE-MIT"
+    }
+  ],
+  "version": 1
+}
