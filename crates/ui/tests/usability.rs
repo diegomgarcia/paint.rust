@@ -263,6 +263,9 @@ fn rectangle_selection_chosen_bgra_fill_and_clear_selection_are_usable() {
 fn layer_panel_exposes_color_and_layer_previews() {
     let mut harness = app();
 
+    harness.get_by_role_and_label(Role::Button, "New document");
+    harness.get_by_role_and_label(Role::Button, "Open PNG file");
+    harness.get_by_role_and_label(Role::Button, "Export PNG file");
     harness.get_by_label_contains("Primary color preview");
     harness.get_by_label_contains("Layer 0 thumbnail: Background");
 

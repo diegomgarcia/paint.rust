@@ -5,6 +5,9 @@ use egui::{
 /// Project-owned line icons. They are original geometry, not copied Paint.NET assets.
 #[derive(Clone, Copy)]
 pub(crate) enum Icon {
+    NewDocument,
+    OpenFile,
+    ExportFile,
     Undo,
     Redo,
     SelectRectangle,
@@ -65,6 +68,71 @@ fn polyline(painter: &Painter, rect: egui::Rect, points: &[(f32, f32)], stroke: 
 fn paint_icon(painter: &Painter, rect: egui::Rect, icon: Icon, color: Color32) {
     let stroke = Stroke::new(2.0, color);
     match icon {
+        Icon::NewDocument => {
+            polyline(
+                painter,
+                rect,
+                &[
+                    (0.24, 0.12),
+                    (0.56, 0.12),
+                    (0.7, 0.28),
+                    (0.7, 0.86),
+                    (0.24, 0.86),
+                    (0.24, 0.12),
+                ],
+                stroke,
+            );
+            polyline(
+                painter,
+                rect,
+                &[(0.56, 0.12), (0.56, 0.28), (0.7, 0.28)],
+                Stroke::new(1.5, color),
+            );
+            painter.line_segment(
+                [point(rect, 0.76, 0.62), point(rect, 0.76, 0.84)],
+                Stroke::new(1.8, color),
+            );
+            painter.line_segment(
+                [point(rect, 0.65, 0.73), point(rect, 0.87, 0.73)],
+                Stroke::new(1.8, color),
+            );
+        }
+        Icon::OpenFile => {
+            painter.add(Shape::convex_polygon(
+                vec![
+                    point(rect, 0.12, 0.28),
+                    point(rect, 0.4, 0.28),
+                    point(rect, 0.47, 0.4),
+                    point(rect, 0.88, 0.4),
+                    point(rect, 0.78, 0.84),
+                    point(rect, 0.2, 0.84),
+                ],
+                color.gamma_multiply(0.12),
+                stroke,
+            ));
+            painter.line_segment(
+                [point(rect, 0.2, 0.4), point(rect, 0.86, 0.4)],
+                Stroke::new(1.2, color.gamma_multiply(0.65)),
+            );
+        }
+        Icon::ExportFile => {
+            painter.rect_stroke(
+                egui::Rect::from_min_max(point(rect, 0.16, 0.22), point(rect, 0.64, 0.84)),
+                2,
+                Stroke::new(1.6, color),
+                StrokeKind::Inside,
+            );
+            painter.line_segment([point(rect, 0.78, 0.72), point(rect, 0.78, 0.32)], stroke);
+            painter.add(Shape::convex_polygon(
+                vec![
+                    point(rect, 0.78, 0.16),
+                    point(rect, 0.65, 0.34),
+                    point(rect, 0.91, 0.34),
+                ],
+                color,
+                Stroke::NONE,
+            ));
+        }
         Icon::Undo | Icon::Redo => {
             let mut points = vec![
                 (0.8, 0.3),

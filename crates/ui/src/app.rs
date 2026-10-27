@@ -259,6 +259,18 @@ impl PaintApp {
             ui.add_space(3.0);
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 3.0;
+                if icon_button(ui, Icon::NewDocument, "New document", true).clicked() {
+                    self.request_new();
+                }
+                if icon_button(ui, Icon::OpenFile, "Open PNG file", true).clicked() {
+                    self.show_path_dialog(PathDialogKind::Open);
+                }
+                if icon_button(ui, Icon::ExportFile, "Export PNG file", true).clicked() {
+                    self.show_path_dialog(PathDialogKind::Export);
+                }
+                ui.add_space(5.0);
+                ui.separator();
+                ui.add_space(5.0);
                 if icon_button(ui, Icon::Undo, "Undo", self.session.can_undo()).clicked() {
                     self.execute(Command::Undo, "Undid the last edit");
                 }
