@@ -1,0 +1,186 @@
+{
+  "agent_commit": "668fe7c95a66f0965d7d96cca38db4718b994198",
+  "fallback_or_moving_license_used": false,
+  "format": "paint.r.android-jni-notice-provenance",
+  "independent_upstream_verification": {
+    "path": "artifacts/reference-local/round5-a4d60eb/android-upstream-verification.json",
+    "sha256": "d41d716a077e9adf20ec16e822d796292934dfe505c72cc2046d91a874449822"
+  },
+  "limitations": [
+    "43 locked-package notice gaps remain and extraction_complete is false.",
+    "Curated/heuristic extraction is not legal compliance or a linked-binary/native dependency audit.",
+    "Public packaging remains refused; no release or parity status changed."
+  ],
+  "merged_package_workflow_tests": {
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round5-a4d60eb/merged-package-tests.log",
+      "sha256": "4c61c09d6306b18d9b0a05d229f98c85fa5cfb5099a23bed0bbcd8a936985128"
+    },
+    "passed": 46
+  },
+  "real_collection": {
+    "added_notice_files": [
+      "third-party-notices/files/jni-0.22.4-31b5be33a0/000-LICENSE-APACHE",
+      "third-party-notices/files/jni-0.22.4-31b5be33a0/001-LICENSE-MIT",
+      "third-party-notices/files/jni-macros-0.22.4-53ec713248/000-LICENSE-APACHE",
+      "third-party-notices/files/jni-macros-0.22.4-53ec713248/001-LICENSE-MIT",
+      "third-party-notices/files/jni-sys-macros-0.4.1-43aa0a1694/000-LICENSE-APACHE",
+      "third-party-notices/files/jni-sys-macros-0.4.1-43aa0a1694/001-LICENSE-MIT",
+      "third-party-notices/files/ndk-0.9.0-46009c473b/000-LICENSE-APACHE",
+      "third-party-notices/files/ndk-0.9.0-46009c473b/001-LICENSE-MIT",
+      "third-party-notices/files/ndk-context-0.1.1-edff952904/000-LICENSE-APACHE",
+      "third-party-notices/files/ndk-context-0.1.1-edff952904/001-LICENSE-MIT",
+      "third-party-notices/files/ndk-sys-0.6.0_11769913-35d6156fbf/000-LICENSE-APACHE",
+      "third-party-notices/files/ndk-sys-0.6.0_11769913-35d6156fbf/001-LICENSE-MIT"
+    ],
+    "changed_global_files": [
+      "THIRD_PARTY_NOTICES.md",
+      "third-party-notices/index.json"
+    ],
+    "changed_package_entries": [
+      "jni",
+      "jni-macros",
+      "jni-sys-macros",
+      "ndk",
+      "ndk-context",
+      "ndk-sys"
+    ],
+    "curated_supplements": 17,
+    "deterministic_tree": {
+      "entries": 781,
+      "status": "pass",
+      "tree_sha256": "4d69bd957cc0a7a17399f75dae270f664aeae91a0d3d78464606fde008a880ac"
+    },
+    "extraction_complete": false,
+    "network_socket_calls": "disabled and not attempted; Cargo metadata offline",
+    "package_count": 457,
+    "packages_with_texts": 414,
+    "remaining_gaps": 43,
+    "removed_files": []
+  },
+  "requested_package_count": 6,
+  "skipped_packages": [],
+  "source_commit": "8e28c8a46d332c758c216a1c89c519e159908f00",
+  "status": "PASS_SIX_PACKAGE_BATCH_NOT_LEGAL_CLEARANCE",
+  "supplemented_package_count": 6,
+  "supplemented_packages": [
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "5efd9a482cf3a427f00d6b35f14332adc7902ce91efb778580e180ff90fa3498",
+      "name": "jni",
+      "path_in_vcs": "crates/jni",
+      "repository": "https://github.com/jni-rs/jni-rs",
+      "vcs_commit": "5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7",
+      "version": "0.22.4"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "a00109accc170f0bdb141fed3e393c565b6f5e072365c3bd58f5b062591560a3",
+      "name": "jni-macros",
+      "path_in_vcs": "crates/jni-macros",
+      "repository": "https://github.com/jni-rs/jni-rs",
+      "vcs_commit": "33045a124105c939d1e2cbdcb5a39e5d868ffa03",
+      "version": "0.22.4"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "38c0b942f458fe50cdac086d2f946512305e5631e720728f2a61aabcd47a6264",
+      "name": "jni-sys-macros",
+      "path_in_vcs": "jni-sys-macros",
+      "repository": "https://github.com/jni-rs/jni-sys",
+      "vcs_commit": "64d77b7a5f119d7b55b4e2c169a4668067ff59e6",
+      "version": "0.4.1"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "c3f42e7bbe13d351b6bead8286a43aac9534b82bd3cc43e47037f012ebfd62d4",
+      "name": "ndk",
+      "path_in_vcs": "ndk",
+      "repository": "https://github.com/rust-mobile/ndk",
+      "vcs_commit": "49bbbba16c58ff63cb8a0ad0eca5a9fb7ecaec25",
+      "version": "0.9.0"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "27b02d87554356db9e9a873add8782d4ea6e3e58ea071a9adb9a2e8ddb884a8b",
+      "name": "ndk-context",
+      "path_in_vcs": "ndk-context",
+      "repository": "https://github.com/rust-windowing/android-ndk-rs",
+      "vcs_commit": "10f2ba388fca20f7349996ebae26ccda7a6fda5c",
+      "version": "0.1.1"
+    },
+    {
+      "archived_and_unpacked_vcs_match": true,
+      "crate_sha256": "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873",
+      "name": "ndk-sys",
+      "path_in_vcs": "ndk-sys",
+      "repository": "https://github.com/rust-mobile/ndk",
+      "vcs_commit": "49bbbba16c58ff63cb8a0ad0eca5a9fb7ecaec25",
+      "version": "0.6.0+11769913"
+    }
+  ],
+  "upstream_files": [
+    {
+      "bytes": 10847,
+      "matches_checked_in_bytes": true,
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source_url": "https://raw.githubusercontent.com/jni-rs/jni-rs/5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7/LICENSE-APACHE"
+    },
+    {
+      "bytes": 1104,
+      "matches_checked_in_bytes": true,
+      "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+      "source_url": "https://raw.githubusercontent.com/jni-rs/jni-rs/5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7/LICENSE-MIT"
+    },
+    {
+      "bytes": 10847,
+      "matches_checked_in_bytes": true,
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source_url": "https://raw.githubusercontent.com/jni-rs/jni-rs/33045a124105c939d1e2cbdcb5a39e5d868ffa03/LICENSE-APACHE"
+    },
+    {
+      "bytes": 1104,
+      "matches_checked_in_bytes": true,
+      "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+      "source_url": "https://raw.githubusercontent.com/jni-rs/jni-rs/33045a124105c939d1e2cbdcb5a39e5d868ffa03/LICENSE-MIT"
+    },
+    {
+      "bytes": 11358,
+      "matches_checked_in_bytes": true,
+      "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+      "source_url": "https://raw.githubusercontent.com/jni-rs/jni-sys/64d77b7a5f119d7b55b4e2c169a4668067ff59e6/LICENSE-APACHE"
+    },
+    {
+      "bytes": 1071,
+      "matches_checked_in_bytes": true,
+      "sha256": "1d85bd754b04ceec93e98e890edd1fa3c6a22e81bcb32135806beeccefa51cd1",
+      "source_url": "https://raw.githubusercontent.com/jni-rs/jni-sys/64d77b7a5f119d7b55b4e2c169a4668067ff59e6/LICENSE-MIT"
+    },
+    {
+      "bytes": 11357,
+      "matches_checked_in_bytes": true,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "source_url": "https://raw.githubusercontent.com/rust-mobile/ndk/49bbbba16c58ff63cb8a0ad0eca5a9fb7ecaec25/LICENSE-APACHE"
+    },
+    {
+      "bytes": 1036,
+      "matches_checked_in_bytes": true,
+      "sha256": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1",
+      "source_url": "https://raw.githubusercontent.com/rust-mobile/ndk/49bbbba16c58ff63cb8a0ad0eca5a9fb7ecaec25/LICENSE-MIT"
+    },
+    {
+      "bytes": 11357,
+      "matches_checked_in_bytes": true,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "source_url": "https://raw.githubusercontent.com/rust-windowing/android-ndk-rs/10f2ba388fca20f7349996ebae26ccda7a6fda5c/LICENSE-APACHE"
+    },
+    {
+      "bytes": 1036,
+      "matches_checked_in_bytes": true,
+      "sha256": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1",
+      "source_url": "https://raw.githubusercontent.com/rust-windowing/android-ndk-rs/10f2ba388fca20f7349996ebae26ccda7a6fda5c/LICENSE-MIT"
+    }
+  ],
+  "version": 1
+}
