@@ -371,9 +371,10 @@ private func focusTarget(pid: pid_t, title: String) throws {
 private func sendKey(pid: pid_t, title: String, name: String, modifierText: String) throws -> [String: Any] {
     let allowed = (name == "i" && modifierText == "command")
         || (name == "q" && modifierText == "command")
+        || (name == "w" && modifierText == "command")
         || (name == "escape" && modifierText.isEmpty)
     guard allowed else { throw error("INPUT_REJECTED", "key is outside the native gate allowlist") }
-    let keyCodes: [String: CGKeyCode] = ["i": 34, "q": 12, "escape": 53]
+    let keyCodes: [String: CGKeyCode] = ["i": 34, "q": 12, "w": 13, "escape": 53]
     guard let keyCode = keyCodes[name] else { throw error("INPUT_REJECTED", "unknown native key") }
     try focusTarget(pid: pid, title: title)
     try requirePreflight() // Recheck immediately before posting into the console session.

@@ -846,7 +846,12 @@ class MacOSNativeBackend:
         return self._call("observe", str(pid), WINDOW_TITLE)
 
     def key(self, pid: int, name: str, modifiers: tuple[str, ...] = ()) -> dict[str, Any]:
-        allowed = {("i", ("command",)), ("q", ("command",)), ("escape", ())}
+        allowed = {
+            ("i", ("command",)),
+            ("q", ("command",)),
+            ("w", ("command",)),
+            ("escape", ()),
+        }
         if (name, modifiers) not in allowed:
             raise NativeCommandError("INPUT_REJECTED", "native key is outside the gate allowlist")
         return self._call("key", str(pid), WINDOW_TITLE, name, ",".join(modifiers))

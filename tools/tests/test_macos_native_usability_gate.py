@@ -590,6 +590,21 @@ class NativeGateTests(unittest.TestCase):
             [str(backend.helper), "press", "4242", gate.WINDOW_TITLE, "Discard"],
         )
 
+    def test_native_backend_allows_only_guarded_close_shortcuts(self) -> None:
+        source = self.root / "helper.swift"
+        source.write_text("// disposable helper source\n", encoding="utf-8")
+        backend = gate.MacOSNativeBackend(source, self.root / "native-tool", self.config)
+        completed = subprocess.CompletedProcess(["helper"], 0, stdout=b'{"event":"key"}\n', stderr=b"")
+        with mock.patch.object(backend, "_ensure_helper", return_value=None), \
+             mock.patch.object(gate, "run_native_command", return_value=completed) as command:
+            for name in ("i", "q", "w"):
+                self.assertEqual(backend.key(4242, name, ("command",)), {"event": "key"})
+            with self.assertRaises(gate.NativeCommandError) as caught:
+                backend.key(4242, "x", ("command",))
+
+        self.assertEqual(caught.exception.code, "INPUT_REJECTED")
+        self.assertEqual(command.call_count, 3)
+
     def test_manifest_and_binary_identity_are_structured(self) -> None:
         result = self.run_gate()
 
