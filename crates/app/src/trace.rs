@@ -104,9 +104,8 @@ impl CommandTrace {
         let mut commands = Vec::new();
         commands
             .try_reserve_exact(raw.commands.len())
-            .map_err(|_| ResourceLimitError::Commands {
-                actual: raw.commands.len(),
-                max: limits.max_commands,
+            .map_err(|_| TraceError::CommandAllocation {
+                commands: raw.commands.len(),
             })?;
         for (index, raw_command) in raw.commands.into_iter().enumerate() {
             validate_wire_command_fields(&raw_command, index)?;

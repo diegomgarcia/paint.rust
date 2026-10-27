@@ -382,4 +382,72 @@ fn malformed_expectations_and_unknown_expectation_fields_are_rejected() {
         "commands":[],"expect":{"selection":null}
     }"#;
     assert!(execute_trace(unknown).is_err());
+
+    let zero_width = r#"{
+        "format":"paint.r.command-trace","version":1,
+        "initial":{"width":1,"height":1,"background":{"bgra":[0,0,0,255]}},
+        "commands":[],"expect":{"width":0}
+    }"#;
+    assert!(matches!(
+        execute_trace(zero_width),
+        Err(TraceError::InvalidExpectation { .. })
+    ));
+}
+
+#[test]
+fn every_optional_expectation_is_checked_exactly() {
+    let hash_expectation = format!("\"decoded_rgba_sha256\":\"{}\"", "0".repeat(64));
+    let cases = [
+        ("\"height\":2", ExpectationField::Height),
+        (
+            hash_expectation.as_str(),
+            ExpectationField::DecodedRgbaSha256,
+        ),
+        ("\"layer_count\":2", ExpectationField::LayerCount),
+        (
+            "\"active_layer_index\":1",
+            ExpectationField::ActiveLayerIndex,
+        ),
+        ("\"dirty\":true", ExpectationField::Dirty),
+        ("\"can_undo\":true", ExpectationField::CanUndo),
+        ("\"can_redo\":true", ExpectationField::CanRedo),
+    ];
+    for (expectation, field) in cases {
+        let trace = format!(
+            r#"{{"format":"paint.r.command-trace","version":1,
+            "initial":{{"width":1,"height":1,"background":{{"bgra":[0,0,0,255]}}}},
+            "commands":[],"expect":{{{expectation}}}}}"#
+        );
+        match execute_trace(&trace).unwrap_err() {
+            TraceError::Expectation(error) => assert_eq!(error.field, field),
+            other => panic!("expected {field} mismatch, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn schema_dimension_boundary_is_accepted_and_oversized_rectangles_are_rejected() {
+    let output = execute_trace(
+        r#"{
+            "format":"paint.r.command-trace","version":1,
+            "initial":{"width":16384,"height":1,"background":{"bgra":[1,2,3,255]}},
+            "commands":[]
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        (output.surface.width(), output.surface.height()),
+        (16_384, 1)
+    );
+
+    let trace = r#"{
+        "format":"paint.r.command-trace","version":1,
+        "initial":{"width":1,"height":1,"background":{"bgra":[0,0,0,255]}},
+        "commands":[
+            {"op":"select_rect","rect":{"left":0,"top":0,"right":9223372036854775807,"bottom":1}}
+        ]
+    }"#;
+    let error = execute_trace(trace).unwrap_err();
+    assert_eq!(error.command_index(), Some(0));
+    assert!(matches!(error, TraceError::InvalidRectangle { .. }));
 }

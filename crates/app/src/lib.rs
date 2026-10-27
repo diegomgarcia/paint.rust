@@ -2,6 +2,7 @@
 
 mod command;
 mod error;
+mod persistence;
 mod session;
 mod snapshot;
 mod trace;
