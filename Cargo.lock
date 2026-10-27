@@ -2515,6 +2515,8 @@ dependencies = [
  "flate2",
  "paint-core",
  "paint-document",
+ "paint-image-io",
+ "paint-raster",
  "proptest",
  "quick-xml 0.38.4",
  "tempfile",

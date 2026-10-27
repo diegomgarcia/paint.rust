@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "kind": "authentic-stock-pdn-fixture",
+  "reference_product": {
+    "name": "Paint.NET",
+    "display_version": "5.1.12",
+    "file_version": "5.112.9563.32325",
+    "executable_sha256": "17b27aee8eb0d18e7b39964e6c1c43b1dac5705f23727af550f2cde7fe737e2e",
+    "signature_status": "Valid"
+  },
+  "reference_platform": "Windows 11 ARM64 under UTM",
+  "source_run": "pdn-fixture-20261026t2342z",
+  "original_manifest_sha256": "1c60140f726d101f2461218b4d02be780b77d7136ddab7733feec4c4c41be7e8",
+  "environment_sha256": "67ae3ed0c774f5f20109951542fce8d5313a352d943221795688ec4e73d11329",
+  "ancillary_tool_edited_file": false,
+  "actions": [
+    "Create a 2x2 document through stock File > New",
+    "Apply stock Adjustments > Invert Colors",
+    "Save As PDN through the stock UI",
+    "Close and reopen the same PDN through the stock UI",
+    "Export the reopened document as PNG for independent pixel verification"
+  ],
+  "document": {
+    "width": 2,
+    "height": 2,
+    "layers_bottom_to_top": [
+      {
+        "name": "Background",
+        "visible": true,
+        "background": true,
+        "blend": "Normal",
+        "opacity": 255,
+        "bgra": "000000ff000000ff000000ff000000ff"
+      }
+    ],
+    "note": "Background/default state comes from the stock New workflow; individual property dialogs were not separately queried."
+  },
+  "pdn": {
+    "file": "paintnet-5.1.12-invert-2x2.pdn",
+    "bytes": 3569,
+    "sha256": "86736d36d886e08943fe57d3045a092051c83ad7f919aa6f21b177c84007c09b"
+  },
+  "reopened_png": {
+    "file": "paintnet-5.1.12-invert-2x2-reopened.png",
+    "bytes": 351,
+    "sha256": "008b013d9c7a9a645fe9889386284608d8969d61a1b2a2044cddf108d9e08904",
+    "rgba_sha256": "cc0fa51d4d0a97b664030be5052f3b2b69a1267f89ace4c9bbc65007566725df"
+  },
+  "evidence_boundary": "One authentic Normal/BGRA reader fixture with stock reopen/PNG verification. This is not a full semantic corpus, clone-writer acceptance, or proof for other blend modes, metadata, dimensions, or layer stacks."
+}
