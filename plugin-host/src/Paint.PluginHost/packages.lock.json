@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "paint.plugin.protocol": {
+        "type": "Project",
+        "dependencies": {
+          "Paint.Plugin.Sdk": "[1.0.0, )"
+        }
+      },
+      "paint.plugin.sampleeffects": {
+        "type": "Project",
+        "dependencies": {
+          "Paint.Plugin.Sdk": "[1.0.0, )"
+        }
+      },
+      "paint.plugin.sdk": {
+        "type": "Project"
+      }
+    }
+  }
+}
