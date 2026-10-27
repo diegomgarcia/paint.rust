@@ -176,13 +176,16 @@ PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/guest_jobs.py \
   'C:\PaintR-Reference\tools\node\node.exe' --version
 ```
 
-`run_windows_arm64_gate.py` runs selected commands against an exact archived source using an isolated native ARM64 gnullvm toolchain and output outside the source. It does not install tools. The available steps are `fmt`, `clippy`, `test`, `xtask`, `release`, `dotnet-restore`, `dotnet-build`, `dotnet-test`, `conformance`, and `smoke`; a failed selected step stops that sequence and later steps require an explicit independent selection.
+`run_windows_arm64_gate.py` runs selected commands against an exact archived source using an isolated native ARM64 gnullvm toolchain and output outside the source. It does not install tools. The source commit, guest source root, target directory, and unique job prefix are required; no historical candidate defaults are inherited. The available steps are `fmt`, `clippy`, `test`, `xtask`, `release`, `dotnet-restore`, `dotnet-build`, `dotnet-test`, `conformance`, and `smoke`; a failed selected step stops that sequence and later steps require an explicit independent selection.
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/run_windows_arm64_gate.py \
-  --source-commit 8c6d0c2ca3813efdce110be81f098dab1f5cdb30 \
+  --source-commit 5914c4b8cd9155d28baa18617437f271d134e7e5 \
+  --root 'C:\PaintR-Reference\candidate5914-src' \
+  --target-dir 'C:\PaintR-Reference\target-5914-gnullvm' \
+  --prefix final5914 \
   --steps fmt,clippy,test,xtask,release \
-  --summary rust-gate.json
+  --summary rust-gate-5914.json
 ```
 
 Every result is labeled native Windows ARM64 gnullvm, not Windows x64 and not MSVC ABI coverage. Source verification must compare all unique relative paths, lengths, and hashes before and after generated outputs. The source-hash helper excludes Cargo target and .NET `plugin-host` bin/obj output only; it must not exclude legitimate Rust `src/bin` sources. `Get-PeEvidence.ps1` reads only the PE machine header for architecture evidence; it does not disassemble or inspect IL.

@@ -14,7 +14,6 @@ from collect_environment import write_json_new
 from guest_jobs import guest_absolute, run_guest_job
 from host_ui import LOCAL_ROOT
 
-COMMIT = "8c6d0c2ca3813efdce110be81f098dab1f5cdb30"
 TRIPLE = "aarch64-pc-windows-gnullvm"
 TOOL_ROOT = r"C:\PaintR-Reference\tools"
 TOOLCHAIN = TOOL_ROOT + r"\rustup\toolchains\1.95.0-aarch64-pc-windows-gnullvm"
@@ -108,11 +107,11 @@ def compact_result(report: dict[str, Any]) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source-commit", default=COMMIT)
-    parser.add_argument("--root", default=r"C:\PaintR-Reference\final-src")
-    parser.add_argument("--target-dir", default=r"C:\PaintR-Reference\target-final-gnullvm")
+    parser.add_argument("--source-commit", required=True)
+    parser.add_argument("--root", required=True)
+    parser.add_argument("--target-dir", required=True)
     parser.add_argument("--smoke-output", default=r"C:\PaintR-Reference\evidence\final-headless")
-    parser.add_argument("--prefix", default="final8c6d")
+    parser.add_argument("--prefix", required=True)
     parser.add_argument("--steps", required=True, help="comma-separated ordered step names")
     parser.add_argument("--summary", required=True, help="new JSON filename under artifacts/reference-local/harness-final")
     args = parser.parse_args(argv)

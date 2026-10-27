@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import copy
 import hashlib
+import io
 import json
 import struct
 import sys
@@ -10,6 +12,7 @@ import tempfile
 import unittest
 import zlib
 from pathlib import Path
+from unittest import mock
 
 REFERENCE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REFERENCE_DIR))
@@ -24,7 +27,7 @@ from observe_writer_acceptance import (  # noqa: E402
     require_not_already_open,
 )
 from guest_jobs import guest_absolute, start_guest_job  # noqa: E402
-from run_windows_arm64_gate import TRIPLE, command, environment  # noqa: E402
+from run_windows_arm64_gate import TRIPLE, command, environment, main as gate_main  # noqa: E402
 from utm import ReferenceCommandError  # noqa: E402
 from validate_observations import ValidationError, validate_manifest  # noqa: E402
 
@@ -243,6 +246,30 @@ class GuestJobAndGateTests(unittest.TestCase):
                 working_directory=r"C:\PaintR-Reference",
                 environment={"DEEPSEEK_API_KEY": "must-not-be-recorded"},
             )
+
+    def test_gate_cli_requires_explicit_source_and_directories(self) -> None:
+        completed = {
+            "job_id": "unexpected-guest-call",
+            "status": "PASS",
+            "exit_code": 0,
+            "timed_out": False,
+            "seconds": 0.0,
+            "exit": {},
+            "config": {"executable": "unused", "arguments": []},
+            "observation_errors": [],
+            "logs": {},
+        }
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+            mock.patch("run_windows_arm64_gate.run_guest_job", return_value=completed) as run,
+            mock.patch("run_windows_arm64_gate.write_json_new") as write,
+            self.assertRaises(SystemExit) as raised,
+        ):
+            gate_main(["--steps", "fmt", "--summary", "unit.json"])
+        self.assertEqual(raised.exception.code, 2)
+        run.assert_not_called()
+        write.assert_not_called()
 
     def test_gate_commands_preserve_target_and_fatal_checks(self) -> None:
         root = r"C:\PaintR-Reference\final-src"
