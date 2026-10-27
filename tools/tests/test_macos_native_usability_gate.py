@@ -64,6 +64,7 @@ def observation(
     window_id: int = 71,
     truncated: bool = False,
     cancel_focused: bool = True,
+    extra_text: str | None = None,
 ) -> dict[str, object]:
     status = INVERTED if modified else "New 800×600 opaque-white document"
     nodes: list[dict[str, object]] = [
@@ -71,6 +72,8 @@ def observation(
         {"path": [1], "role": "AXStaticText", "value": status},
         {"path": [2], "role": "AXImage", "description": "Composed document canvas"},
     ]
+    if extra_text is not None:
+        nodes.append({"path": [7], "role": "AXStaticText", "value": extra_text})
     if dialog:
         nodes.extend(
             [
@@ -152,6 +155,8 @@ class FakeBackend:
         self.fail_screenshots = False
         self.truncated_ax = False
         self.cancel_unfocused = False
+        self.cancel_extra_text: str | None = None
+        self.cancel_finished = False
         self.window_id = 71
         self.lock_during_invert = False
 
@@ -179,6 +184,7 @@ class FakeBackend:
             window_id=self.window_id,
             truncated=self.truncated_ax,
             cancel_focused=not self.cancel_unfocused,
+            extra_text=self.cancel_extra_text if self.cancel_finished else None,
         )
 
     def key(self, pid: int, name: str, modifiers: tuple[str, ...] = ()) -> dict[str, object]:
@@ -201,6 +207,7 @@ class FakeBackend:
                 self.process.returncode = 0
         elif (name, modifiers) == ("escape", ()):
             self.dialog = False
+            self.cancel_finished = True
             if self.cancel_clears_modified:
                 self.modified = False
         else:
@@ -358,6 +365,17 @@ class NativeGateTests(unittest.TestCase):
         self.assertEqual(result["outcome"], "FAIL")
         self.assertEqual(result["error"]["code"], "OBSERVATION_TIMEOUT")
         self.assertFalse(any(item["name"] == "cancel_preserved_modified_session" and item["passed"] for item in result["assertions"]))
+
+    def test_cancel_rejects_unexpected_accessible_document_change(self) -> None:
+        self.backend.cancel_extra_text = "Document replaced while canceling"
+
+        result = self.run_gate()
+
+        self.assertEqual(result["outcome"], "FAIL")
+        self.assertEqual(result["error"]["code"], "CANCEL_CHANGED_DOCUMENT_STATE")
+        self.assertTrue(any(item["name"] == "cancel_preserved_modified_session" and item["passed"] for item in result["assertions"]))
+        self.assertFalse(any(item["name"] == "cancel_preserved_accessible_document_state" and item["passed"] for item in result["assertions"]))
+        self.assertFalse(any(item["name"] == "second_dirty_close_confirmation" and item["passed"] for item in result["assertions"]))
 
     def test_cancel_must_be_focused_before_close_can_be_accepted(self) -> None:
         self.backend.cancel_unfocused = True

@@ -41,9 +41,9 @@ swiftc -typecheck -swift-version 5 tools/macos_native_usability_gate.swift
 
 Native transport uses a deterministic fake backend; process-wrapper tests also launch real,
 short-lived Python children. They cover lock/permission failures, process exit and timeout
-failures, exact-PID cleanup, dirty-close cancellation, focused Cancel, explicit Discard,
-exact-limit output, combined stdout/stderr overflow, early termination of a continuing
-oversized stream, and pixel-evidence failures. They never launch Paint.R or post native input.
+failures, exact-PID cleanup, dirty-close cancellation, focused Cancel, unchanged accessible
+document text after Cancel, explicit Discard, exact-limit output, combined stdout/stderr
+overflow, early termination of a continuing oversized stream, and pixel-evidence failures. They never launch Paint.R or post native input.
 
 ## Live acceptance command
 
@@ -83,6 +83,8 @@ necessary.
 4. Send Command-Q and require the exact dirty-close title/explanation, enabled Discard,
    and enabled **focused Cancel** while the modified session remains open.
 5. Send Escape and require the dialog to disappear without losing the modified document.
+   The complete accessible text set must equal the pre-close modified observation, not merely
+   retain the required Modified/invert/canvas labels.
 6. Send Command-Q again, confirm the same protections, then explicitly AXPress Discard and
    require process exit status zero.
 

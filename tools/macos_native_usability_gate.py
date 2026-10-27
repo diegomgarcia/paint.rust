@@ -619,6 +619,12 @@ class NativeUsabilityGate:
             lambda item: item.window_id == window_id and item.modified() and not item.close_dialog(),
         )
         self.evidence.observation("canceled", canceled)
+        self._require(
+            canceled.texts == modified.texts,
+            "cancel_preserved_accessible_document_state",
+            "CANCEL_CHANGED_DOCUMENT_STATE",
+            "accessible document text changed while canceling the dirty close",
+        )
         canceled_image = self._capture("03-canceled.png", canceled)
         self._require(
             confirmation_image["rgba_sha256"] != canceled_image["rgba_sha256"],
