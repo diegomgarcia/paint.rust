@@ -1,0 +1,200 @@
+{
+  "assertions": [
+    {
+      "name": "initial_clean_native_window",
+      "passed": true
+    },
+    {
+      "name": "command_i_modified_document",
+      "passed": true
+    },
+    {
+      "message": "before/after native screenshot RGBA pixels are identical; visual modification is inconclusive",
+      "name": "before_after_screenshots_differ",
+      "passed": true
+    },
+    {
+      "name": "dirty_close_confirmation_observed",
+      "passed": true
+    },
+    {
+      "message": "dirty close confirmation did not remain observable",
+      "name": "dirty_close_blocked_by_confirmation",
+      "passed": true
+    },
+    {
+      "name": "cancel_preserved_modified_session",
+      "passed": true
+    },
+    {
+      "message": "accessible document text changed while canceling the dirty close",
+      "name": "cancel_preserved_accessible_document_state",
+      "passed": true
+    },
+    {
+      "message": "confirmation and canceled screenshot RGBA pixels are identical",
+      "name": "cancel_screenshot_differs_from_confirmation",
+      "passed": true
+    },
+    {
+      "name": "second_dirty_close_confirmation",
+      "passed": true
+    },
+    {
+      "exit_code": 0,
+      "name": "explicit_discard_exit_zero",
+      "passed": true
+    }
+  ],
+  "binary": {
+    "bytes": 12573088,
+    "path": "/Users/diegogarcia/Projects/Paint .R/target/release/paint-ui",
+    "sha256": "00ee23f9e1be1049ee74d3ab85f30f340ee045fd2a0596c301dbc8e0f4d1ca93"
+  },
+  "cleanup": {
+    "required": false
+  },
+  "command_q_fix": "Default macOS menu disabled so Command-Q reaches the app dirty guard; both Command-Q and AXCloseButton are tested.",
+  "failed": 0,
+  "format": "paint.r.round9-release-ui",
+  "gate_source_commit": "3471a735756df3251572d0b5071fc3feec19f513",
+  "harness": {
+    "capture_stage": "gate_initialization",
+    "files": [
+      {
+        "bytes": 40881,
+        "path": "tools/macos_native_usability_gate.py",
+        "sha256": "5c6347981835b60b0ea53933bcd42e3ce5e7c78ba570bfcebc4f90795992b02f"
+      },
+      {
+        "bytes": 22653,
+        "path": "tools/macos_native_usability_gate.swift",
+        "sha256": "36e4c8fcbe6881d8e8b8aa9c8d8fe23468b4084764039bd0865259c658142689"
+      },
+      {
+        "bytes": 12226,
+        "path": "tests/e2e/png_rgba.py",
+        "sha256": "a6fddfa6b6d3ce0c05c5758aaf8c7eece75d84069cf8bcfbed958a65df453c30"
+      }
+    ]
+  },
+  "independent_rgba": [
+    "d3edf1d2332d9ae2cbcc793ce8d8cebe4bd70292f852f78fd6c722a3d2441e4b",
+    "d6217f0c8459be5246d8a650d2cbf136c610538af5e51e1b3fb0921bde192edb",
+    "b068d61b25867cc73f1e5f4f87841fe5afd90c53362eb4b9bf2752c88e725801",
+    "d6217f0c8459be5246d8a650d2cbf136c610538af5e51e1b3fb0921bde192edb",
+    "b068d61b25867cc73f1e5f4f87841fe5afd90c53362eb4b9bf2752c88e725801"
+  ],
+  "known_limitations": [
+    "No native OS file picker or browsable image browser.",
+    "Command-W remains outside the verified shortcut surface.",
+    "Packaged .app live behavior, Windows/Linux native gates, hosted CI, signing, legal review, and full Paint.NET parity remain open."
+  ],
+  "native_gate_tests": 26,
+  "native_inputs": [
+    {
+      "action": "key",
+      "key": "i",
+      "modifiers": [
+        "command"
+      ],
+      "title": null
+    },
+    {
+      "action": "key",
+      "key": "q",
+      "modifiers": [
+        "command"
+      ],
+      "title": null
+    },
+    {
+      "action": "key",
+      "key": "escape",
+      "modifiers": [],
+      "title": null
+    },
+    {
+      "action": "AXPress",
+      "key": null,
+      "modifiers": null,
+      "title": "AXCloseButton"
+    },
+    {
+      "action": "AXPress",
+      "key": null,
+      "modifiers": null,
+      "title": "Discard"
+    }
+  ],
+  "previewer": {
+    "export_dialog_previews_current_composition": true,
+    "invalid_preview_fails_closed": true,
+    "kind": "explicit bounded PNG preview inside the Open path dialog",
+    "max_decoded_bytes": 67108864,
+    "max_input_bytes": 16777216,
+    "valid_preview_does_not_mutate_session": true
+  },
+  "process": {
+    "exit_code": 0,
+    "pid": 26118
+  },
+  "product_source_commit": "3cad32e2befbcc9279e81e000025355b0f23593b",
+  "public_release": false,
+  "screenshots": [
+    {
+      "bytes": 770807,
+      "height": 2088,
+      "path": "00-before.png",
+      "pid": 26118,
+      "rgba_sha256": "d3edf1d2332d9ae2cbcc793ce8d8cebe4bd70292f852f78fd6c722a3d2441e4b",
+      "sha256": "956a81c46e009cd364509eab3004b5a3a400ba7e56d9cc9ff1dbb5c6158628dd",
+      "width": 2784,
+      "window_id": 7355
+    },
+    {
+      "bytes": 766358,
+      "height": 2088,
+      "path": "01-modified.png",
+      "pid": 26118,
+      "rgba_sha256": "d6217f0c8459be5246d8a650d2cbf136c610538af5e51e1b3fb0921bde192edb",
+      "sha256": "91a03dd19a599f88c1b3053c9c346b806bfb6ed1b78d72b5f259963bd2a76ea2",
+      "width": 2784,
+      "window_id": 7355
+    },
+    {
+      "bytes": 793322,
+      "height": 2088,
+      "path": "02-close-confirmation.png",
+      "pid": 26118,
+      "rgba_sha256": "b068d61b25867cc73f1e5f4f87841fe5afd90c53362eb4b9bf2752c88e725801",
+      "sha256": "33f3eb9cb951f3f43d88400407088eeaa163c37faca0b730261ff7ed62f0454f",
+      "width": 2784,
+      "window_id": 7355
+    },
+    {
+      "bytes": 766358,
+      "height": 2088,
+      "path": "03-canceled.png",
+      "pid": 26118,
+      "rgba_sha256": "d6217f0c8459be5246d8a650d2cbf136c610538af5e51e1b3fb0921bde192edb",
+      "sha256": "91a03dd19a599f88c1b3053c9c346b806bfb6ed1b78d72b5f259963bd2a76ea2",
+      "width": 2784,
+      "window_id": 7355
+    },
+    {
+      "bytes": 793322,
+      "height": 2088,
+      "path": "04-second-close-confirmation.png",
+      "pid": 26118,
+      "rgba_sha256": "b068d61b25867cc73f1e5f4f87841fe5afd90c53362eb4b9bf2752c88e725801",
+      "sha256": "33f3eb9cb951f3f43d88400407088eeaa163c37faca0b730261ff7ed62f0454f",
+      "width": 2784,
+      "window_id": 7355
+    }
+  ],
+  "status": "PASS_COMMAND_Q_PREVIEW_AND_LIVE_NATIVE_SMOKE_NOT_PUBLIC_RELEASE",
+  "strict_clippy": "pass",
+  "ui_tests": 25,
+  "version": 1
+}
