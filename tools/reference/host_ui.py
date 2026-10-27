@@ -105,13 +105,19 @@ def wait_stable_window(*, required_size: tuple[int, int] | None = None, timeout:
     raise ReferenceCommandError(f"UTM Windows window did not stabilize at required size {required_size}; last={last}")
 
 
-def capture_window(output: Path, *, ocr: bool = True) -> dict[str, Any]:
+def capture_window(output: Path, *, ocr: bool = True, focus_before: bool = True, ocr_psm: int | None = None) -> dict[str, Any]:
     output = Path(output).resolve()
     if output.exists():
         raise ReferenceCommandError(f"refusing to overwrite screenshot {output}")
     if not output.parent.is_dir():
         raise ReferenceCommandError(f"screenshot directory does not exist: {output.parent}")
-    window = wait_stable_window()
+    if focus_before:
+        window = wait_stable_window()
+    else:
+        windows = host_json("list")
+        if not isinstance(windows, list) or not windows or not isinstance(windows[0], dict):
+            raise ReferenceCommandError("no capturable UTM Windows window")
+        window = windows[0]
     run_bounded(
         ["/usr/sbin/screencapture", "-x", "-l", str(window["id"]), str(output)],
         timeout=20,
@@ -125,22 +131,25 @@ def capture_window(output: Path, *, ocr: bool = True) -> dict[str, Any]:
         "bytes": output.stat().st_size,
         "window": window,
         "capture": "macOS screencapture -x -l <CGWindowID>",
+        "focus_before_capture": focus_before,
     }
     if ocr:
         executable = shutil.which("tesseract")
         if executable is None:
             raise ReferenceCommandError("tesseract is required for OCR evidence (use ocr=False to bypass explicitly)")
-        result = run_bounded(
-            [executable, str(output), "stdout"],
-            timeout=45,
-            max_output_bytes=1024 * 1024,
-        )
+        if ocr_psm is not None and not 0 <= ocr_psm <= 13:
+            raise ValueError("tesseract PSM must be 0..13")
+        command = [executable, str(output), "stdout"]
+        if ocr_psm is not None:
+            command.extend(["--psm", str(ocr_psm)])
+        result = run_bounded(command, timeout=45, max_output_bytes=1024 * 1024)
         text = result.stdout.decode("utf-8", "replace")
         ocr_path = output.with_suffix(output.suffix + ".ocr.txt")
         ocr_path.write_text(text, encoding="utf-8")
         evidence["ocr_path"] = str(ocr_path)
         evidence["ocr_sha256"] = sha256_file(ocr_path)
         evidence["ocr_text"] = text
+        evidence["ocr_psm"] = ocr_psm if ocr_psm is not None else 3
     return evidence
 
 
@@ -161,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     capture_parser = subparsers.add_parser("capture")
     capture_parser.add_argument("output", type=Path)
     capture_parser.add_argument("--no-ocr", action="store_true")
+    capture_parser.add_argument("--no-focus", action="store_true", help="do not reactivate UTM; preserves an open guest popup")
     args = parser.parse_args(argv)
     try:
         if args.command == "build":
@@ -176,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "click":
             click(args.x, args.y)
         else:
-            print(json.dumps(capture_window(args.output, ocr=not args.no_ocr), indent=2, sort_keys=True))
+            print(json.dumps(capture_window(args.output, ocr=not args.no_ocr, focus_before=not args.no_focus), indent=2, sort_keys=True))
     except (ReferenceCommandError, OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2

@@ -22,7 +22,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/host_ui.py build
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/reference/tests -v
 ```
 
-The Swift binary and module caches are written only below `artifacts/reference-local`. The Python suite covers known RGBA decoding, packed palette/transparency, PNG filters, malformed input, LOGFONT decoding, and A/A mismatch rejection.
+The Swift binary and module caches are written only below `artifacts/reference-local`. The Python suite covers known RGBA decoding, packed palette/transparency, PNG filters, malformed input, LOGFONT decoding, A/A mismatch rejection, and bounded PDN filename OCR matching.
 
 ## Durable command building blocks
 
@@ -118,6 +118,29 @@ PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/validate_observations.py \
 ```
 
 Validation requires at least three sequential observations, per-run guest/host encoded and RGBA agreement, 800×600 dimensions, 1,920,000 RGBA bytes, and exactly 480,000 opaque-black pixels. Cross-run decoded RGBA identity is required. Encoded-byte identity is measured and reported but is not treated as a general compatibility requirement.
+
+## Authentic tiny PDN fixture
+
+This optional workflow creates one 2×2 document, applies Invert Colors to its default Background layer, saves a real Paint.NET PDN, closes it, reopens it through File → Open, and exports a PNG **after that reopen**. It never parses or modifies the PDN container and never overwrites an existing output:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/observe_pdn_fixture.py \
+  --run-id pdn-fixture-YYYYMMDDTHHMMSSZ
+```
+
+The runner requires the visible format dropdown to show both PDN and PNG. It captures that popup without reactivating UTM (`capture_window(..., focus_before=False)`), selects the format with ordinary keys, and verifies the selected `Save as type` line with Tesseract layout mode 6. A one-edit allowance exists only for the captured Open filename OCR; the deterministic typed action, exact guest path, close/reopen sequence, and artifact checks remain mandatory.
+
+Independently validate a passing run:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/reference/validate_pdn_fixture.py \
+  artifacts/reference-local/runs/pdn-fixture-YYYYMMDDTHHMMSSZ/manifest.json \
+  --output artifacts/reference-local/runs/pdn-fixture-YYYYMMDDTHHMMSSZ/validation.json
+```
+
+The manifest records exact product/build/signature/source hash, canvas and bottom-to-top layer order, name, visibility/background flag, Normal blend mode, opacity 255, per-layer straight-alpha BGRA hash, UI actions, environment, and guest/host stability. Those attributes are the stock New-document defaults and are labeled as not separately queried through Layer Properties. For this sole visible full-canvas layer, BGRA is derived by an R/B swap of the independently decoded post-reopen composite. The validator recomputes all artifact/UI/environment hashes, required action ordering, exact pixels, and a fresh FFmpeg decode.
+
+`PDN3` magic is only a file-format sanity check, not an independent PDN parse. This single all-black 2×2 fixture is not the full semantic corpus and does not establish writer acceptance or clone compatibility.
 
 ## Bounds, failures, and evidence handling
 

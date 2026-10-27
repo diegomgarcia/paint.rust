@@ -16,6 +16,8 @@ sys.path.insert(0, str(REFERENCE_DIR))
 
 from collect_environment import decode_logfont  # noqa: E402
 from png_evidence import PngError, decode_png, rgba_evidence  # noqa: E402
+from observe_pdn_fixture import edit_distance, require_open_filename  # noqa: E402
+from utm import ReferenceCommandError  # noqa: E402
 from validate_observations import ValidationError, validate_manifest  # noqa: E402
 
 
@@ -182,6 +184,17 @@ class ManifestValidationTests(unittest.TestCase):
         manifest["observations"] = manifest["observations"][:2]
         with self.assertRaises(ValidationError):
             validate_manifest(manifest)
+
+
+class PdnUiGateTests(unittest.TestCase):
+    def test_edit_distance(self) -> None:
+        self.assertEqual(edit_distance("fixture-abc.pdn", "ficture-abc.pdn"), 1)
+        self.assertGreater(edit_distance("fixture-abc.pdn", "other.pdn"), 1)
+
+    def test_open_filename_allows_only_one_ocr_edit(self) -> None:
+        require_open_filename({"ocr_text": "File name: |ficture-abc.pdn"}, "fixture-abc.pdn")
+        with self.assertRaises(ReferenceCommandError):
+            require_open_filename({"ocr_text": "File name: |other.pdn"}, "fixture-abc.pdn")
 
 
 if __name__ == "__main__":
