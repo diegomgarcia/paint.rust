@@ -1,0 +1,181 @@
+{
+  "archive": {
+    "bytes": 7344916,
+    "path": "artifacts/preview/round19-3090c18-a/paint-r-0.1.0-macos-aarch64.zip",
+    "sha256": "7abed7bcd838df50824d0ef3c7a806def4260fea1542879d91e2e81dd155f256"
+  },
+  "binary": "148add8ef907fdba8a3f37b75de4c452b74d3e31fbaf0382f280cfa4fd785dc8",
+  "extracted_app_native_gate": {
+    "assertions": [
+      {
+        "name": "initial_clean_native_window",
+        "passed": true
+      },
+      {
+        "name": "command_i_modified_document",
+        "passed": true
+      },
+      {
+        "message": "before/after native screenshot RGBA pixels are identical; visual modification is inconclusive",
+        "name": "before_after_screenshots_differ",
+        "passed": true
+      },
+      {
+        "name": "dirty_close_confirmation_observed",
+        "passed": true
+      },
+      {
+        "message": "dirty close confirmation did not remain observable",
+        "name": "dirty_close_blocked_by_confirmation",
+        "passed": true
+      },
+      {
+        "name": "cancel_preserved_modified_session",
+        "passed": true
+      },
+      {
+        "message": "accessible document text changed while canceling the dirty close",
+        "name": "cancel_preserved_accessible_document_state",
+        "passed": true
+      },
+      {
+        "message": "confirmation and canceled screenshot RGBA pixels are identical",
+        "name": "cancel_screenshot_differs_from_confirmation",
+        "passed": true
+      },
+      {
+        "name": "second_dirty_close_confirmation",
+        "passed": true
+      },
+      {
+        "exit_code": 0,
+        "name": "explicit_discard_exit_zero",
+        "passed": true
+      }
+    ],
+    "binary": {
+      "bytes": 12660512,
+      "path": "/Users/diegogarcia/Projects/Paint .R/artifacts/reference-local/packaged-app-final-round19/paint-r-0.1.0-macos-aarch64/Paint.R.app/Contents/MacOS/paint-ui",
+      "sha256": "148add8ef907fdba8a3f37b75de4c452b74d3e31fbaf0382f280cfa4fd785dc8"
+    },
+    "independent_rgba": [
+      "4e4b3383ecef22d5c5e970bc1e1546c0edb5c5527445b18b0b5cf383ed603717",
+      "ed42a5bfb4945ab0c835cce92d21942e9a0b1eec714b099f185e40e1eb27c56f",
+      "6843f497729cc9d46d69ea29adab7ba4669567e6949f452e357fa74348ec8292",
+      "ed42a5bfb4945ab0c835cce92d21942e9a0b1eec714b099f185e40e1eb27c56f",
+      "6843f497729cc9d46d69ea29adab7ba4669567e6949f452e357fa74348ec8292"
+    ],
+    "native_execution": "COMPLETED",
+    "outcome": "PASS",
+    "process": {
+      "exit_code": 0,
+      "pid": 55641
+    },
+    "screenshots": [
+      {
+        "bytes": 255287,
+        "height": 1044,
+        "path": "00-before.png",
+        "pid": 55641,
+        "rgba_sha256": "4e4b3383ecef22d5c5e970bc1e1546c0edb5c5527445b18b0b5cf383ed603717",
+        "sha256": "3693bdf242a162fc77d07d3d4030cfb62b3f909c3bf3516a40018acb656bb3e2",
+        "width": 1392,
+        "window_id": 7762
+      },
+      {
+        "bytes": 253906,
+        "height": 1044,
+        "path": "01-modified.png",
+        "pid": 55641,
+        "rgba_sha256": "ed42a5bfb4945ab0c835cce92d21942e9a0b1eec714b099f185e40e1eb27c56f",
+        "sha256": "8ff9f004a990d7848149b59df9ca9f803fd34a262270df73e651b153a6e51085",
+        "width": 1392,
+        "window_id": 7762
+      },
+      {
+        "bytes": 263928,
+        "height": 1044,
+        "path": "02-close-confirmation.png",
+        "pid": 55641,
+        "rgba_sha256": "6843f497729cc9d46d69ea29adab7ba4669567e6949f452e357fa74348ec8292",
+        "sha256": "fb0239f9f47fda61fc1304c36bedb399ce237280875ca55fe3c0f268a504aa6d",
+        "width": 1392,
+        "window_id": 7762
+      },
+      {
+        "bytes": 253906,
+        "height": 1044,
+        "path": "03-canceled.png",
+        "pid": 55641,
+        "rgba_sha256": "ed42a5bfb4945ab0c835cce92d21942e9a0b1eec714b099f185e40e1eb27c56f",
+        "sha256": "8ff9f004a990d7848149b59df9ca9f803fd34a262270df73e651b153a6e51085",
+        "width": 1392,
+        "window_id": 7762
+      },
+      {
+        "bytes": 263928,
+        "height": 1044,
+        "path": "04-second-close-confirmation.png",
+        "pid": 55641,
+        "rgba_sha256": "6843f497729cc9d46d69ea29adab7ba4669567e6949f452e357fa74348ec8292",
+        "sha256": "fb0239f9f47fda61fc1304c36bedb399ce237280875ca55fe3c0f268a504aa6d",
+        "width": 1392,
+        "window_id": 7762
+      }
+    ]
+  },
+  "format": "paint.r.packaged-app-live",
+  "limitations": [
+    "Unsigned internal artifact only.",
+    "The picker samples the composed canvas and does not edit the document.",
+    "Windows QGA and hosted CI remain unavailable.",
+    "Ten irreducible notice/legal gaps remain."
+  ],
+  "notice_inventory": {
+    "curated_supplements": 50,
+    "packages_with_texts": 447,
+    "remaining_gaps": 10
+  },
+  "package_output_tree": {
+    "entries": 3,
+    "files": [
+      {
+        "bytes": 7344916,
+        "path": "paint-r-0.1.0-macos-aarch64.zip",
+        "sha256": "7abed7bcd838df50824d0ef3c7a806def4260fea1542879d91e2e81dd155f256"
+      },
+      {
+        "bytes": 98,
+        "path": "paint-r-0.1.0-macos-aarch64.zip.sha256",
+        "sha256": "97d214f83d4830cfb43246cc396a48f57a4d13328f759025febb5644d422bdfd"
+      },
+      {
+        "bytes": 572,
+        "path": "paint-r-0.1.0-macos-aarch64.zip.verification.json",
+        "sha256": "0a4498dceea98d4771eca6a8804816eef5ac90564e10c642631b28db28dea803"
+      }
+    ],
+    "kind": "directory",
+    "status": "pass",
+    "tree_sha256": "d8b2d221d63ca82a0a3067ea93729276573f7973227f8205a1d903078e4cba4d"
+  },
+  "package_source_commit": "3090c18b6260cffa5ecd3b1fe92d94952bd6fbb7",
+  "post_extract_smoke": {
+    "repeat": 2,
+    "status": "pass",
+    "trace_count": 2
+  },
+  "product_source_commit": "3090c18b6260cffa5ecd3b1fe92d94952bd6fbb7",
+  "public_release": false,
+  "status": "PASS_CURRENT_MACOS_PACKAGE_WITH_CANVAS_PICKER",
+  "ui_features": [
+    "composed-canvas color picker",
+    "layer flips",
+    "HSV color wheel",
+    "RGB/RGBA hex input",
+    "palette",
+    "zoom/fit",
+    "PNG browser preview"
+  ],
+  "version": 1
+}

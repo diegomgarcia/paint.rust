@@ -1,0 +1,95 @@
+{
+  "archive": {
+    "bytes": 9162620,
+    "name": "paint-r-0.1.0-linux-x86_64.tar.gz",
+    "sha256": "983b61046738282269aa4dd28d67e4aee06fb00d4c7bd333dd7a58f268b9da07",
+    "sidecar_sha256": "40e64b029cacc7155ac8c79054181b8db61af59b695e1af925088b7512b8f99d",
+    "verification_sha256": "c97f4239e9d7679190db4bd8c7cacd5a0859106b7ab67f695eaa0220f24fe771"
+  },
+  "archive_promoted_path": "artifacts/preview/linux-x64-3090c18/paint-r-0.1.0-linux-x86_64.tar.gz",
+  "binary": {
+    "bytes": 22928944,
+    "executable_after_independent_extract": true,
+    "format": "ELF 64",
+    "machine": "0x003e",
+    "sha256": "ae0244c2f8875a42c177ba960b75b4567a211fb7df06dc3ee02735d4797ff6bf"
+  },
+  "binary_reproduction": {
+    "bytes": 22928944,
+    "kind": "file",
+    "sha256": "ae0244c2f8875a42c177ba960b75b4567a211fb7df06dc3ee02735d4797ff6bf",
+    "status": "pass"
+  },
+  "environment": {
+    "build_target": "one warmed target reused for both package lanes",
+    "host": "Apple Silicon macOS",
+    "independence_note": "Two independent targets were established at product 5af5981; this picker revision is an incremental warmed-target refresh.",
+    "native_x86_64_hardware": false,
+    "userspace": "x86_64 Linux",
+    "vm": "Lima VZ ARM64 with Rosetta"
+  },
+  "format": "paint.r.linux-x64-emulated-artifact",
+  "limitations": [
+    "Emulated x86_64 userspace under Rosetta, not native Linux x86_64 hardware.",
+    "Headless/package gates only; no native Linux window/input acceptance.",
+    "Current package lanes reused a warmed target; the prior version established clean-target reproducibility.",
+    "Hosted three-OS CI and Windows remain unavailable.",
+    "Unsigned internal preview; ten notice/legal gaps remain."
+  ],
+  "package_output_tree": {
+    "entries": 3,
+    "files": [
+      {
+        "bytes": 9162620,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz",
+        "sha256": "983b61046738282269aa4dd28d67e4aee06fb00d4c7bd333dd7a58f268b9da07"
+      },
+      {
+        "bytes": 100,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz.sha256",
+        "sha256": "40e64b029cacc7155ac8c79054181b8db61af59b695e1af925088b7512b8f99d"
+      },
+      {
+        "bytes": 573,
+        "path": "paint-r-0.1.0-linux-x86_64.tar.gz.verification.json",
+        "sha256": "c97f4239e9d7679190db4bd8c7cacd5a0859106b7ab67f695eaa0220f24fe771"
+      }
+    ],
+    "kind": "directory",
+    "status": "pass",
+    "tree_sha256": "b5fb186fb80c43fb885646d5b8faabe55e5dc347fa3f209f9d75fcfb022a483f"
+  },
+  "package_source_commit": "3090c18b6260cffa5ecd3b1fe92d94952bd6fbb7",
+  "payload": {
+    "all_hashes_verified": true,
+    "canvas_picker": true,
+    "entries": 822,
+    "manifest_hash_records": 821,
+    "notices": {
+      "curated_supplements": 50,
+      "packages_with_texts": 447,
+      "remaining_gaps": 10
+    },
+    "updated_ledger_embedded": true
+  },
+  "post_extract_smoke": {
+    "repeat": 2,
+    "status": "pass",
+    "trace_count": 2
+  },
+  "product_source_commit": "3090c18b6260cffa5ecd3b1fe92d94952bd6fbb7",
+  "public_release": false,
+  "status": "PASS_CURRENT_LINUX_X64_PICKER_ARTIFACT_AND_STRICT_GATE_WARMED_TARGET",
+  "strict_gate": {
+    "clippy_deny_warnings": "pass",
+    "failed": 0,
+    "fmt": "pass",
+    "log": {
+      "path": "artifacts/reference-local/linux-x64-round19/linux-strict-gate.log",
+      "sha256": "f8be0b0a86b2c3d22ab9dabd0037b247f1eff94209016c19959ab471ca3bfab6"
+    },
+    "test_result_records": 40,
+    "workspace_tests_passed": 219
+  },
+  "version": 1
+}
