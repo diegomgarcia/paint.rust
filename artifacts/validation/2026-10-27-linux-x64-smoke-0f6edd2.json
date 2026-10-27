@@ -1,0 +1,86 @@
+{
+  "binary_sha256": "de1b55cc14a37d6176e14b2d03d8d73650b2fbd0f97eab8726717f6db66787e7",
+  "format": "paint.r.preview-smoke-evidence",
+  "repeat": 2,
+  "runner": "tests/e2e/preview_smoke.py",
+  "status": "pass",
+  "traces": [
+    {
+      "negative_paths": {
+        "invalid_rectangle": "pass",
+        "unknown_command": "pass"
+      },
+      "runs": [
+        {
+          "decoded_rgba_sha256": "a7aff0f8e3f44663c369e1e75a981b90b66949586d71035771921871d67e334e",
+          "height": 600,
+          "png_sha256": "bd5970d91acacd7986f92910031ef1c5603a3f9c1bbe76dc6ae8c8a58412ad86",
+          "snapshot": {
+            "active_layer_index": 0,
+            "can_redo": false,
+            "can_undo": true,
+            "dirty": true,
+            "layer_count": 1
+          },
+          "snapshot_sha256": "be0967b692341d2f64b52b8b61a6abde03fa0f3813d9a343922014536b21e8e8",
+          "width": 800
+        },
+        {
+          "decoded_rgba_sha256": "a7aff0f8e3f44663c369e1e75a981b90b66949586d71035771921871d67e334e",
+          "height": 600,
+          "png_sha256": "bd5970d91acacd7986f92910031ef1c5603a3f9c1bbe76dc6ae8c8a58412ad86",
+          "snapshot": {
+            "active_layer_index": 0,
+            "can_redo": false,
+            "can_undo": true,
+            "dirty": true,
+            "layer_count": 1
+          },
+          "snapshot_sha256": "be0967b692341d2f64b52b8b61a6abde03fa0f3813d9a343922014536b21e8e8",
+          "width": 800
+        }
+      ],
+      "status": "pass",
+      "trace": "tests/e2e/traces/invert-800x600.json"
+    },
+    {
+      "negative_paths": {
+        "invalid_rectangle": "pass",
+        "unknown_command": "pass"
+      },
+      "runs": [
+        {
+          "decoded_rgba_sha256": "5ac6a5945f16500911219129984ba8b387a06f24fe383ce4e81a73294065461b",
+          "height": 2,
+          "png_sha256": "0e1b9e7bd2807f635cd181104a48802b177ee3f4fe7992626eb484bce2d33473",
+          "snapshot": {
+            "active_layer_index": 0,
+            "can_redo": true,
+            "can_undo": false,
+            "dirty": false,
+            "layer_count": 1
+          },
+          "snapshot_sha256": "cff067e619eb2cb4d682c224e47674c5002f10e5ae098e0899c9d26546aeec0c",
+          "width": 2
+        },
+        {
+          "decoded_rgba_sha256": "5ac6a5945f16500911219129984ba8b387a06f24fe383ce4e81a73294065461b",
+          "height": 2,
+          "png_sha256": "0e1b9e7bd2807f635cd181104a48802b177ee3f4fe7992626eb484bce2d33473",
+          "snapshot": {
+            "active_layer_index": 0,
+            "can_redo": true,
+            "can_undo": false,
+            "dirty": false,
+            "layer_count": 1
+          },
+          "snapshot_sha256": "cff067e619eb2cb4d682c224e47674c5002f10e5ae098e0899c9d26546aeec0c",
+          "width": 2
+        }
+      ],
+      "status": "pass",
+      "trace": "tests/e2e/traces/undo-invert-2x2.json"
+    }
+  ],
+  "version": 1
+}

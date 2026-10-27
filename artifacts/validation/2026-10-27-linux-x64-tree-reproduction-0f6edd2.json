@@ -1,0 +1,23 @@
+{
+  "entries": 3,
+  "files": [
+    {
+      "bytes": 9067205,
+      "path": "paint-r-0.1.0-linux-x86_64.tar.gz",
+      "sha256": "3d261f5a58c61f6da02557f5fa50e71a41e4ba2be34f7cc2c390d7d73645ea7c"
+    },
+    {
+      "bytes": 100,
+      "path": "paint-r-0.1.0-linux-x86_64.tar.gz.sha256",
+      "sha256": "0c1f27603f05a38ebad2d045827ee14a2a5a6dded2efe8b10835dcb007047c4f"
+    },
+    {
+      "bytes": 573,
+      "path": "paint-r-0.1.0-linux-x86_64.tar.gz.verification.json",
+      "sha256": "419fc87340924dd2543de0aa634e99a85f6b1125d3d203d39210e76c1f64b638"
+    }
+  ],
+  "kind": "directory",
+  "status": "pass",
+  "tree_sha256": "554dfcd4fd9709b21e87ad417ac1982d63561d85e5dc80baa785d0e6d28b61ae"
+}

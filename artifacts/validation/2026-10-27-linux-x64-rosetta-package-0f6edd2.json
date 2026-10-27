@@ -1,0 +1,163 @@
+{
+  "archive": {
+    "bytes": 9067205,
+    "name": "paint-r-0.1.0-linux-x86_64.tar.gz",
+    "path": "artifacts/preview/final-linux-0f6edd2-a/paint-r-0.1.0-linux-x86_64.tar.gz",
+    "sha256": "3d261f5a58c61f6da02557f5fa50e71a41e4ba2be34f7cc2c390d7d73645ea7c",
+    "sidecar_sha256": "0c1f27603f05a38ebad2d045827ee14a2a5a6dded2efe8b10835dcb007047c4f",
+    "verification_sha256": "419fc87340924dd2543de0aa634e99a85f6b1125d3d203d39210e76c1f64b638"
+  },
+  "attempts": [
+    {
+      "archive_created": false,
+      "attempt": 1,
+      "cargo_build_started": false,
+      "failed_step": "repro-build-a pinned wrapper preflight",
+      "log_sha256": "2e7fa5655815f8ef92884f41981c2d54bd1233a29f07359e666c3b4202676ece",
+      "reason": "fresh container lacked rustfmt required by tools/cargo-pinned.sh",
+      "status": "ENVIRONMENT_FAILURE_BEFORE_CARGO_BUILD_OR_PACKAGING"
+    },
+    {
+      "attempt": 2,
+      "explicit_rustfmt_clippy_components": true,
+      "fresh_container_and_target_volumes": true,
+      "log": "artifacts/reference-local/linux-x64-rosetta/reproduction-0f6edd2-r2.log",
+      "log_sha256": "71c69f431fcccd0ad1fc9b7565dc8041fd425f01d0c8a94835b8f65e070e7e56",
+      "status": "PASS"
+    }
+  ],
+  "binary": {
+    "bytes": 22760520,
+    "executable_after_independent_extract": true,
+    "format": "ELF 64",
+    "machine": "0x003e",
+    "sha256": "de1b55cc14a37d6176e14b2d03d8d73650b2fbd0f97eab8726717f6db66787e7"
+  },
+  "dotnet": {
+    "cross_language": {
+      "failed": 0,
+      "passed": 8,
+      "real_dotnet_child": true,
+      "skipped": 0
+    },
+    "receipt": "artifacts/validation/2026-10-27-linux-x64-dotnet-0f6edd2.json",
+    "receipt_sha256": "9b398f8f1892a548a6e3281a795ca1c80e5b69ffc53f22fed04e1954ed6441d3",
+    "sdk_version": "10.0.201",
+    "tests": {
+      "failed": 0,
+      "passed": 12,
+      "skipped": 0,
+      "total": 12
+    }
+  },
+  "environment": {
+    "execution": "x86_64 Linux userspace under isolated Lima 2.2.1 VZ/Rosetta on an ARM64 Ubuntu VM",
+    "full_gate_receipt": "artifacts/validation/2026-10-27-linux-x64-rosetta-gate-ce90.json",
+    "full_gate_receipt_sha256": "0923828d986345620c0e527cc7f22628ddfcadf4c74960fe1f74c8c5ce0e5430",
+    "native_desktop_window": false,
+    "native_linux_x86_64": false,
+    "rust_image": "rust@sha256:f49565f188ee00bc2a18dd418183f2c5f23ef7d6e691890517ed341a598f67c3",
+    "rust_version": "1.95.0"
+  },
+  "format": "paint.r.linux-x64-emulated-package",
+  "host_independent_verification": {
+    "all_manifest_hashes_verified": true,
+    "archive_reopened": true,
+    "binary_mode": "0755",
+    "embedded_ledger_matches_packaged_source": true,
+    "embedded_smoke_matches_independent_smoke": true,
+    "other_payload_modes": "0644",
+    "safe_regular_file_paths": true
+  },
+  "limitations": [
+    "unsigned and unnotarized internal engineering archive",
+    "emulated Linux x64, not native Linux x86_64 acceptance",
+    "headless smoke, not native-window or OS usability",
+    "no stock Paint.NET writer-open or broad plugin/file parity claim",
+    "public packaging remains blocked by owner licensing, asset/font rights, notice gaps, signing and notarization"
+  ],
+  "payload": {
+    "all_hashes_verified": true,
+    "entries": 754,
+    "manifest_hash_records": 753,
+    "updated_ledger_embedded": true
+  },
+  "raw_evidence": [
+    {
+      "path": "artifacts/validation/2026-10-27-linux-x64-binary-reproduction-0f6edd2.json",
+      "sha256": "34921b216438b1decef7e75d9c2d89a3b98c7ce257217de812918fa8adb5e882"
+    },
+    {
+      "path": "artifacts/validation/2026-10-27-linux-x64-tree-reproduction-0f6edd2.json",
+      "sha256": "4cc162dbc6cfdb8dc3dccb02146ca4adb1e6a21a55b465314994958d4c2d7302"
+    },
+    {
+      "path": "artifacts/validation/2026-10-27-linux-x64-smoke-0f6edd2.json",
+      "sha256": "9373ce3a508f587d45cc9a44bd801cd12bf8ed52f45f55a9b56336e3eccc130b"
+    },
+    {
+      "path": "artifacts/validation/2026-10-27-linux-x64-dotnet-0f6edd2.json",
+      "sha256": "9b398f8f1892a548a6e3281a795ca1c80e5b69ffc53f22fed04e1954ed6441d3"
+    }
+  ],
+  "reproduction": {
+    "binary": {
+      "bytes": 22760520,
+      "kind": "file",
+      "sha256": "de1b55cc14a37d6176e14b2d03d8d73650b2fbd0f97eab8726717f6db66787e7",
+      "status": "pass"
+    },
+    "fresh_release_targets": 2,
+    "host_independent_tree_match": true,
+    "package_output_tree": {
+      "entries": 3,
+      "files": [
+        {
+          "bytes": 9067205,
+          "path": "paint-r-0.1.0-linux-x86_64.tar.gz",
+          "sha256": "3d261f5a58c61f6da02557f5fa50e71a41e4ba2be34f7cc2c390d7d73645ea7c"
+        },
+        {
+          "bytes": 100,
+          "path": "paint-r-0.1.0-linux-x86_64.tar.gz.sha256",
+          "sha256": "0c1f27603f05a38ebad2d045827ee14a2a5a6dded2efe8b10835dcb007047c4f"
+        },
+        {
+          "bytes": 573,
+          "path": "paint-r-0.1.0-linux-x86_64.tar.gz.verification.json",
+          "sha256": "419fc87340924dd2543de0aa634e99a85f6b1125d3d203d39210e76c1f64b638"
+        }
+      ],
+      "kind": "directory",
+      "status": "pass",
+      "tree_sha256": "554dfcd4fd9709b21e87ad417ac1982d63561d85e5dc80baa785d0e6d28b61ae"
+    }
+  },
+  "smoke": {
+    "decoded_rgba_sha256": [
+      "5ac6a5945f16500911219129984ba8b387a06f24fe383ce4e81a73294065461b",
+      "a7aff0f8e3f44663c369e1e75a981b90b66949586d71035771921871d67e334e"
+    ],
+    "independent_extract_matches_embedded": true,
+    "repeat": 2,
+    "scope": "headless determinism and validation only; not native-window usability",
+    "status": "pass",
+    "trace_count": 2
+  },
+  "source_commit": "0f6edd2f77fe37f99c0a88cfc849232b66d7d8ea",
+  "source_delta": {
+    "checkout_clean": true,
+    "classification": "documentation and validation receipts only",
+    "files": [
+      "artifacts/validation/2026-10-27-linux-x64-rosetta-gate-ce90.json",
+      "artifacts/validation/2026-10-27-windows-x64-round2.json",
+      "docs/PARITY_LEDGER.md",
+      "docs/work-packets/release/DEVELOPMENT_PREVIEW.md"
+    ],
+    "source_after_manifest_sha256": "7a4f287a0e23394c3e568df23bc902f6375f175a64c51b0b6fce707013612ca2",
+    "source_files_after": 205
+  },
+  "status": "PASS_INTERNAL_HEADLESS_EMULATED_LINUX_X64",
+  "tested_product_base": "ce90eab02637092fd38ed81d39c2f29593b7fbc7",
+  "version": 1
+}

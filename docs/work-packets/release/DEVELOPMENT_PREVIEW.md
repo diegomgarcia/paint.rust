@@ -53,6 +53,16 @@ workflow files locally; this is not a hosted Actions result. See
 package acceptance is recorded separately with exact binary/archive hashes and remains
 scoped to emulation.
 
+The completed follow-up at `0f6edd2` used two fresh release targets, produced identical
+ELF binaries and complete output trees, and passed independent extracted-package smoke.
+The Linux archive SHA-256 is
+`3d261f5a58c61f6da02557f5fa50e71a41e4ba2be34f7cc2c390d7d73645ea7c`.
+A separate .NET SDK 10.0.201 lane passed 12/12 tests with zero skips and all eight live
+cross-language checks. See `LINUX_X64_ROSETTA.md` and
+`artifacts/validation/2026-10-27-linux-x64-rosetta-package-0f6edd2.json`. These remain
+unsigned, emulated, headless engineering results, not native OS/window or public-release
+acceptance.
+
 ## Artifact acceptance checklist
 
 1. Confirm the workflow run was manually dispatched from the intended commit and all three

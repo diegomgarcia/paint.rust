@@ -1,0 +1,66 @@
+{
+  "build": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "container": {
+    "cpu_limit": 1,
+    "exit_code": 0,
+    "memory_limit_bytes": 1610612736,
+    "name": "paint-r-x64-dotnet-0f6edd2",
+    "oom_killed": false
+  },
+  "cross_language": {
+    "failed": 0,
+    "passed": 8,
+    "real_dotnet_child": true,
+    "skipped": 0
+  },
+  "format": "paint.r.linux-x64-emulated-dotnet-gate",
+  "logs": {
+    "gate": {
+      "path": "artifacts/reference-local/linux-x64-rosetta/dotnet-0f6edd2.log",
+      "sha256": "c0b1427f06d88b760afa4e80e2b3851544f5c0e4cba05b6d97ab025e9d95a43f"
+    },
+    "sdk_descriptor": {
+      "path": "artifacts/reference-local/linux-x64-rosetta/dotnet-sdk-10.0.201-linux-x64.json",
+      "sha256": "06f6e84b1611e9ee1be8b98f7fc346f8b192b241f55cb04cc13cdfd27e8a28ba"
+    },
+    "sdk_download": {
+      "path": "artifacts/reference-local/linux-x64-rosetta/dotnet-sdk-download.json",
+      "sha256": "e5ab7cd23894b79410929396ac0f21487000b7282486f7b36e91e1397e5270c9"
+    }
+  },
+  "scope": "Linux x64 userspace and .NET x64 under isolated Lima VZ/Rosetta on ARM64; not native Linux x86_64 or arbitrary Paint.NET plugin compatibility",
+  "sdk": {
+    "archive_bytes": 242025193,
+    "archive_sha512": "a33354e3291aa21ea5e1983733f001d45264c31ee3c0dc4a85509d4cb6d4896cfec57fd2143a7b54c93bc42b328e059b16802b4085257a367ef2652f1c8fa424",
+    "official_descriptor": {
+      "name": "dotnet-sdk-linux-x64.tar.gz",
+      "release_metadata_sha256": "8fa7ae2d46b1f94416d5458c7ed68b0c3cafc5efb8e34d89dea3a98bf0a38b33",
+      "release_metadata_url": "https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json",
+      "rid": "linux-x64",
+      "runtime_release_version": "10.0.5",
+      "schema_version": 1,
+      "sdk_version": "10.0.201",
+      "sha512": "a33354e3291aa21ea5e1983733f001d45264c31ee3c0dc4a85509d4cb6d4896cfec57fd2143a7b54c93bc42b328e059b16802b4085257a367ef2652f1c8fa424",
+      "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.201/dotnet-sdk-10.0.201-linux-x64.tar.gz"
+    },
+    "rid": "linux-x64",
+    "runtime_version": "10.0.5",
+    "version": "10.0.201"
+  },
+  "source": {
+    "original_checkout": "read-only and clean",
+    "plugin_host": "fresh git archive from exact source commit; generated bin/obj only in writable /tmp copy"
+  },
+  "source_commit": "0f6edd2f77fe37f99c0a88cfc849232b66d7d8ea",
+  "status": "PASS_DOTNET_AND_LIVE_CROSS_LANGUAGE",
+  "tests": {
+    "failed": 0,
+    "passed": 12,
+    "skipped": 0,
+    "total": 12
+  },
+  "version": 1
+}
