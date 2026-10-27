@@ -1,0 +1,155 @@
+{
+  "assertions": [
+    {
+      "name": "initial_clean_native_window",
+      "passed": true
+    },
+    {
+      "name": "command_i_modified_document",
+      "passed": true
+    },
+    {
+      "message": "before/after native screenshot RGBA pixels are identical; visual modification is inconclusive",
+      "name": "before_after_screenshots_differ",
+      "passed": true
+    },
+    {
+      "name": "dirty_close_confirmation_observed",
+      "passed": true
+    },
+    {
+      "message": "dirty close confirmation did not remain observable",
+      "name": "dirty_close_blocked_by_confirmation",
+      "passed": true
+    },
+    {
+      "name": "cancel_preserved_modified_session",
+      "passed": true
+    },
+    {
+      "message": "accessible document text changed while canceling the dirty close",
+      "name": "cancel_preserved_accessible_document_state",
+      "passed": true
+    },
+    {
+      "message": "confirmation and canceled screenshot RGBA pixels are identical",
+      "name": "cancel_screenshot_differs_from_confirmation",
+      "passed": true
+    },
+    {
+      "name": "second_dirty_close_confirmation",
+      "passed": true
+    },
+    {
+      "exit_code": 0,
+      "name": "explicit_discard_exit_zero",
+      "passed": true
+    }
+  ],
+  "binary": {
+    "bytes": 12518832,
+    "path": "/Users/diegogarcia/Projects/Paint .R/target/release/paint-ui",
+    "sha256": "ad69dcd9dbbe22d9fef3bc8e31265fcd87220a1764ee8fbff3b5eedb86e1d922"
+  },
+  "cleanup": {
+    "required": false
+  },
+  "evidence_manifest": "artifacts/reference-local/native-usability-live-20261027-1640/manifest.json",
+  "format": "paint.r.macos-native-live-acceptance",
+  "harness": {
+    "capture_stage": "gate_initialization",
+    "files": [
+      {
+        "bytes": 40898,
+        "path": "tools/macos_native_usability_gate.py",
+        "sha256": "42f0e90f4c1b38d6753b03e4b0b62afa155314b9604a47c7e7bf046e59c533cd"
+      },
+      {
+        "bytes": 22653,
+        "path": "tools/macos_native_usability_gate.swift",
+        "sha256": "36e4c8fcbe6881d8e8b8aa9c8d8fe23468b4084764039bd0865259c658142689"
+      },
+      {
+        "bytes": 12226,
+        "path": "tests/e2e/png_rgba.py",
+        "sha256": "a6fddfa6b6d3ce0c05c5758aaf8c7eece75d84069cf8bcfbed958a65df453c30"
+      }
+    ]
+  },
+  "host": "macOS ARM64 console session with Accessibility and Screen Recording permission",
+  "independent_rgba_verification": {
+    "before_differs_from_modified": true,
+    "confirmation_differs_from_modified": true,
+    "decoded_screenshots": 5,
+    "first_confirmation_equals_second": true,
+    "modified_equals_canceled": true
+  },
+  "known_limitation": "Pinned eframe/winit sends Command-Q to Event::LoopExiting and ignores Command-W for this window; the native close button is the verified close path.",
+  "native_inputs": [
+    "Command-I",
+    "AXPress AXCloseButton",
+    "Escape",
+    "AXPress AXCloseButton",
+    "AXPress Discard"
+  ],
+  "process": {
+    "exit_code": 0,
+    "pid": 19157
+  },
+  "public_release": false,
+  "screenshots": [
+    {
+      "bytes": 783356,
+      "height": 2088,
+      "path": "00-before.png",
+      "pid": 19157,
+      "rgba_sha256": "5d9101cde659aefbe6755842c79b7e35cb409e1ddcfdc3320395025177231ead",
+      "sha256": "d0d3776df604d1a71888383e839a511947b233093400d4653abe02e5ec5ffc2d",
+      "width": 2784,
+      "window_id": 7272
+    },
+    {
+      "bytes": 777583,
+      "height": 2088,
+      "path": "01-modified.png",
+      "pid": 19157,
+      "rgba_sha256": "9c4873f08b5be39360bfbfcdf72f8d4ad8a692394addb09fe3d6dc329d37ff17",
+      "sha256": "04cd9d40a5364f7b46ecd42450da8b0d0917f4183db16cb58259ce9a99ea2fb1",
+      "width": 2784,
+      "window_id": 7272
+    },
+    {
+      "bytes": 810103,
+      "height": 2088,
+      "path": "02-close-confirmation.png",
+      "pid": 19157,
+      "rgba_sha256": "c05145d5adc89238c99e39e6b7f6136c4825ff1d4e68a18fe5f0d183fe848850",
+      "sha256": "6eb9fdf375534ad32ddca7e8e25a5e31dd71b1c4d75270a4a3f1358322f44ee3",
+      "width": 2784,
+      "window_id": 7272
+    },
+    {
+      "bytes": 777583,
+      "height": 2088,
+      "path": "03-canceled.png",
+      "pid": 19157,
+      "rgba_sha256": "9c4873f08b5be39360bfbfcdf72f8d4ad8a692394addb09fe3d6dc329d37ff17",
+      "sha256": "04cd9d40a5364f7b46ecd42450da8b0d0917f4183db16cb58259ce9a99ea2fb1",
+      "width": 2784,
+      "window_id": 7272
+    },
+    {
+      "bytes": 810103,
+      "height": 2088,
+      "path": "04-second-close-confirmation.png",
+      "pid": 19157,
+      "rgba_sha256": "c05145d5adc89238c99e39e6b7f6136c4825ff1d4e68a18fe5f0d183fe848850",
+      "sha256": "6eb9fdf375534ad32ddca7e8e25a5e31dd71b1c4d75270a4a3f1358322f44ee3",
+      "width": 2784,
+      "window_id": 7272
+    }
+  ],
+  "source_commit": "9fed413517e69f66a606eb979c9dc0d622d1c2b6",
+  "status": "PASS_LIVE_MACOS_NATIVE_WINDOW_KEYBOARD_AND_DIRTY_CLOSE",
+  "version": 1
+}
