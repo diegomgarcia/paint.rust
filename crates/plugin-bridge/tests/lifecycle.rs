@@ -137,3 +137,23 @@ fn handshake_crash_is_not_a_successful_spawn() {
     let result = PluginHost::spawn(command, BrokerOptions::new(Duration::from_secs(5)));
     assert!(matches!(result, Err(HostError::ChildExited { .. })));
 }
+
+#[test]
+fn crash_exit_status_is_stable_across_pipe_eof_races() {
+    for _ in 0..8 {
+        let mut host = spawn("crash", Duration::from_secs(5));
+        assert!(matches!(
+            host.apply(1, "Invert", &source()),
+            Err(HostError::ChildExited { code: Some(42) })
+        ));
+        assert!(!host.is_running().unwrap());
+
+        let mut command = Command::new(env!("CARGO_BIN_EXE_paint-plugin-fixture"));
+        command.arg("crash-before-ready");
+        let result = PluginHost::spawn(command, BrokerOptions::new(Duration::from_secs(5)));
+        assert!(matches!(
+            result,
+            Err(HostError::ChildExited { code: Some(42) })
+        ));
+    }
+}

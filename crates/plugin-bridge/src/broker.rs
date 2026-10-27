@@ -16,6 +16,7 @@ pub type RequestId = u64;
 const MAX_TRACKED_REQUESTS: usize = 64;
 const READER_QUEUE_CAPACITY: usize = 8;
 const MIN_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+const DISCONNECT_EXIT_GRACE: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Debug)]
 pub struct BrokerOptions {
@@ -522,14 +523,38 @@ impl PluginHost {
     }
 
     fn handle_disconnect(&mut self) -> HostError {
-        let was_running = self.is_running().unwrap_or(false);
-        let _ = self.terminate_internal();
-        if was_running {
-            HostError::TransportDisconnected
+        // Pipe closure and waitable child status are not synchronized on every OS.
+        // Give an exiting child a bounded grace period, but never wait forever for
+        // a process that closed its protocol stream and continued running.
+        let deadline = Instant::now() + DISCONNECT_EXIT_GRACE;
+        let exited = if self.terminated {
+            true
         } else {
+            loop {
+                match self.child.try_wait() {
+                    Ok(Some(status)) => {
+                        self.exit_code = status.code();
+                        self.terminated = true;
+                        break true;
+                    }
+                    Ok(None) if Instant::now() < deadline => {
+                        thread::sleep(Duration::from_millis(2));
+                    }
+                    Ok(None) => break false,
+                    Err(error) => {
+                        let _ = self.terminate_internal();
+                        return error.into();
+                    }
+                }
+            }
+        };
+        let _ = self.terminate_internal();
+        if exited {
             HostError::ChildExited {
                 code: self.exit_code,
             }
+        } else {
+            HostError::TransportDisconnected
         }
     }
 
