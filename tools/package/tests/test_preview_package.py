@@ -494,36 +494,77 @@ class NoticeProvenanceSupplementTests(DisposableFixtureMixin):
 
 
 class CheckedInNoticeSupplementTests(unittest.TestCase):
-    def test_accesskit_bundle_is_hash_valid_and_matches_the_real_lockfile(self) -> None:
+    def test_accesskit_and_egui_bundles_are_hash_valid_and_match_the_real_lockfile(self) -> None:
         repo = Path(package.__file__).resolve().parents[2]
         supplement = package.load_notice_supplement(repo / "tools/package/notice_supplement")
         checksums = package.load_locked_package_checksums(repo / "Cargo.lock")
-        expected = {
-            ("accesskit", "0.25.2"),
-            ("accesskit_atspi_common", "0.21.1"),
-            ("accesskit_consumer", "0.39.2"),
-            ("accesskit_ios", "0.2.2"),
-            ("accesskit_macos", "0.27.2"),
-            ("accesskit_unix", "0.24.1"),
-            ("accesskit_windows", "0.35.2"),
-            ("accesskit_winit", "0.34.2"),
+        accesskit = {
+            ("accesskit", "0.25.2"): "accesskit",
+            ("accesskit_atspi_common", "0.21.1"): "adapters/atspi-common",
+            ("accesskit_consumer", "0.39.2"): "accesskit_consumer",
+            ("accesskit_ios", "0.2.2"): "adapters/ios",
+            ("accesskit_macos", "0.27.2"): "adapters/macos",
+            ("accesskit_unix", "0.24.1"): "adapters/unix",
+            ("accesskit_windows", "0.35.2"): "adapters/windows",
+            ("accesskit_winit", "0.34.2"): "adapters/winit",
+        }
+        egui = {
+            ("eframe", "0.37.0"): (
+                "https://github.com/emilk/egui/tree/main/crates/eframe",
+                "3c6eb8261c3293ad9c7ea1ed58487e038860ebef",
+                "crates/eframe",
+            ),
+            ("egui_kittest", "0.37.0"): (
+                "https://github.com/emilk/egui",
+                "9d317be94fc96df23bd5d9316f357efa2d3631d8",
+                "crates/egui_kittest",
+            ),
+            ("egui_system_font_provider", "0.37.0"): (
+                "https://github.com/emilk/egui/tree/main/crates/egui_system_font_provider",
+                "3c6eb8261c3293ad9c7ea1ed58487e038860ebef",
+                "crates/egui_system_font_provider",
+            ),
+        }
+        accesskit_hashes = {
+            "LICENSE-APACHE": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+            "LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+        }
+        egui_hashes = {
+            "LICENSE-APACHE": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90",
+            "LICENSE-MIT": "95ca92f5f8ea5231f1580b3a2a799e8260af3114b900e1def5355a7f44bcf60c",
         }
 
-        self.assertEqual({identity[:2] for identity in supplement.packages}, expected)
+        self.assertEqual({identity[:2] for identity in supplement.packages}, set(accesskit) | set(egui))
         for identity, curated in supplement.packages.items():
             with self.subTest(package=identity[:2]):
                 self.assertEqual(identity[2], NoticeProvenanceSupplementTests.SOURCE)
                 self.assertEqual(checksums[identity], curated.checksum)
-                self.assertEqual(curated.repository, "https://github.com/AccessKit/accesskit")
-                self.assertEqual(curated.vcs_commit, "f3026222559c7f5f46d8f25cb7404de68eb149f0")
+                if identity[:2] in accesskit:
+                    repository = "https://github.com/AccessKit/accesskit"
+                    commit = "f3026222559c7f5f46d8f25cb7404de68eb149f0"
+                    path_in_vcs = accesskit[identity[:2]]
+                    raw_repository = "AccessKit/accesskit"
+                    expected_hashes = accesskit_hashes
+                else:
+                    repository, commit, path_in_vcs = egui[identity[:2]]
+                    raw_repository = "emilk/egui"
+                    expected_hashes = egui_hashes
+                self.assertEqual(curated.repository, repository)
+                self.assertEqual(curated.vcs_commit, commit)
+                self.assertEqual(curated.path_in_vcs, path_in_vcs)
                 self.assertEqual(len(curated.files), 2)
                 self.assertEqual(
                     {resource.source_path.as_posix() for resource in curated.files},
                     {"LICENSE-APACHE", "LICENSE-MIT"},
                 )
                 for resource in curated.files:
+                    source_path = resource.source_path.as_posix()
                     self.assertEqual(hashlib.sha256(resource.content).hexdigest(), resource.sha256)
-                    self.assertIn(f"/{curated.vcs_commit}/", resource.source_url)
+                    self.assertEqual(resource.sha256, expected_hashes[source_path])
+                    self.assertEqual(
+                        resource.source_url,
+                        f"https://raw.githubusercontent.com/{raw_repository}/{commit}/{source_path}",
+                    )
 
 
 class BinaryArchitectureTests(DisposableFixtureMixin):

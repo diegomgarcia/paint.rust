@@ -15,6 +15,34 @@
       "source_path": "LICENSE-MIT",
       "source_url": "https://raw.githubusercontent.com/AccessKit/accesskit/f3026222559c7f5f46d8f25cb7404de68eb149f0/LICENSE-MIT",
       "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+    },
+    {
+      "id": "egui-3c6-apache",
+      "path": "files/egui/3c6eb8261c3293ad9c7ea1ed58487e038860ebef/LICENSE-APACHE",
+      "source_path": "LICENSE-APACHE",
+      "source_url": "https://raw.githubusercontent.com/emilk/egui/3c6eb8261c3293ad9c7ea1ed58487e038860ebef/LICENSE-APACHE",
+      "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90"
+    },
+    {
+      "id": "egui-3c6-mit",
+      "path": "files/egui/3c6eb8261c3293ad9c7ea1ed58487e038860ebef/LICENSE-MIT",
+      "source_path": "LICENSE-MIT",
+      "source_url": "https://raw.githubusercontent.com/emilk/egui/3c6eb8261c3293ad9c7ea1ed58487e038860ebef/LICENSE-MIT",
+      "sha256": "95ca92f5f8ea5231f1580b3a2a799e8260af3114b900e1def5355a7f44bcf60c"
+    },
+    {
+      "id": "egui-9d317-apache",
+      "path": "files/egui/9d317be94fc96df23bd5d9316f357efa2d3631d8/LICENSE-APACHE",
+      "source_path": "LICENSE-APACHE",
+      "source_url": "https://raw.githubusercontent.com/emilk/egui/9d317be94fc96df23bd5d9316f357efa2d3631d8/LICENSE-APACHE",
+      "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90"
+    },
+    {
+      "id": "egui-9d317-mit",
+      "path": "files/egui/9d317be94fc96df23bd5d9316f357efa2d3631d8/LICENSE-MIT",
+      "source_path": "LICENSE-MIT",
+      "source_url": "https://raw.githubusercontent.com/emilk/egui/9d317be94fc96df23bd5d9316f357efa2d3631d8/LICENSE-MIT",
+      "sha256": "95ca92f5f8ea5231f1580b3a2a799e8260af3114b900e1def5355a7f44bcf60c"
     }
   ],
   "packages": [
@@ -120,6 +148,45 @@
       "file_ids": [
         "accesskit-f302-apache",
         "accesskit-f302-mit"
+      ]
+    },
+    {
+      "name": "eframe",
+      "version": "0.37.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "9c5642501a65ca657d05f00c643a5c14ff2346cb3818032bfe23d58e1f8e5f84",
+      "repository": "https://github.com/emilk/egui/tree/main/crates/eframe",
+      "vcs_commit": "3c6eb8261c3293ad9c7ea1ed58487e038860ebef",
+      "path_in_vcs": "crates/eframe",
+      "file_ids": [
+        "egui-3c6-apache",
+        "egui-3c6-mit"
+      ]
+    },
+    {
+      "name": "egui_kittest",
+      "version": "0.37.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "0979c2e37860fcf13a2bea77508607f067a9a6a84ba9bd47b5e298582fb59b86",
+      "repository": "https://github.com/emilk/egui",
+      "vcs_commit": "9d317be94fc96df23bd5d9316f357efa2d3631d8",
+      "path_in_vcs": "crates/egui_kittest",
+      "file_ids": [
+        "egui-9d317-apache",
+        "egui-9d317-mit"
+      ]
+    },
+    {
+      "name": "egui_system_font_provider",
+      "version": "0.37.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "6f2a2fdfe3c05dd9f691d2b1388b2312d6dce1af502f217c22136d22d9bd76f6",
+      "repository": "https://github.com/emilk/egui/tree/main/crates/egui_system_font_provider",
+      "vcs_commit": "3c6eb8261c3293ad9c7ea1ed58487e038860ebef",
+      "path_in_vcs": "crates/egui_system_font_provider",
+      "file_ids": [
+        "egui-3c6-apache",
+        "egui-3c6-mit"
       ]
     }
   ]
