@@ -42,6 +42,12 @@ plugin-host/test-cross-language.sh
 
 The full release gate additionally requires native platform builds, real-binary and native-window smoke tests, deterministic package checks, and the platform/reference evidence described in the parity ledger. A container result for one architecture is not evidence for another.
 
+On macOS, with accessibility permission for the calling terminal, the reusable native-window gate is:
+
+```sh
+tools/macos_native_window_smoke.sh target/debug/paint-ui
+```
+
 ## Run
 
 Native development preview:
