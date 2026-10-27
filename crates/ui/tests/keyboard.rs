@@ -151,6 +151,32 @@ fn command_q_respects_the_dirty_guard() {
 }
 
 #[test]
+fn command_w_respects_the_dirty_guard() {
+    let mut clean = app();
+    clean.key_press_modifiers(Modifiers::COMMAND, Key::W);
+    clean.step();
+    assert!(
+        clean.state().close_approved(),
+        "a clean Command-W must approve the window close"
+    );
+    clean.run();
+
+    let mut dirty = app();
+    press_command(&mut dirty, Key::I);
+    press_command(&mut dirty, Key::W);
+    assert!(!dirty.state().close_approved());
+    dirty.get_by_role_and_label(Role::Button, "Discard");
+    focus(&mut dirty, Role::Button, "Cancel");
+    press(&mut dirty, Key::Enter);
+    assert!(dirty.state().session().dirty());
+    assert!(
+        dirty
+            .query_by_role_and_label(Role::Button, "Discard")
+            .is_none()
+    );
+}
+
+#[test]
 fn tab_enter_space_and_dirty_new_are_keyboard_usable() {
     let mut harness = app();
     press(&mut harness, Key::Tab);

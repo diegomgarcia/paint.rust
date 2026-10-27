@@ -252,6 +252,10 @@ impl PaintApp {
                         ui.close();
                     }
                     ui.separator();
+                    if ui.button("Close Window").clicked() {
+                        self.request_quit(ui.ctx());
+                        ui.close();
+                    }
                     if ui.button("Quit").clicked() {
                         self.request_quit(ui.ctx());
                         ui.close();
@@ -787,7 +791,9 @@ impl PaintApp {
         let command = egui::Modifiers::COMMAND;
         let command_shift = command | egui::Modifiers::SHIFT;
 
-        if shortcut_pressed(context, command, egui::Key::Q) {
+        if shortcut_pressed(context, command, egui::Key::Q)
+            || shortcut_pressed(context, command, egui::Key::W)
+        {
             self.request_quit(context);
             return;
         }
