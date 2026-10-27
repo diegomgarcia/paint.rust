@@ -164,10 +164,10 @@ no network access, uses validated in-memory bytes, and verifies every emitted fi
 again. Package-source texts take precedence; a failed identity match produces no supplemented
 text and leaves the package incomplete.
 
-The current curated bundle is deliberately limited to 38 packages: the eight AccessKit package
+The current curated bundle is deliberately limited to 48 packages: the eight AccessKit package
 versions; the three listed egui-family 0.37.0 packages (`eframe`, `egui_kittest`, and
 `egui_system_font_provider`); these six Android-related packages; the three additional packages
-in the second table; the six GPU/core packages in the third table; and the twelve objc2 framework
+in the second table; the six GPU/core packages in the third table; and the twenty-two objc2-repository
 packages in the fourth table:
 
 | Package | Declared Cargo repository | Exact `.cargo_vcs_info` commit | Package path in that commit |
@@ -208,12 +208,22 @@ packages in the fourth table:
 | `objc2-core-graphics` 0.3.2 | `https://github.com/madsmtm/objc2` | `7b1abfd750a2cacaea71d6a56ecfb83cb7de560b` | `framework-crates/objc2-core-graphics` | `LICENSE.md` |
 | `objc2-core-text` 0.3.2 | `https://github.com/madsmtm/objc2` | `7b1abfd750a2cacaea71d6a56ecfb83cb7de560b` | `framework-crates/objc2-core-text` | `LICENSE.md` |
 | `objc2-metal` 0.3.2 | `https://github.com/madsmtm/objc2` | `7b1abfd750a2cacaea71d6a56ecfb83cb7de560b` | `framework-crates/objc2-metal` | `LICENSE.md` |
+| `objc2-io-surface` 0.3.2 | `https://github.com/madsmtm/objc2` | `7b1abfd750a2cacaea71d6a56ecfb83cb7de560b` | `framework-crates/objc2-io-surface` | `LICENSE.md` |
+| `objc2-link-presentation` 0.2.2 | `https://github.com/madsmtm/objc2` | `e282618be4c3a3b9542957e0c8540e9588472ce8` | `framework-crates/objc2-link-presentation` | `LICENSE.txt` |
+| `objc2-quartz-core` 0.2.2 | `https://github.com/madsmtm/objc2` | `e282618be4c3a3b9542957e0c8540e9588472ce8` | `framework-crates/objc2-quartz-core` | `LICENSE.txt` |
+| `objc2-quartz-core` 0.3.2 | `https://github.com/madsmtm/objc2` | `7b1abfd750a2cacaea71d6a56ecfb83cb7de560b` | `framework-crates/objc2-quartz-core` | `LICENSE.md` |
+| `objc2-symbols` 0.2.2 | `https://github.com/madsmtm/objc2` | `e282618be4c3a3b9542957e0c8540e9588472ce8` | `framework-crates/objc2-symbols` | `LICENSE.txt` |
+| `objc2-ui-kit` 0.2.2 | `https://github.com/madsmtm/objc2` | `e282618be4c3a3b9542957e0c8540e9588472ce8` | `framework-crates/objc2-ui-kit` | `LICENSE.txt` |
+| `objc2-ui-kit` 0.3.2 | `https://github.com/madsmtm/objc2` | `7b1abfd750a2cacaea71d6a56ecfb83cb7de560b` | `framework-crates/objc2-ui-kit` | `LICENSE.md` |
+| `objc2-uniform-type-identifiers` 0.2.2 | `https://github.com/madsmtm/objc2` | `e282618be4c3a3b9542957e0c8540e9588472ce8` | `framework-crates/objc2-uniform-type-identifiers` | `LICENSE.txt` |
+| `objc2-user-notifications` 0.2.2 | `https://github.com/madsmtm/objc2` | `e282618be4c3a3b9542957e0c8540e9588472ce8` | `framework-crates/objc2-user-notifications` | `LICENSE.txt` |
+| `objc-sys` 0.3.5 | `https://github.com/madsmtm/objc2` | `4fc083f1c6d6784577e38b0ee8dbd344481e2fd2` | `crates/objc-sys` | `LICENSE.txt` |
 
-All 32 pre-existing bindings are unchanged. Every curated resource was retrieved separately from
+All 38 pre-existing bindings are unchanged. Every curated resource was retrieved separately from
 the exact package-specific full-commit URL recorded in the manifest and hash-verified before being
 checked in. For the six Android-related packages, three additional packages, six GPU/core
-packages, and twelve objc2 framework packages, curation also matched real locked Cargo metadata and
-registry sources, verified each cached `.crate` archive SHA-256 against `Cargo.lock`, and matched
+packages, and twenty-two objc2-repository packages, curation also matched real locked Cargo metadata
+and registry sources, verified each cached `.crate` archive SHA-256 against `Cargo.lock`, and matched
 the archived and extracted `.cargo_vcs_info.json` commit and package path. The absent path
 fields in both older `gl-rs` VCS records were retained as the repository root, not rewritten
 to a package subdirectory. Exact-commit
@@ -221,7 +231,7 @@ Git trees established every root resource path before retrieval; the newly retri
 matched the corresponding exact-tree Git blob IDs. No package subdirectory, moving branch, latest
 revision, release tag, SPDX expression, or other commit supplied substitute text.
 
-The latest six-identity framework batch adds `objc2-cloud-kit` 0.2.2, `objc2-contacts` 0.2.2,
+The second six-identity framework batch adds `objc2-cloud-kit` 0.2.2, `objc2-contacts` 0.2.2,
 `objc2-core-data` 0.2.2, `objc2-core-image` 0.2.2, `objc2-core-location` 0.2.2, and
 `objc2-core-text` 0.3.2. Each identity was checked against its locked checksum, registry source,
 declared repository, cached `.crate` SHA-256, and archived/extracted `.cargo_vcs_info` commit and
