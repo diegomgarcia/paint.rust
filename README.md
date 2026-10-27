@@ -9,8 +9,9 @@ An original, cross-platform Rust image editor being developed against a pinned P
 - A real `eframe`/`egui` native window with an 800×600 opaque-white new document and an actual composed-surface canvas.
 - Rectangle selection, chosen-BGRA fill, RGB-only Invert, undo/redo, layer creation/selection, visibility, and opacity through the single-writer `AppSession`.
 - Flat PNG open and atomic PNG export. Opening creates one layer; exporting preserves the layered session, history, and modified state. PNG is not lossless layered-document persistence.
+- Dirty New, Open, and native viewport-close paths require explicit Discard confirmation; Cancel preserves the current session, and exporting does not bypass the close guard.
 - A deterministic real-binary headless protocol with semantic snapshots, exact output checks, malformed-input failures, and per-file atomic replacement.
-- Bounded PNG and data-only PDN3/NRBF libraries. PDN supports the documented Normal/BGRA subset; the writer is experimental and self-round-trip-tested only until stock Paint.NET 5.1.12 acceptance is demonstrated.
+- Bounded PNG and data-only PDN3/NRBF libraries. An authentic signed Paint.NET 5.1.12 2×2 Normal/BGRA fixture passes exact reader/composite acceptance. The writer remains experimental and self-round-trip-tested only until stock acceptance is demonstrated.
 - An isolated Rust↔.NET source-owned plugin transport proof. This does not load arbitrary Paint.NET plugin DLLs.
 
 The development UI uses stock `egui` styling and a text-path PNG dialog, not a pixel-parity skin or native OS file picker. Use disposable test documents; the preview is not a complete document-safety or Paint.NET workflow implementation.
@@ -30,6 +31,7 @@ Use the pinned Cargo wrapper so companion tools cannot drift to another installe
 ./tools/cargo-pinned.sh run --locked -p xtask -- verify
 python3 -m unittest discover -s tests/e2e -p 'test_*.py' -v
 python3 -m unittest discover -s tools/package/tests -p 'test_*.py' -v
+python3 -m unittest discover -s tools/reference/tests -p 'test_*.py' -v
 ```
 
 For the plugin development lane:

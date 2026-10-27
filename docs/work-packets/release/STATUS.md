@@ -1,10 +1,11 @@
 # Release-engineering lane status — PARTIAL
 
-The packaging/automation lane is implemented and locally tested against current `main`, but
-the packet is **PARTIAL**: this branch has only a `paint-ui` library target, no actual
-`paint-ui` binary. Therefore no real product trace smoke, product archive, desktop package
-smoke, or native three-OS workflow run has been performed. No completion or public-release
-claim is made.
+The packaging/automation lane is implemented and locally tested. This file preserves the
+original lane's red-to-green receipt; its library-only statements and historical test counts
+are not current integration status. A real `paint-ui` binary, native session UI, deterministic
+headless smoke, internal archive, and extracted-package smoke now exist. Current demonstrated
+scope and remaining native three-OS gates are tracked in `README.md` and
+`docs/PARITY_LEDGER.md`. No completion or public-release claim is made.
 
 ## Implemented behavior and exact scope
 
@@ -94,7 +95,7 @@ and the final integrated `xtask verify` used the pinned 1.95 tools directly.
 - Integrated Rust unit/property/integration/doc tests: **120 passed; 0 failed/ignored**.
 - Integrated .NET tests: **12 passed**; live cross-language checks: **8 passed**.
 - Real locked-metadata integration assertion harness: **passed** (counts above).
-- Real product smoke/usability/package tests: **not run; binary absent**.
+- Real product smoke/usability/package tests: **not run at the original library-only lane handoff**. Subsequent integrated evidence is recorded in the parity ledger; it does not satisfy every native platform gate.
 - Three-OS workflow runs: **not run locally; manual workflow not dispatched**.
 
 ## Dependency and license additions
@@ -107,8 +108,9 @@ claim was invented.
 
 ## Known gaps and remaining gates
 
-- Integrate the real executable and session/UI; run the real trace smoke and package each
-  native binary. The integrated non-UI tests are not development-preview UI acceptance.
+- The real executable and session/UI are now integrated. Rebuild and repeat real trace,
+  usability, native-window, and package smoke on the final candidate and every required
+  native binary; existing macOS evidence does not satisfy Windows or Linux gates.
 - Execute and review the manual workflow on Windows x64, macOS ARM64, and Linux x86_64;
   actionlint/GitHub schema validation and native artifact/desktop smoke remain CI gates.
 - Complete reference, usability, PDN, and other parity-ledger gates as applicable.

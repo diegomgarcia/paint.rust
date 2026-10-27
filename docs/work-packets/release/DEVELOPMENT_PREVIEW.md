@@ -25,8 +25,8 @@ writer-accepted, or compatible with arbitrary Paint.NET plugins.
 Each lane installs Rust 1.95.0, Python 3.12, and .NET 10.0.201, uses
 `tools/cargo-pinned.sh`, fetches with `--locked`, runs packaging tests, formatting, strict
 all-feature Clippy, all workspace tests, the stub scan, locked .NET tests, real
-Rust-to-.NET conformance, and the independent PNG tests. It then builds only the actual
-`paint-ui` release package and calls the packager. The packager must run the real trace
+Rust-to-.NET conformance, independent PNG tests, and reference-harness unit tests (not VM
+execution). It then builds only the actual `paint-ui` release package and calls the packager. The packager must run the real trace
 smoke successfully before creating its archive. `actions/upload-artifact` uploads `dist/`
 with a seven-day retention period and `if-no-files-found: error`; no GitHub release is
 created.
@@ -56,9 +56,9 @@ OS/architecture lane.
 
 ### Product and evidence gates
 
-- Integrate a real `paint-ui` binary target and the complete session/UI behavior. A library-
-  only `paint-ui` crate cannot pass this packaging lane.
-- Run the real `preview_smoke.py` against every native artifact and have the integrator
+- The real `paint-ui` binary and session/UI are integrated. Keep the mandatory executable
+  and smoke requirements; do not regress to a library-only or substitute fixture artifact.
+- Run the real `preview_smoke.py` against every final native artifact and have the integrator
   independently review the reports, traces, screenshots/usability evidence, and hashes.
 - Pass the strict workspace gate and all integrated workflows on all three primary OS lanes.
 - Complete the reference differential, PDN, plugin, malformed-input, crash, and failed-save

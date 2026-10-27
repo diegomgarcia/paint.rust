@@ -7,7 +7,7 @@ No entry is marked `parity-pinned` by an implementation agent. The integrator re
 | Feature / environment | Reference evidence | Product status | Platform scope | Next required gate |
 |---|---|---|---|---|
 | Windows reference VM | Signed 5.1.12; D3D11; audited 3/3 fresh-document Invert/PNG A/A/A run with matching guest/host/FFmpeg evidence | implemented-unverified | Windows 11 ARM64 / UTM | Preserve clean snapshots; expand semantic and PDN corpus; Windows x64 remains separate |
-| Main-window UI structure | Initial stock screen observation; original session-driven `egui` shell with real canvas, menus, tools, layers, colors, and status | implemented-unverified | Six semantic usability tests; real macOS window launch and graceful quit observed | Dirty-close/replacement guard review; Windows/Linux native windows; reference region/layout comparisons |
+| Main-window UI structure | Initial stock screen observation; original session-driven `egui` shell with real canvas, menus, tools, layers, colors, and status | implemented-unverified | Nine semantic usability tests, including dirty New/Open/viewport-close Cancel/Discard and forwarded close; real macOS window launch/graceful quit observed | Actual OS dirty-close probe; Windows/Linux native windows; reference region/layout comparisons |
 | Exact UI pixels | None | unimplemented | All | Asset/font rights and zero-diff pinned comparisons; stock `egui` is not a parity skin |
 | Default 800×600 document + Invert | Stock 5.1.12 A/A/A: three identical 436-byte PNGs and 480,000 opaque-black pixels per run; real clone debug/release/packaged outputs have the same decoded RGBA SHA-256 `a7aff0f8…e334e` | implemented-unverified | Exact decoded RGBA differential on macOS ARM64 and Linux ARM64 container; Windows pending | Broaden reference corpus and complete native platform gates; encoded PNG byte identity is not required and is not observed |
 | Normal layer composition | Hand-computed unit/property tests; no Paint.NET differential yet | implemented-unverified | Engine and composed UI canvas, all tested CPU targets | Exhaustive alpha/opacity differential probes against stock Paint.NET |
@@ -34,7 +34,7 @@ No entry is marked `parity-pinned` by an implementation agent. The integrator re
 - `artifacts/validation/2026-10-27-macos-arm64-package-e82e293.json` records the permission-preserving extracted-package smoke. Python `zipfile.extractall` did not restore the archived executable bit; macOS `ditto` restored the correct `0755` mode. The failed extractor attempt is not counted as a product pass.
 - `crates/pdn3/tests/stock_5_1_12.rs` and its adjacent fixture manifest record authentic signed Paint.NET 5.1.12 PDN reader acceptance. The clone composite matches stock's reopened PNG exactly for the committed 2×2 Normal/BGRA case.
 - Integrated source `e12d5c80ee85ffd3b6ae0a3d88f3eec3ba51b8b2` passed 194 Rust tests, 16 end-to-end/oracle Python tests, 18 packaging tests, 12 .NET tests, and 8 live cross-language checks on macOS. The same source passed 194 Rust tests, 34 Python tests, release build, and deterministic release smoke in a Linux ARM64 container.
-- These receipts do not certify full UI parity, authentic PDN interoperability, arbitrary plugin compatibility, Windows x64, Linux x86_64, or public redistribution.
+- These receipts do not certify full UI parity, broad PDN interoperability or writer acceptance, arbitrary plugin compatibility, Windows x64, Linux x86_64, or public redistribution.
 
 ## Development-preview exit criteria
 

@@ -66,6 +66,8 @@ jobs:
         run: bash plugin-host/test-cross-language.sh
       - name: Independent PNG oracle tests
         run: python3 -m unittest discover -s tests/e2e -p 'test_*.py' -v
+      - name: Reference harness unit tests (no VM execution)
+        run: python3 -m unittest discover -s tools/reference/tests -p 'test_*.py' -v
       - name: Build actual paint-ui release binary
         run: bash ./tools/cargo-pinned.sh build --release --locked --package paint-ui
       - name: Run real trace smoke and package internal preview
