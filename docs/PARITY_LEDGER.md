@@ -14,11 +14,11 @@ No entry is marked `parity-pinned` by an implementation agent. The integrator re
 | Other blend modes | Public documentation | unimplemented | All | Implement only with exact per-mode reference evidence |
 | Rectangle selection and solid fill | Engine clipping/property tests; no reference corpus yet | implemented-unverified | Engine, all CPU targets | Session integration and boundary/coverage differential corpus |
 | Undo/redo | Atomic forward/inverse patches tested; session history pending | unimplemented | All | Session integration/property tests and reference interaction traces |
-| PNG decode/encode | One stock PNG artifact; atomic byte output tested | unimplemented | All | PNG semantic API, exact decoded RGBA, malformed input, integrated save tests |
+| PNG decode/encode (bounded 8-bit subset) | Stock 1-bit palette decode; 19 Rust tests; independent Python decode of Rust output matched 480,000 pixels and RGBA SHA-256 | implemented-unverified | macOS ARM64; other native targets pending | Integrated session save/open, broader malformed/format corpus, native platform gates; 16-bit/APNG remain explicitly unsupported |
 | JPEG/lossy codecs | None | unimplemented | All | Separate exact decoded-output specification; no arbitrary tolerance |
 | PDN3 reader | Bounded data-only NRBF component tested; authentic local corpus pending | unimplemented | All | PDN container/semantic mapping and bounded reads of authentic files |
 | PDN3 writer | No accepted clone output | unimplemented | All | Stock Paint.NET open/export/re-save and two-way semantic cycles |
-| Isolated plugin transport | Architecture only | unimplemented | All | Real .NET/Rust protocol, cancellation, timeout, and crash tests |
+| Isolated plugin transport | 16 Rust + 12 .NET + 8 live cross-language checks; source-owned Invert only | implemented-unverified | macOS ARM64; Windows/Linux pending | Native cross-language CI; no general Paint.NET binary-plugin compatibility claim |
 | HCL/L*a*b* adjustment binary | Candidate identified; current compatibility unverified | unimplemented | Windows first | Hash/API inventory, clean-room shim, exact reference results |
 | Modern CPU effect API | Stable sample candidate only | unimplemented | Windows first | Stable-era shim and exact output; no third-party binary claim |
 | WebP FileType v1.6.0 | Candidate with native dependencies | unimplemented | Windows x64/ARM64 initially | API/native audit and per-OS support decision |
