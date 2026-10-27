@@ -1,0 +1,180 @@
+{
+  "archive": {
+    "bytes": 7326804,
+    "path": "artifacts/preview/round16-4e13ca7-a/paint-r-0.1.0-macos-aarch64.zip",
+    "sha256": "41e971dbb23d0f891cba679fa4f05bdd7700911d41a9d340c6f1b91d59b3f3c0"
+  },
+  "binary": "34bf5f1ca051d4dcdefaf378bf35a8672f137ff72153010c37bc57cfb6a67609",
+  "extracted_app_native_gate": {
+    "assertions": [
+      {
+        "name": "initial_clean_native_window",
+        "passed": true
+      },
+      {
+        "name": "command_i_modified_document",
+        "passed": true
+      },
+      {
+        "message": "before/after native screenshot RGBA pixels are identical; visual modification is inconclusive",
+        "name": "before_after_screenshots_differ",
+        "passed": true
+      },
+      {
+        "name": "dirty_close_confirmation_observed",
+        "passed": true
+      },
+      {
+        "message": "dirty close confirmation did not remain observable",
+        "name": "dirty_close_blocked_by_confirmation",
+        "passed": true
+      },
+      {
+        "name": "cancel_preserved_modified_session",
+        "passed": true
+      },
+      {
+        "message": "accessible document text changed while canceling the dirty close",
+        "name": "cancel_preserved_accessible_document_state",
+        "passed": true
+      },
+      {
+        "message": "confirmation and canceled screenshot RGBA pixels are identical",
+        "name": "cancel_screenshot_differs_from_confirmation",
+        "passed": true
+      },
+      {
+        "name": "second_dirty_close_confirmation",
+        "passed": true
+      },
+      {
+        "exit_code": 0,
+        "name": "explicit_discard_exit_zero",
+        "passed": true
+      }
+    ],
+    "binary": {
+      "bytes": 12609328,
+      "path": "/Users/diegogarcia/Projects/Paint .R/artifacts/reference-local/packaged-app-final-round16/paint-r-0.1.0-macos-aarch64/Paint.R.app/Contents/MacOS/paint-ui",
+      "sha256": "34bf5f1ca051d4dcdefaf378bf35a8672f137ff72153010c37bc57cfb6a67609"
+    },
+    "independent_rgba": [
+      "2d4028ec19b8ce890d8ac86364b3b8c6d72a12e14606df09b12695a70299aac0",
+      "dc77cabc47acc611675481d5e2176b3494f78ce96e05a32c47c71c6d43e540ef",
+      "08340e4b007b18aeeb0fd848e6bcd0276cf0a58bce3539a466d098c575430cc5",
+      "dc77cabc47acc611675481d5e2176b3494f78ce96e05a32c47c71c6d43e540ef",
+      "08340e4b007b18aeeb0fd848e6bcd0276cf0a58bce3539a466d098c575430cc5"
+    ],
+    "native_execution": "COMPLETED",
+    "outcome": "PASS",
+    "process": {
+      "exit_code": 0,
+      "pid": 48896
+    },
+    "screenshots": [
+      {
+        "bytes": 876363,
+        "height": 2088,
+        "path": "00-before.png",
+        "pid": 48896,
+        "rgba_sha256": "2d4028ec19b8ce890d8ac86364b3b8c6d72a12e14606df09b12695a70299aac0",
+        "sha256": "8169551a364fa4a14b166460ae533bffc153cd5502668ad9fb4557b62de262ab",
+        "width": 2784,
+        "window_id": 7522
+      },
+      {
+        "bytes": 871536,
+        "height": 2088,
+        "path": "01-modified.png",
+        "pid": 48896,
+        "rgba_sha256": "dc77cabc47acc611675481d5e2176b3494f78ce96e05a32c47c71c6d43e540ef",
+        "sha256": "ac0235435ccd8f3ec91fa04fe6459116e3b027d7c83c1089bec405785eb851c9",
+        "width": 2784,
+        "window_id": 7522
+      },
+      {
+        "bytes": 898584,
+        "height": 2088,
+        "path": "02-close-confirmation.png",
+        "pid": 48896,
+        "rgba_sha256": "08340e4b007b18aeeb0fd848e6bcd0276cf0a58bce3539a466d098c575430cc5",
+        "sha256": "ecaf7f4a738d4d9df3b457c6878f6831f894350ffc0866652a9b3c320b006278",
+        "width": 2784,
+        "window_id": 7522
+      },
+      {
+        "bytes": 871536,
+        "height": 2088,
+        "path": "03-canceled.png",
+        "pid": 48896,
+        "rgba_sha256": "dc77cabc47acc611675481d5e2176b3494f78ce96e05a32c47c71c6d43e540ef",
+        "sha256": "ac0235435ccd8f3ec91fa04fe6459116e3b027d7c83c1089bec405785eb851c9",
+        "width": 2784,
+        "window_id": 7522
+      },
+      {
+        "bytes": 898584,
+        "height": 2088,
+        "path": "04-second-close-confirmation.png",
+        "pid": 48896,
+        "rgba_sha256": "08340e4b007b18aeeb0fd848e6bcd0276cf0a58bce3539a466d098c575430cc5",
+        "sha256": "ecaf7f4a738d4d9df3b457c6878f6831f894350ffc0866652a9b3c320b006278",
+        "width": 2784,
+        "window_id": 7522
+      }
+    ]
+  },
+  "format": "paint.r.packaged-app-live",
+  "limitations": [
+    "Unsigned internal artifact only.",
+    "Linux artifact remains the earlier a9f185d build; this hex-input revision was not rebuilt under Linux.",
+    "Windows QGA remains unavailable.",
+    "Ten irreducible notice/legal gaps and hosted CI/signing/parity gates remain open."
+  ],
+  "notice_inventory": {
+    "curated_supplements": 50,
+    "packages_with_texts": 447,
+    "remaining_gaps": 10
+  },
+  "package_output_tree": {
+    "entries": 3,
+    "files": [
+      {
+        "bytes": 7326804,
+        "path": "paint-r-0.1.0-macos-aarch64.zip",
+        "sha256": "41e971dbb23d0f891cba679fa4f05bdd7700911d41a9d340c6f1b91d59b3f3c0"
+      },
+      {
+        "bytes": 98,
+        "path": "paint-r-0.1.0-macos-aarch64.zip.sha256",
+        "sha256": "275b159feae6f4112e553c9e559031aba8c1ddd2cca5ef6a6624fa126f324f4c"
+      },
+      {
+        "bytes": 572,
+        "path": "paint-r-0.1.0-macos-aarch64.zip.verification.json",
+        "sha256": "51cd05f31c7c9a3988af53c91ffd7db0ba1700194fa4c1c0233c2a3bd69ac83d"
+      }
+    ],
+    "kind": "directory",
+    "status": "pass",
+    "tree_sha256": "e1679ad34ba794ff958a345e95beffe6805e1b4cde26260db9c82d602ed2de64"
+  },
+  "package_source_commit": "4e13ca7eb73120f9442eaa4b5294b52482d460da",
+  "post_extract_smoke": {
+    "repeat": 2,
+    "status": "pass",
+    "trace_count": 2
+  },
+  "product_source_commit": "4e13ca7eb73120f9442eaa4b5294b52482d460da",
+  "public_release": false,
+  "status": "PASS_CURRENT_MACOS_PACKAGE_WITH_HEX_COLOR",
+  "ui_features": [
+    "HSV color wheel",
+    "exact hex RGB/RGBA input",
+    "palette",
+    "zoom/fit",
+    "PNG browser preview",
+    "Command-Q/W dirty guards"
+  ],
+  "version": 1
+}
