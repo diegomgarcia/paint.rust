@@ -165,11 +165,16 @@ again. Package-source texts take precedence; a failed identity match produces no
 text and leaves the package incomplete.
 
 The current curated bundle is deliberately limited to the eight AccessKit package versions
-listed in the manifest. Their two repository-root license files were retrieved separately
-from the exact commit URLs recorded in the manifest and hash-verified before being checked in.
-Other package gaps remain explicit. Curated retrieval and file coverage are not legal review
-or a claim of redistribution compliance. Incomplete extraction is disclosed in internal
-artifacts; public packaging remains refused. No first-party license is invented.
+and the three listed egui-family 0.37.0 packages: `eframe`, `egui_kittest`, and
+`egui_system_font_provider`. Their two repository-root license files were retrieved separately
+from the exact package-specific commit URLs recorded in the manifest and hash-verified before
+being checked in. The seven other locked egui-family 0.37.0 packages remain uncovered because
+exact commit-pinned upstream license content for their recorded VCS commit
+`7c0b40402271e8d40cda69f87cf3c2617c2e4382` was unavailable during curation; no moving-branch,
+latest, or release-tag content was substituted. Other package gaps remain explicit. Curated
+retrieval and file coverage are not legal review or a claim of redistribution compliance.
+Incomplete extraction is disclosed in internal artifacts; public packaging remains refused.
+No first-party license is invented.
 
 ## Tests
 
@@ -180,7 +185,7 @@ python3 -m unittest discover -s tools/package/tests -p 'test_*.py' -v
 Tests use clearly named temporary, disposable non-product fixtures. They cover ZIP and
 tar.gz byte determinism, timestamps/modes/order, exact SHA-256 manifests and sidecars,
 SBOM path independence, font notice extraction and gap reporting, offline curated-notice
-identity/hash/provenance checks, the checked-in AccessKit bundle, platform layouts,
+identity/hash/provenance checks, the checked-in AccessKit and scoped egui bundles, platform layouts,
 PE/Mach-O/ELF architecture acceptance and rejection, exact smoke-run validation,
 public-release refusal, and mandatory-smoke failure handling. A complete `package_release`
 integration test additionally compares two deterministic archives, sidecars, binary
