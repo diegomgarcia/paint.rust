@@ -40,12 +40,14 @@
       "ui_evidence_items": 22
     },
     "supplemental_properties": {
+      "source_commit": "918a03ffaf24a867e630917152a931e351a9dd1e",
       "cases": 8192,
       "passed": 133,
       "failed": 0,
       "ignored": 0
     },
     "plugin_crash_pipe_stress": {
+      "source_commit": "918a03ffaf24a867e630917152a931e351a9dd1e",
       "iterations": 25,
       "passed": 25
     }
