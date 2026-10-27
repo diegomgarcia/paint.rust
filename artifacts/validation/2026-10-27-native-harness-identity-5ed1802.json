@@ -1,0 +1,89 @@
+{
+  "development_mode": {
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round7-fe36f85/harness-devmode.log",
+      "sha256": "565f0b0c6cd088fd529205140c731bac29f08d87106340bf8a5931ebb1f39160"
+    },
+    "passed": 24,
+    "resource_warnings": 0
+  },
+  "expected_red": {
+    "errors": 1,
+    "log": {
+      "path": "artifacts/reference-local/round7-fe36f85/harness-identity-red.log",
+      "sha256": "a166f0b7e63c878de6258d7ea10fc52daeb4f88c011397afd9ad2fe6afa00faa"
+    },
+    "old_behavior": "manifest lacked harness identities (KeyError: 'harness')",
+    "tests": 24
+  },
+  "final_native_suite": {
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round7-fe36f85/harness-identity-final.log",
+      "sha256": "539370490cfedca53bc643d682b9cf4af56121dc514e5e49d3c5ab25d28d8da9"
+    },
+    "passed": 24
+  },
+  "format": "paint.r.native-harness-identity",
+  "green": {
+    "failed": 0,
+    "logs": [
+      {
+        "path": "artifacts/reference-local/round7-fe36f85/harness-identity-green.log",
+        "sha256": "53229793830f09d162c8008dde10622aadff7e5b6afc87f29a5f95890e54d497"
+      },
+      {
+        "path": "artifacts/reference-local/round7-fe36f85/reference-after-harness.log",
+        "sha256": "188583e4c3ef7386cde06bfd71bb9578bbd09e4cf802c24690c2de9fa8805e0c"
+      },
+      {
+        "path": "artifacts/reference-local/round7-fe36f85/e2e-after-harness.log",
+        "sha256": "4ce5dd516518e03a5b941b07fc3755533f99e12b4aa6ef2c6806e17f7895b3e0"
+      }
+    ],
+    "native_orchestration": 24,
+    "python_end_to_end": 18,
+    "reference_tools": 30
+  },
+  "limitations": [
+    "Hashes identify source files read during initialization, not a clean checkout or immutable execution snapshot.",
+    "Fake/blocked evidence remains non-native even with harness identities.",
+    "No hosted CI or public release claim is made."
+  ],
+  "live_acceptance": {
+    "current_revision_executed_against_real_window": false,
+    "host_unlock_or_permission_bypass_attempted": false,
+    "native_execution": "NOT_RUN"
+  },
+  "manifest_identity": {
+    "capture_stage": "gate_initialization",
+    "fields": [
+      "source-relative path",
+      "bytes",
+      "SHA-256"
+    ],
+    "files": [
+      "tools/macos_native_usability_gate.py",
+      "tools/macos_native_usability_gate.swift",
+      "tests/e2e/png_rgba.py"
+    ],
+    "present_in_pass_and_blocked_not_run_manifests": true
+  },
+  "relocated_fake_suite": {
+    "cwd": "/tmp",
+    "failed": 0,
+    "log": {
+      "path": "artifacts/reference-local/round7-fe36f85/harness-relocated.log",
+      "sha256": "08dfaf36f27f1285a58ee24c59494e7af4158a0fd978c69c041a69f4f3bda4f7"
+    },
+    "passed": 24
+  },
+  "source_commit": "5ed18020be564c0d88a16e34594924dd29df4dd6",
+  "static_checks": {
+    "python_compile": "pass",
+    "swift_5_typecheck": "pass"
+  },
+  "status": "PASS_HARNESS_IDENTITY_ORCHESTRATION_NOT_LIVE_NATIVE_ACCEPTANCE",
+  "version": 1
+}
