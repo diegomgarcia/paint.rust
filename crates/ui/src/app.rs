@@ -18,6 +18,7 @@ pub struct PaintApp {
     status: String,
     path_dialog: Option<PathDialog>,
     pending_discard: Option<DiscardAction>,
+    focus_discard_buttons: bool,
     close_approved: bool,
 }
 
@@ -33,6 +34,7 @@ impl PaintApp {
             status: "New 800×600 opaque-white document".to_owned(),
             path_dialog: None,
             pending_discard: None,
+            focus_discard_buttons: false,
             close_approved: false,
         };
         app.refresh_texture(&creation_context.egui_ctx);
@@ -57,24 +59,34 @@ impl PaintApp {
         self.next_layer_number = 1;
         self.path_dialog = None;
         self.pending_discard = None;
+        self.focus_discard_buttons = false;
         self.texture_dirty = true;
         self.status = "New 800×600 opaque-white document".to_owned();
     }
 
+    fn show_path_dialog(&mut self, kind: PathDialogKind) {
+        self.path_dialog = Some(PathDialog::new(kind));
+    }
+
+    fn request_discard(&mut self, action: DiscardAction) {
+        self.path_dialog = None;
+        self.pending_discard = Some(action);
+        self.focus_discard_buttons = true;
+    }
+
     fn request_new(&mut self) {
         if self.session.dirty() {
-            self.path_dialog = None;
-            self.pending_discard = Some(DiscardAction::NewDocument);
+            self.request_discard(DiscardAction::NewDocument);
         } else {
             self.new_document();
         }
     }
 
     fn request_open(&mut self, path: String) {
-        self.path_dialog = None;
         if self.session.dirty() {
-            self.pending_discard = Some(DiscardAction::OpenPng(path));
+            self.request_discard(DiscardAction::OpenPng(path));
         } else {
+            self.path_dialog = None;
             self.open_png(path);
         }
     }
@@ -90,10 +102,7 @@ impl PaintApp {
                 self.status = format!("Opened flattened PNG: {}", path_buffer.display());
             }
             Err(error) => {
-                self.path_dialog = Some(PathDialog {
-                    kind: PathDialogKind::Open,
-                    path,
-                });
+                self.path_dialog = Some(PathDialog::with_path(PathDialogKind::Open, path));
                 self.status = format!("Open failed: {error}");
             }
         }
@@ -179,26 +188,40 @@ impl PaintApp {
 
     fn menu_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::top("paint-r-menu").show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    if ui.button("New").clicked() {
+                    let new_response = ui.button("New");
+                    focus_first_menu_item_on_keyboard_open(ui, &new_response);
+                    if new_response.clicked() {
                         self.request_new();
                         ui.close();
                     }
                     if ui.button("Open PNG…").clicked() {
-                        self.path_dialog = Some(PathDialog::new(PathDialogKind::Open));
+                        self.show_path_dialog(PathDialogKind::Open);
                         ui.close();
                     }
                     if ui.button("Export PNG…").clicked() {
-                        self.path_dialog = Some(PathDialog::new(PathDialogKind::Export));
+                        self.show_path_dialog(PathDialogKind::Export);
                         ui.close();
                     }
                 });
                 ui.menu_button("Adjustments", |ui| {
-                    if ui.button("Invert Colors").clicked() {
+                    let invert_response = ui.button("Invert Colors");
+                    focus_first_menu_item_on_keyboard_open(ui, &invert_response);
+                    if invert_response.clicked() {
                         self.execute(Command::Invert, "Inverted colors on the active layer");
                         ui.close();
                     }
+                });
+                ui.menu_button("Keyboard", |ui| {
+                    ui.label("Development-preview shortcuts (Cmd/Ctrl):");
+                    ui.label("N New | O Open | Shift+E Export");
+                    ui.label("I Invert | F Fill | R Rectangle selection");
+                    ui.label("Shift+L Add layer | Z Undo | Shift+Z Redo");
+                    ui.separator();
+                    ui.label("Tab / Shift+Tab move focus; Enter / Space activate");
+                    ui.label("Arrows adjust focused values; Enter confirms a path");
+                    ui.label("Escape cancels a dialog");
                 });
                 ui.label("Paint.R development preview");
             });
@@ -375,8 +398,14 @@ impl PaintApp {
             return;
         };
         let kind = dialog.kind;
-        let mut confirm = false;
-        let mut cancel = false;
+        let enter_in_path = ui.ctx().text_edit_focused()
+            && ui
+                .ctx()
+                .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+        let mut confirm = enter_in_path && !dialog.path.trim().is_empty();
+        let mut cancel = ui
+            .ctx()
+            .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         egui::Window::new(kind.title())
             .collapsible(false)
             .resizable(false)
@@ -384,9 +413,13 @@ impl PaintApp {
             .show(ui.ctx(), |ui| {
                 ui.label(kind.explanation());
                 let label = ui.label("PNG file path");
-                let _response = ui
+                let response = ui
                     .text_edit_singleline(&mut dialog.path)
                     .labelled_by(label.id);
+                if dialog.focus_path {
+                    response.request_focus();
+                    dialog.focus_path = false;
+                }
                 ui.horizontal(|ui| {
                     if ui
                         .add_enabled(
@@ -424,6 +457,7 @@ impl PaintApp {
                         );
                     }
                     Err(error) => {
+                        dialog.focus_path = true;
                         self.status = format!("Export failed: {error}");
                     }
                 }
@@ -432,11 +466,9 @@ impl PaintApp {
     }
 
     fn cancel_discard(&mut self) {
+        self.focus_discard_buttons = false;
         if let Some(DiscardAction::OpenPng(path)) = self.pending_discard.take() {
-            self.path_dialog = Some(PathDialog {
-                kind: PathDialogKind::Open,
-                path,
-            });
+            self.path_dialog = Some(PathDialog::with_path(PathDialogKind::Open, path));
         }
     }
 
@@ -453,7 +485,10 @@ impl PaintApp {
             }
             None => return,
         };
-        let mut cancel = false;
+        let focus_cancel = self.focus_discard_buttons;
+        let mut cancel = ui
+            .ctx()
+            .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         let mut discard = false;
         egui::Window::new("Discard unsaved changes?")
             .collapsible(false)
@@ -462,7 +497,11 @@ impl PaintApp {
             .show(ui.ctx(), |ui| {
                 ui.label(explanation);
                 ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() {
+                    let cancel_response = ui.button("Cancel");
+                    if focus_cancel {
+                        cancel_response.request_focus();
+                    }
+                    if cancel_response.clicked() {
                         cancel = true;
                     }
                     if ui.button("Discard").clicked() {
@@ -470,6 +509,7 @@ impl PaintApp {
                     }
                 });
             });
+        self.focus_discard_buttons = false;
 
         if cancel {
             self.cancel_discard();
@@ -490,6 +530,54 @@ impl PaintApp {
         }
     }
 
+    fn handle_keyboard_shortcuts(&mut self, context: &egui::Context) {
+        if self.path_dialog.is_some()
+            || self.pending_discard.is_some()
+            || context.text_edit_focused()
+        {
+            return;
+        }
+        let command = egui::Modifiers::COMMAND;
+        let command_shift = command | egui::Modifiers::SHIFT;
+
+        if shortcut_pressed(context, command_shift, egui::Key::Z) {
+            self.execute(Command::Redo, "Redid the next edit");
+            return;
+        }
+        if shortcut_pressed(context, command_shift, egui::Key::E) {
+            self.show_path_dialog(PathDialogKind::Export);
+            return;
+        }
+        if shortcut_pressed(context, command_shift, egui::Key::L) {
+            self.add_layer();
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::N) {
+            self.request_new();
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::O) {
+            self.show_path_dialog(PathDialogKind::Open);
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::I) {
+            self.execute(Command::Invert, "Inverted colors on the active layer");
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::R) {
+            self.select_rectangle();
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::F) {
+            let color = self.fill_color;
+            self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::Z) {
+            self.execute(Command::Undo, "Undid the last edit");
+        }
+    }
+
     fn handle_close_request(&mut self, context: &egui::Context) {
         let close_requested = context.input(|input| input.viewport().close_requested());
         if !close_requested {
@@ -502,8 +590,7 @@ impl PaintApp {
         }
         if self.session.dirty() {
             context.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.path_dialog = None;
-            self.pending_discard = Some(DiscardAction::CloseViewport);
+            self.request_discard(DiscardAction::CloseViewport);
         }
     }
 }
@@ -511,6 +598,7 @@ impl PaintApp {
 impl eframe::App for PaintApp {
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         // `logic` also runs for hidden windows, where `ui` would not see the close request.
+        self.handle_keyboard_shortcuts(context);
         self.handle_close_request(context);
     }
 
@@ -591,13 +679,19 @@ impl PathDialogKind {
 struct PathDialog {
     kind: PathDialogKind,
     path: String,
+    focus_path: bool,
 }
 
 impl PathDialog {
     fn new(kind: PathDialogKind) -> Self {
+        Self::with_path(kind, String::new())
+    }
+
+    fn with_path(kind: PathDialogKind, path: String) -> Self {
         Self {
             kind,
-            path: String::new(),
+            path,
+            focus_path: true,
         }
     }
 }
@@ -608,6 +702,22 @@ fn default_session() -> AppSession {
     AppSession::new(document)
 }
 
+fn focus_first_menu_item_on_keyboard_open(ui: &egui::Ui, response: &egui::Response) {
+    // The popup's first pass is a sizing pass: supplement only that keyboard-open focus handoff.
+    // Later passes preserve menu navigation, and pointer opens retain egui's normal behavior.
+    let keyboard_open = ui.is_sizing_pass()
+        && ui.input(|input| {
+            input.key_pressed(egui::Key::Enter) || input.key_pressed(egui::Key::Space)
+        });
+    if keyboard_open {
+        response.request_focus();
+    }
+}
+
+fn shortcut_pressed(context: &egui::Context, modifiers: egui::Modifiers, key: egui::Key) -> bool {
+    context.input_mut(|input| input.consume_key(modifiers, key))
+}
+
 fn color_slider(ui: &mut egui::Ui, label: &'static str, value: &mut u8) {
     let _response = ui.add(egui::Slider::new(value, 0..=u8::MAX).text(label));
 }
@@ -615,6 +725,8 @@ fn color_slider(ui: &mut egui::Ui, label: &'static str, value: &mut u8) {
 fn selection_input(ui: &mut egui::Ui, label: &'static str, value: &mut i64) {
     ui.horizontal(|ui| {
         let label = ui.label(label);
-        let _response = ui.add(egui::DragValue::new(value)).labelled_by(label.id);
+        let _response = ui
+            .add(egui::DragValue::new(value).speed(1.0))
+            .labelled_by(label.id);
     });
 }
