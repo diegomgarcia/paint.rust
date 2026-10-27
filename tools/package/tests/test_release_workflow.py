@@ -75,7 +75,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
     def test_ci_runs_the_release_package_gate_without_uploading(self) -> None:
         build = self.ci.index("- name: Release build")
-        package = self.ci.index("- name: Verify release binary and complete internal package")
+        package = self.ci.index("- name: Reproduce and verify release binary and complete internal package")
         self.assertLess(build, package)
         for fragment in (
             'platform: windows-x86_64\n            binary: target/release/paint-ui.exe',
@@ -90,10 +90,38 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn("actions/upload-artifact@", self.ci)
 
     def test_internal_upload_is_source_qualified_and_follows_verification(self) -> None:
-        package = self.workflow.index("- name: Run real trace smoke and package internal preview")
+        package = self.workflow.index("- name: Reproduce and verify internal preview packages")
         upload = self.workflow.index("- name: Upload internal CI artifact")
         self.assertLess(package, upload)
         self.assertIn("name: paint-r-internal-preview-${{ matrix.platform }}-${{ github.sha }}", self.workflow)
+        self.assertIn("path: dist-a/", self.workflow)
+
+    def test_workflows_compare_two_clean_builds_and_complete_package_outputs(self) -> None:
+        for workflow_name, text, output in (
+            ("ci", self.ci, "ci-dist"),
+            ("release", self.workflow, "dist"),
+        ):
+            with self.subTest(workflow=workflow_name):
+                first_build = text.index(
+                    "CARGO_TARGET_DIR=repro-a bash ./tools/cargo-pinned.sh build --release --locked --package paint-ui"
+                )
+                second_build = text.index(
+                    "CARGO_TARGET_DIR=repro-b bash ./tools/cargo-pinned.sh build --release --locked --package paint-ui"
+                )
+                binary_compare = text.index(
+                    'verify_reproduction.py "repro-a/release/${binary_name}" "repro-b/release/${binary_name}"'
+                )
+                first_package = text.index(f'--output-dir {output}-a')
+                second_package = text.index(f'--output-dir {output}-b')
+                tree_compare = text.index(f'verify_reproduction.py {output}-a {output}-b')
+                self.assertLess(first_build, second_build)
+                self.assertLess(second_build, binary_compare)
+                self.assertLess(binary_compare, first_package)
+                self.assertLess(first_package, second_package)
+                self.assertLess(second_package, tree_compare)
+                self.assertIn('--binary "repro-a/release/${binary_name}"', text)
+                self.assertIn('--binary "repro-b/release/${binary_name}"', text)
+        self.assertEqual(self.workflow.count('binary_name="$(basename "${{ matrix.binary }}")"'), 2)
 
     def test_workflow_has_no_release_or_publish_capability(self) -> None:
         self.assertIn("contents: read", self.workflow)

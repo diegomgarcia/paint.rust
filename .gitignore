@@ -1,4 +1,6 @@
 /target
+/repro-a/
+/repro-b/
 /.worktrees/
 __pycache__/
 *.py[cod]

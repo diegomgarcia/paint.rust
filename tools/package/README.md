@@ -45,8 +45,7 @@ not native-window, signing, notarization, or Paint.NET parity acceptance.
 
 ## Build and package
 
-Use the pinned Cargo wrapper. On all three workflow runners, including Windows, the
-release workflow runs these commands from the repository root in Bash:
+Use the pinned Cargo wrapper. Equivalent local commands from the repository root are:
 
 ```sh
 bash ./tools/cargo-pinned.sh build --release --locked --package paint-ui
@@ -116,6 +115,22 @@ tested environment. Reproducing product bytes additionally requires identical Ru
 build inputs and toolchain behavior; package determinism does not make different product
 builds identical.
 
+Both workflows go further: they build `paint-ui` into fresh `repro-a` and `repro-b`
+`CARGO_TARGET_DIR` directories, compare the real executables, package each binary with the
+full pre/post-extraction gate, and compare every archive/sidecar/verification byte. The
+manual workflow uploads only the first tree after both comparisons pass. The comparator
+can also be run locally:
+
+```sh
+python3 tools/package/verify_reproduction.py repro-a/release/paint-ui repro-b/release/paint-ui
+python3 tools/package/verify_reproduction.py dist-a dist-b
+```
+
+It rejects content differences, missing/extra files, empty trees, and symbolic-link
+outputs. Its JSON contains relative paths and hashes, not host paths or timestamps. This
+proves byte equality only for those two builds on one checkout/runner; it is not cross-OS
+identity, a frozen SDK/runner image, or proof of reproduction across time.
+
 From the directory containing an archive and sidecar, use `sha256sum -c <sidecar>` (or
 `shasum -a 256 -c <sidecar>` on macOS). From an extracted payload root, the internal
 manifest can be checked the same way with `SHA256SUMS.txt`.
@@ -153,6 +168,7 @@ public-release refusal, and mandatory-smoke failure handling. A complete `packag
 integration test additionally compares two deterministic archives, sidecars, binary
 evidence, and post-extraction receipts while doubling only the external smoke/metadata
 commands. Separate failure cases prove rejected archives are not moved into the output.
-These fixtures do not
+Reproduction-comparator tests cover identical files/trees and content, entry, empty-tree,
+and input-kind failures. These fixtures do not
 claim a real product smoke or native execution. Only a native build of the actual
 `paint-ui` binary can satisfy that product gate.

@@ -68,22 +68,36 @@ jobs:
         run: python3 -m unittest discover -s tests/e2e -p 'test_*.py' -v
       - name: Reference harness unit tests (no VM execution)
         run: python3 -m unittest discover -s tools/reference/tests -p 'test_*.py' -v
-      - name: Build actual paint-ui release binary
-        run: bash ./tools/cargo-pinned.sh build --release --locked --package paint-ui
-      - name: Run real trace smoke and package internal preview
+      - name: Build actual paint-ui release binary twice
         run: |
+          binary_name="$(basename "${{ matrix.binary }}")"
+          CARGO_TARGET_DIR=repro-a bash ./tools/cargo-pinned.sh build --release --locked --package paint-ui
+          CARGO_TARGET_DIR=repro-b bash ./tools/cargo-pinned.sh build --release --locked --package paint-ui
+          python3 tools/package/verify_reproduction.py "repro-a/release/${binary_name}" "repro-b/release/${binary_name}"
+      - name: Reproduce and verify internal preview packages
+        run: |
+          binary_name="$(basename "${{ matrix.binary }}")"
           python3 tools/package/preview_package.py \
-            --binary "${{ matrix.binary }}" \
+            --binary "repro-a/release/${binary_name}" \
             --platform "${{ matrix.platform }}" \
-            --output-dir dist \
+            --output-dir dist-a \
             --repeat 2 \
             --timeout 30 \
             --distribution internal-preview \
             --cargo-command bash ./tools/cargo-pinned.sh
+          python3 tools/package/preview_package.py \
+            --binary "repro-b/release/${binary_name}" \
+            --platform "${{ matrix.platform }}" \
+            --output-dir dist-b \
+            --repeat 2 \
+            --timeout 30 \
+            --distribution internal-preview \
+            --cargo-command bash ./tools/cargo-pinned.sh
+          python3 tools/package/verify_reproduction.py dist-a dist-b
       - name: Upload internal CI artifact (never a GitHub release)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: paint-r-internal-preview-${{ matrix.platform }}-${{ github.sha }}
-          path: dist/
+          path: dist-a/
           if-no-files-found: error
           retention-days: 7
