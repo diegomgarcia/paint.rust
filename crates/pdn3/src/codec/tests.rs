@@ -790,21 +790,30 @@ fn container_semantic_and_chunk_resource_limits_are_typed() {
     }
 }
 
+type NormalDocumentCase = (u32, u32, bool, u8, bool, Vec<u8>, Vec<u8>);
+
+fn normal_document_case() -> impl Strategy<Value = NormalDocumentCase> {
+    (1_u32..=4, 1_u32..=4).prop_flat_map(|(width, height)| {
+        (
+            Just(width),
+            Just(height),
+            any::<bool>(),
+            any::<u8>(),
+            any::<bool>(),
+            prop::collection::vec(0x20_u8..=0x7e, 0..16),
+            prop::collection::vec(any::<u8>(), width as usize * height as usize * 4),
+        )
+    })
+}
+
 proptest! {
     #[test]
     fn arbitrary_normal_documents_round_trip_semantically(
-        width in 1u32..=4,
-        height in 1u32..=4,
-        visible in any::<bool>(),
-        opacity in any::<u8>(),
-        background in any::<bool>(),
-        name_bytes in prop::collection::vec(0x20u8..=0x7e, 0..16),
-        channels in prop::collection::vec(any::<u8>(), 4..=64),
+        case in normal_document_case(),
     ) {
-        let count = width as usize * height as usize;
-        prop_assume!(channels.len() >= count * 4);
+        let (width, height, visible, opacity, background, name_bytes, channels) = case;
         let name = String::from_utf8(name_bytes).expect("ASCII name");
-        let pixels = channels[..count * 4]
+        let pixels = channels
             .chunks_exact(4)
             .map(|bytes| Bgra::new(bytes[0], bytes[1], bytes[2], bytes[3]))
             .collect::<Vec<_>>();

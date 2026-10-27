@@ -19,6 +19,53 @@ fn surface() -> impl Strategy<Value = Surface> {
     })
 }
 
+fn surface_selection_and_after() -> impl Strategy<Value = (Surface, Rect, Vec<Bgra>)> {
+    surface().prop_flat_map(|surface| {
+        let width = surface.width();
+        let height = surface.height();
+        (0..width, 0..height)
+            .prop_flat_map(move |(left, top)| {
+                (
+                    1..=width - left,
+                    1..=height - top,
+                    0..=8_i64,
+                    0..=8_i64,
+                    0..=4_i64,
+                    0..=4_i64,
+                )
+                    .prop_map(
+                        move |(
+                            clipped_width,
+                            clipped_height,
+                            left_padding,
+                            top_padding,
+                            right_padding,
+                            bottom_padding,
+                        )| {
+                            let clipped_right = i64::from(left + clipped_width);
+                            let clipped_bottom = i64::from(top + clipped_height);
+                            Rect::new(
+                                i64::from(left) - left_padding,
+                                i64::from(top) - top_padding,
+                                clipped_right + right_padding,
+                                clipped_bottom + bottom_padding,
+                            )
+                            .expect("constructed selection has positive dimensions")
+                        },
+                    )
+            })
+            .prop_flat_map(move |selection| {
+                let clipped = selection
+                    .clip_to(surface.size())
+                    .expect("constructed selection overlaps the surface");
+                let len = (clipped.width() * clipped.height()) as usize;
+                let generated_surface = surface.clone();
+                proptest::collection::vec(pixel(), len)
+                    .prop_map(move |after| (generated_surface.clone(), selection, after))
+            })
+    })
+}
+
 fn document_for(surface: Surface) -> Document {
     Document::from_layers(
         surface.size(),
@@ -32,21 +79,13 @@ proptest! {
 
     #[test]
     fn valid_patch_and_inverse_restore_pixels_and_preserve_outside_regions(
-        surface in surface(),
-        x in -4..6i64,
-        y in -4..6i64,
-        width in 1..=7u32,
-        height in 1..=7u32,
-        mut generated_after in proptest::collection::vec(pixel(), 25),
+        case in surface_selection_and_after(),
     ) {
-        let selection = Rect::from_xywh(x, y, width, height).expect("small rectangle");
-        let Some(rect) = selection.clip_to(surface.size()) else {
-            prop_assume!(false);
-            return Ok(());
-        };
+        let (surface, selection, after) = case;
+        let rect = selection
+            .clip_to(surface.size())
+            .expect("strategy guarantees an overlapping selection");
         let before = surface.read_region(rect).expect("clipped input region");
-        generated_after.truncate(before.len());
-        let after = generated_after;
         let original_surface = surface.clone();
         let mut document = document_for(surface);
         let patch = PixelPatch::new(
