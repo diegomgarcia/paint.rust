@@ -1,0 +1,141 @@
+{
+  "binary": {
+    "bytes": 12608976,
+    "path": "/Users/diegogarcia/Projects/Paint .R/target/release/paint-ui",
+    "sha256": "79f532a938c40328a27ece05ae25fca96bbe3f9dda090b39a9ecb7a586bb1060"
+  },
+  "features": [
+    "interactive HSV color wheel with white-to-saturation radial mapping",
+    "alpha preservation",
+    "selected-color marker",
+    "accessible button label"
+  ],
+  "format": "paint.r.color-wheel",
+  "limitations": [
+    "Value is fixed at 100% on the wheel; no separate value ring.",
+    "No numeric hex editor.",
+    "Packaged app for this exact source, Windows/Linux, hosted CI, signing, legal, and full parity remain open."
+  ],
+  "native_gate": {
+    "assertions": [
+      {
+        "name": "initial_clean_native_window",
+        "passed": true
+      },
+      {
+        "name": "command_i_modified_document",
+        "passed": true
+      },
+      {
+        "message": "before/after native screenshot RGBA pixels are identical; visual modification is inconclusive",
+        "name": "before_after_screenshots_differ",
+        "passed": true
+      },
+      {
+        "name": "dirty_close_confirmation_observed",
+        "passed": true
+      },
+      {
+        "message": "dirty close confirmation did not remain observable",
+        "name": "dirty_close_blocked_by_confirmation",
+        "passed": true
+      },
+      {
+        "name": "cancel_preserved_modified_session",
+        "passed": true
+      },
+      {
+        "message": "accessible document text changed while canceling the dirty close",
+        "name": "cancel_preserved_accessible_document_state",
+        "passed": true
+      },
+      {
+        "message": "confirmation and canceled screenshot RGBA pixels are identical",
+        "name": "cancel_screenshot_differs_from_confirmation",
+        "passed": true
+      },
+      {
+        "name": "second_dirty_close_confirmation",
+        "passed": true
+      },
+      {
+        "exit_code": 0,
+        "name": "explicit_discard_exit_zero",
+        "passed": true
+      }
+    ],
+    "independent_rgba": [
+      "e2821b318e7695fe5cbba700895684905d85f9e8cb309981ffcdf854ee7a40fd",
+      "2821733f265244d7e657a075c567ff15cdd666cf82d0a6401f602e4d39eca353",
+      "c291bf15e895e0d086ccbdf8507bc1047a9a17c5972c0829d994e44ca75d36a1",
+      "2821733f265244d7e657a075c567ff15cdd666cf82d0a6401f602e4d39eca353",
+      "c291bf15e895e0d086ccbdf8507bc1047a9a17c5972c0829d994e44ca75d36a1"
+    ],
+    "screenshots": [
+      {
+        "bytes": 870926,
+        "height": 2088,
+        "path": "00-before.png",
+        "pid": 41159,
+        "rgba_sha256": "e2821b318e7695fe5cbba700895684905d85f9e8cb309981ffcdf854ee7a40fd",
+        "sha256": "518ba4bba152fb3809c83621dc7a80aef63444c1e564d744f17679c9517cd3b7",
+        "width": 2784,
+        "window_id": 7467
+      },
+      {
+        "bytes": 866723,
+        "height": 2088,
+        "path": "01-modified.png",
+        "pid": 41159,
+        "rgba_sha256": "2821733f265244d7e657a075c567ff15cdd666cf82d0a6401f602e4d39eca353",
+        "sha256": "2b85f3301cc6bfa553d844c50ca59550ac6fc3f1b96c6b1a9111e87c9b6acf3c",
+        "width": 2784,
+        "window_id": 7467
+      },
+      {
+        "bytes": 894403,
+        "height": 2088,
+        "path": "02-close-confirmation.png",
+        "pid": 41159,
+        "rgba_sha256": "c291bf15e895e0d086ccbdf8507bc1047a9a17c5972c0829d994e44ca75d36a1",
+        "sha256": "305fe2780224f3bd96be092898fa56114ed6753a1ff408ca7dfae46470c68302",
+        "width": 2784,
+        "window_id": 7467
+      },
+      {
+        "bytes": 866723,
+        "height": 2088,
+        "path": "03-canceled.png",
+        "pid": 41159,
+        "rgba_sha256": "2821733f265244d7e657a075c567ff15cdd666cf82d0a6401f602e4d39eca353",
+        "sha256": "2b85f3301cc6bfa553d844c50ca59550ac6fc3f1b96c6b1a9111e87c9b6acf3c",
+        "width": 2784,
+        "window_id": 7467
+      },
+      {
+        "bytes": 894403,
+        "height": 2088,
+        "path": "04-second-close-confirmation.png",
+        "pid": 41159,
+        "rgba_sha256": "c291bf15e895e0d086ccbdf8507bc1047a9a17c5972c0829d994e44ca75d36a1",
+        "sha256": "305fe2780224f3bd96be092898fa56114ed6753a1ff408ca7dfae46470c68302",
+        "width": 2784,
+        "window_id": 7467
+      }
+    ]
+  },
+  "process": {
+    "exit_code": 0,
+    "pid": 41159
+  },
+  "product_source_commit": "6f816a73f98c17b9506d877347b6ee586a4e8a25",
+  "public_release": false,
+  "status": "PASS_INTERACTIVE_HSV_WHEEL_AND_LIVE_NATIVE_SMOKE",
+  "tests": {
+    "failed": 0,
+    "native_gate": 27,
+    "paint_ui": 30,
+    "strict_clippy": "pass"
+  },
+  "version": 1
+}
