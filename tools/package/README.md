@@ -164,17 +164,33 @@ no network access, uses validated in-memory bytes, and verifies every emitted fi
 again. Package-source texts take precedence; a failed identity match produces no supplemented
 text and leaves the package incomplete.
 
-The current curated bundle is deliberately limited to the eight AccessKit package versions
-and the three listed egui-family 0.37.0 packages: `eframe`, `egui_kittest`, and
-`egui_system_font_provider`. Their two repository-root license files were retrieved separately
-from the exact package-specific commit URLs recorded in the manifest and hash-verified before
-being checked in. The seven other locked egui-family 0.37.0 packages remain uncovered because
-exact commit-pinned upstream license content for their recorded VCS commit
-`7c0b40402271e8d40cda69f87cf3c2617c2e4382` was unavailable during curation; no moving-branch,
-latest, or release-tag content was substituted. Other package gaps remain explicit. Curated
-retrieval and file coverage are not legal review or a claim of redistribution compliance.
-Incomplete extraction is disclosed in internal artifacts; public packaging remains refused.
-No first-party license is invented.
+The current curated bundle is deliberately limited to 17 packages: the eight AccessKit package
+versions; the three listed egui-family 0.37.0 packages (`eframe`, `egui_kittest`, and
+`egui_system_font_provider`); and these six Android-related packages:
+
+| Package | Declared Cargo repository | Exact `.cargo_vcs_info` commit | Package path in that commit |
+|---|---|---|---|
+| `jni` 0.22.4 | `https://github.com/jni-rs/jni-rs` | `5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7` | `crates/jni` |
+| `jni-macros` 0.22.4 | `https://github.com/jni-rs/jni-rs` | `33045a124105c939d1e2cbdcb5a39e5d868ffa03` | `crates/jni-macros` |
+| `jni-sys-macros` 0.4.1 | `https://github.com/jni-rs/jni-sys` | `64d77b7a5f119d7b55b4e2c169a4668067ff59e6` | `jni-sys-macros` |
+| `ndk` 0.9.0 | `https://github.com/rust-mobile/ndk` | `49bbbba16c58ff63cb8a0ad0eca5a9fb7ecaec25` | `ndk` |
+| `ndk-context` 0.1.1 | `https://github.com/rust-windowing/android-ndk-rs` | `10f2ba388fca20f7349996ebae26ccda7a6fda5c` | `ndk-context` |
+| `ndk-sys` 0.6.0+11769913 | `https://github.com/rust-mobile/ndk` | `49bbbba16c58ff63cb8a0ad0eca5a9fb7ecaec25` | `ndk-sys` |
+
+Their two repository-root license files were retrieved separately from the exact package-specific
+commit URLs recorded in the manifest and hash-verified before being checked in. For the six
+Android-related packages, curation also matched real locked Cargo metadata and registry sources,
+verified each cached `.crate` archive SHA-256 against `Cargo.lock`, and matched the archive and
+extracted `.cargo_vcs_info.json` commit and package path. Exact-commit Git trees established the
+root `LICENSE-APACHE` and `LICENSE-MIT` paths before retrieval; no package subdirectory, moving
+branch, latest revision, release tag, SPDX expression, or other commit supplied substitute text.
+
+The seven other locked egui-family 0.37.0 packages remain uncovered because exact commit-pinned
+upstream license content for their recorded VCS commit `7c0b40402271e8d40cda69f87cf3c2617c2e4382`
+was unavailable during curation; no moving-branch, latest, or release-tag content was substituted.
+Other package gaps remain explicit. Curated retrieval and file coverage are not legal review or a
+claim of redistribution compliance. Incomplete extraction is disclosed in internal artifacts;
+public packaging remains refused. No first-party license is invented.
 
 ## Tests
 
@@ -185,7 +201,7 @@ python3 -m unittest discover -s tools/package/tests -p 'test_*.py' -v
 Tests use clearly named temporary, disposable non-product fixtures. They cover ZIP and
 tar.gz byte determinism, timestamps/modes/order, exact SHA-256 manifests and sidecars,
 SBOM path independence, font notice extraction and gap reporting, offline curated-notice
-identity/hash/provenance checks, the checked-in AccessKit and scoped egui bundles, platform layouts,
+identity/hash/provenance checks, the checked-in AccessKit, scoped egui, and Android bundles, platform layouts,
 PE/Mach-O/ELF architecture acceptance and rejection, exact smoke-run validation,
 public-release refusal, and mandatory-smoke failure handling. A complete `package_release`
 integration test additionally compares two deterministic archives, sidecars, binary

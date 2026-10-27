@@ -494,7 +494,7 @@ class NoticeProvenanceSupplementTests(DisposableFixtureMixin):
 
 
 class CheckedInNoticeSupplementTests(unittest.TestCase):
-    def test_accesskit_and_egui_bundles_are_hash_valid_and_match_the_real_lockfile(self) -> None:
+    def test_all_bundles_have_exact_lock_vcs_identities_and_text_hashes(self) -> None:
         repo = Path(package.__file__).resolve().parents[2]
         supplement = package.load_notice_supplement(repo / "tools/package/notice_supplement")
         checksums = package.load_locked_package_checksums(repo / "Cargo.lock")
@@ -525,6 +525,50 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                 "crates/egui_system_font_provider",
             ),
         }
+        android = {
+            ("jni", "0.22.4"): (
+                "5efd9a482cf3a427f00d6b35f14332adc7902ce91efb778580e180ff90fa3498",
+                "https://github.com/jni-rs/jni-rs",
+                "5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7",
+                "crates/jni",
+                "jni-rs/jni-rs",
+            ),
+            ("jni-macros", "0.22.4"): (
+                "a00109accc170f0bdb141fed3e393c565b6f5e072365c3bd58f5b062591560a3",
+                "https://github.com/jni-rs/jni-rs",
+                "33045a124105c939d1e2cbdcb5a39e5d868ffa03",
+                "crates/jni-macros",
+                "jni-rs/jni-rs",
+            ),
+            ("jni-sys-macros", "0.4.1"): (
+                "38c0b942f458fe50cdac086d2f946512305e5631e720728f2a61aabcd47a6264",
+                "https://github.com/jni-rs/jni-sys",
+                "64d77b7a5f119d7b55b4e2c169a4668067ff59e6",
+                "jni-sys-macros",
+                "jni-rs/jni-sys",
+            ),
+            ("ndk", "0.9.0"): (
+                "c3f42e7bbe13d351b6bead8286a43aac9534b82bd3cc43e47037f012ebfd62d4",
+                "https://github.com/rust-mobile/ndk",
+                "49bbbba16c58ff63cb8a0ad0eca5a9fb7ecaec25",
+                "ndk",
+                "rust-mobile/ndk",
+            ),
+            ("ndk-context", "0.1.1"): (
+                "27b02d87554356db9e9a873add8782d4ea6e3e58ea071a9adb9a2e8ddb884a8b",
+                "https://github.com/rust-windowing/android-ndk-rs",
+                "10f2ba388fca20f7349996ebae26ccda7a6fda5c",
+                "ndk-context",
+                "rust-windowing/android-ndk-rs",
+            ),
+            ("ndk-sys", "0.6.0+11769913"): (
+                "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873",
+                "https://github.com/rust-mobile/ndk",
+                "49bbbba16c58ff63cb8a0ad0eca5a9fb7ecaec25",
+                "ndk-sys",
+                "rust-mobile/ndk",
+            ),
+        }
         accesskit_hashes = {
             "LICENSE-APACHE": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
             "LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
@@ -533,8 +577,32 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
             "LICENSE-APACHE": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90",
             "LICENSE-MIT": "95ca92f5f8ea5231f1580b3a2a799e8260af3114b900e1def5355a7f44bcf60c",
         }
+        android_hashes = {
+            "5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7": {
+                "LICENSE-APACHE": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+                "LICENSE-MIT": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+            },
+            "33045a124105c939d1e2cbdcb5a39e5d868ffa03": {
+                "LICENSE-APACHE": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+                "LICENSE-MIT": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+            },
+            "64d77b7a5f119d7b55b4e2c169a4668067ff59e6": {
+                "LICENSE-APACHE": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+                "LICENSE-MIT": "1d85bd754b04ceec93e98e890edd1fa3c6a22e81bcb32135806beeccefa51cd1",
+            },
+            "49bbbba16c58ff63cb8a0ad0eca5a9fb7ecaec25": {
+                "LICENSE-APACHE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+                "LICENSE-MIT": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1",
+            },
+            "10f2ba388fca20f7349996ebae26ccda7a6fda5c": {
+                "LICENSE-APACHE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+                "LICENSE-MIT": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1",
+            },
+        }
 
-        self.assertEqual({identity[:2] for identity in supplement.packages}, set(accesskit) | set(egui))
+        self.assertEqual(
+            {identity[:2] for identity in supplement.packages}, set(accesskit) | set(egui) | set(android)
+        )
         for identity, curated in supplement.packages.items():
             with self.subTest(package=identity[:2]):
                 self.assertEqual(identity[2], NoticeProvenanceSupplementTests.SOURCE)
@@ -545,10 +613,14 @@ class CheckedInNoticeSupplementTests(unittest.TestCase):
                     path_in_vcs = accesskit[identity[:2]]
                     raw_repository = "AccessKit/accesskit"
                     expected_hashes = accesskit_hashes
-                else:
+                elif identity[:2] in egui:
                     repository, commit, path_in_vcs = egui[identity[:2]]
                     raw_repository = "emilk/egui"
                     expected_hashes = egui_hashes
+                else:
+                    expected_checksum, repository, commit, path_in_vcs, raw_repository = android[identity[:2]]
+                    self.assertEqual(curated.checksum, expected_checksum)
+                    expected_hashes = android_hashes[commit]
                 self.assertEqual(curated.repository, repository)
                 self.assertEqual(curated.vcs_commit, commit)
                 self.assertEqual(curated.path_in_vcs, path_in_vcs)
