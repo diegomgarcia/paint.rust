@@ -7,12 +7,14 @@
 screenshots. This is separate from the semantic `egui_kittest` usability tests and from
 headless trace smoke.
 
-A live run on 2026-10-27 at source `9fed413517e69f66a606eb979c9dc0d622d1c2b6` produced
-`PASS`, `native_execution=COMPLETED`, process exit status 0, ten passing assertions, and five
-captured PNGs. Independent decoding confirmed all RGBA hashes and the expected transitions:
+A live run on 2026-10-27 at product source `ac387ac67752110deab29af6b2377aa8193a7dba` and
+native-gate source `3471a735756df3251572d0b5071fc3feec19f513` produced `PASS`,
+`native_execution=COMPLETED`, process exit status 0, ten passing assertions, and five captured
+PNGs. It covered Command-Q for the first dirty close and the native `AXCloseButton` for the
+second. Independent decoding confirmed all RGBA hashes and the expected transitions:
 before != modified, modified == canceled, and first confirmation == second confirmation.
 The evidence is recorded in
-[`2026-10-27-macos-native-live-9fed413.json`](../../../artifacts/validation/2026-10-27-macos-native-live-9fed413.json).
+[`2026-10-27-cmd-q-dirty-guard-ac387ac.json`](../../../artifacts/validation/2026-10-27-cmd-q-dirty-guard-ac387ac.json).
 This proves only this macOS native keyboard/window slice on the recorded host; it is not
 Paint.NET parity, a packaged `.app` smoke, or a public-release claim. Earlier locked-host
 runs remain fail-closed `BLOCKED`/`NOT_RUN` evidence.
