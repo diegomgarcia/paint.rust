@@ -159,7 +159,7 @@
   "native_window": {
     "status": "blocked_environment",
     "screen_locked": true,
-    "attempt": "The final debug process stayed alive but no accessibility window was observable; no crash is inferred and no pass is claimed.",
+    "attempt": "An earlier pre-final attempt left the debug process alive without an observable accessibility window; no crash was inferred. Final-candidate native execution was not attempted after the host lock was reconfirmed, and no final-candidate native pass is claimed.",
     "packaged_window_smoke": "not run while the host remains locked",
     "prior_observation": "An earlier integrated source launched a real macOS window and exited cleanly; that is not final-candidate native-window evidence."
   },
