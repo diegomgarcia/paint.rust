@@ -164,11 +164,11 @@ no network access, uses validated in-memory bytes, and verifies every emitted fi
 again. Package-source texts take precedence; a failed identity match produces no supplemented
 text and leaves the package incomplete.
 
-The current curated bundle is deliberately limited to 48 packages: the eight AccessKit package
+The current curated bundle is deliberately limited to 50 packages: the eight AccessKit package
 versions; the three listed egui-family 0.37.0 packages (`eframe`, `egui_kittest`, and
 `egui_system_font_provider`); these six Android-related packages; the three additional packages
-in the second table; the six GPU/core packages in the third table; and the twenty-two objc2-repository
-packages in the fourth table:
+in the second table; the six GPU/core packages in the third table; the twenty-two objc2-repository
+packages in the fourth table; and the final two exact Windows/dispatch identities in the fifth table:
 
 | Package | Declared Cargo repository | Exact `.cargo_vcs_info` commit | Package path in that commit |
 |---|---|---|---|
@@ -219,7 +219,12 @@ packages in the fourth table:
 | `objc2-user-notifications` 0.2.2 | `https://github.com/madsmtm/objc2` | `e282618be4c3a3b9542957e0c8540e9588472ce8` | `framework-crates/objc2-user-notifications` | `LICENSE.txt` |
 | `objc-sys` 0.3.5 | `https://github.com/madsmtm/objc2` | `4fc083f1c6d6784577e38b0ee8dbd344481e2fd2` | `crates/objc-sys` | `LICENSE.txt` |
 
-All 38 pre-existing bindings are unchanged. Every curated resource was retrieved separately from
+| Package | Declared Cargo repository | Exact `.cargo_vcs_info` commit | Package path | Exact root resource |
+|---|---|---|---|---|
+| `clipboard-win` 5.4.3 | `https://github.com/DoumanAsh/clipboard-win` | `ed27008ae5d1f10cfbb266de039f0fb35fd05a56` | Repository root; path field empty | `LICENSE` |
+| `dispatch2` 0.3.1 | `https://github.com/madsmtm/objc2` | `8852b424193ca41602281b3d7540d7c8ed51e49a` | `crates/dispatch2` | `LICENSE.md` |
+
+All 48 pre-existing bindings are unchanged. Every curated resource was retrieved separately from
 the exact package-specific full-commit URL recorded in the manifest and hash-verified before being
 checked in. For the six Android-related packages, three additional packages, six GPU/core
 packages, and twenty-two objc2-repository packages, curation also matched real locked Cargo metadata
@@ -248,8 +253,27 @@ repository-root paths, exact commits, and meanings were independently re-fetched
 commit and matched to those Git blob IDs; no package-subdirectory copies were added. Exact-commit
 listings confirm these package directories contain no local license/notice file.
 
-The requested `dispatch` 0.2.0 and `r-efi` 5.3.0/6.0.0 archives and extracted sources passed those
-same lock-checksum and archived/extracted VCS checks but remain uncovered. Real Cargo metadata
+The final two Windows/dispatch identities add `clipboard-win` 5.4.3 and `dispatch2` 0.3.1. Each was
+checked against its exact `Cargo.lock` checksum, crates.io registry source, declared HTTPS repository,
+cached `.crate` SHA-256, and archived plus extracted `.cargo_vcs_info.json` commit and package path.
+`clipboard-win` resolves only to its repository-root `LICENSE` at
+`ed27008ae5d1f10cfbb266de039f0fb35fd05a56` (1,338 bytes, SHA-256
+`c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566`, Git blob
+`36b7cd93cdfbac762f5be4c6ce276df2ea6305c2`), the Boost Software License text matching its declared
+`BSL-1.0` expression. `dispatch2` resolves only to the repository-root `LICENSE.md` at
+`8852b424193ca41602281b3d7540d7c8ed51e49a` (1,339 bytes, SHA-256
+`7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54`, Git blob
+`540ae4c81adb5f64a9f61e222b688880da24300e`), whose stated Zlib/Apache-2.0/MIT trio matches its
+`Zlib OR Apache-2.0 OR MIT` expression; the exact `crates/dispatch2` tree contains no local
+license/notice file. Both resources were fetched separately from their own full-commit URLs.
+Although the `dispatch2` bytes are independently identical to the existing objc2 `LICENSE.md`
+resource, its exact commit and package path differ, so new commit-keyed bytes were added rather than
+reusing another commit's resource; the `clipboard-win` bytes are unique in the bundle. No package
+subdirectory, moving branch, latest revision, release tag, other commit, or SPDX expression supplied
+substitute text.
+
+The requested `dispatch` 0.2.0 identity and the `r-efi` 5.3.0/6.0.0 archives and extracted sources
+passed those same lock-checksum and archived/extracted VCS checks but remain uncovered. Real Cargo metadata
 declares the `dispatch` repository as `http://github.com/SSheldon/rust-dispatch`, which fails closed
 against the loader's exact HTTPS-repository requirement; it was not rewritten to HTTPS. Neither
 exact `r-efi` commit (`97b55bed1c2c91dcbf787674849f05337ff80b33` and
