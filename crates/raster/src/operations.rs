@@ -141,3 +141,191 @@ fn copy_pixels(pixels: &[Bgra], requested_bytes: usize) -> Result<Vec<Bgra>, Ras
     copy.extend_from_slice(pixels);
     Ok(copy)
 }
+
+/// Paints a round, hard-edged stroke through canvas-space points.
+/// `color = None` erases to transparent. The patch is clipped to the active selection.
+pub fn stroke(
+    document: &Document,
+    layer_id: LayerId,
+    points: &[paint_core::Point],
+    size: u32,
+    color: Option<Bgra>,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let Some(operation) = operation_rect(document) else {
+        return Ok(None);
+    };
+    let Some(first) = points.first() else {
+        return Ok(None);
+    };
+    let radius = size.max(1).saturating_sub(1) / 2;
+    let radius_i64 = i64::from(radius);
+    let mut min_x = i64::from(first.x);
+    let mut min_y = i64::from(first.y);
+    let mut max_x = min_x;
+    let mut max_y = min_y;
+    for point in points {
+        min_x = min_x.min(i64::from(point.x));
+        min_y = min_y.min(i64::from(point.y));
+        max_x = max_x.max(i64::from(point.x));
+        max_y = max_y.max(i64::from(point.y));
+    }
+    let Some(rect) = clip_rect(
+        operation,
+        min_x - radius_i64,
+        min_y - radius_i64,
+        max_x + radius_i64 + 1,
+        max_y + radius_i64 + 1,
+    )?
+    else {
+        return Ok(None);
+    };
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let target = color.unwrap_or(Bgra::TRANSPARENT);
+    let left = rect.left();
+    let top = rect.top();
+    let width = i64::from(rect.width());
+    let radius_squared = i128::from(radius) * i128::from(radius);
+
+    let mut stamp = |x: i64, y: i64| {
+        for py in (y - radius_i64)..=(y + radius_i64) {
+            if py < top || py >= top + i64::from(rect.height()) {
+                continue;
+            }
+            for px in (x - radius_i64)..=(x + radius_i64) {
+                if px < left || px >= left + width {
+                    continue;
+                }
+                let dx = i128::from(px - x);
+                let dy = i128::from(py - y);
+                if dx * dx + dy * dy > radius_squared {
+                    continue;
+                }
+                let index = ((py - top) * width + (px - left)) as usize;
+                after[index] = target;
+            }
+        }
+    };
+
+    stamp(i64::from(first.x), i64::from(first.y));
+    for pair in points.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let dx = i64::from(b.x) - i64::from(a.x);
+        let dy = i64::from(b.y) - i64::from(a.y);
+        let steps = dx.unsigned_abs().max(dy.unsigned_abs());
+        for step in 1..=steps {
+            let x = i64::from(a.x) + (dx * i64::from(step as u32)) / i64::from(steps as u32);
+            let y = i64::from(a.y) + (dy * i64::from(step as u32)) / i64::from(steps as u32);
+            stamp(x, y);
+        }
+    }
+
+    if before == after {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+/// Fills an ellipse inscribed in a half-open rectangle, clipped to the selection.
+pub fn fill_ellipse(
+    document: &Document,
+    layer_id: LayerId,
+    ellipse: Rect,
+    color: Bgra,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let Some(operation) = operation_rect(document) else {
+        return Ok(None);
+    };
+    let Some(rect) = intersect(operation, ellipse)? else {
+        return Ok(None);
+    };
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let cx = (ellipse.left() as f64 + ellipse.right() as f64) / 2.0;
+    let cy = (ellipse.top() as f64 + ellipse.bottom() as f64) / 2.0;
+    let rx = f64::from(ellipse.width()) / 2.0;
+    let ry = f64::from(ellipse.height()) / 2.0;
+    let width = i64::from(rect.width());
+    for y in 0..rect.height() {
+        let py = (rect.top() + i64::from(y)) as f64 + 0.5;
+        for x in 0..rect.width() {
+            let px = (rect.left() + i64::from(x)) as f64 + 0.5;
+            let nx = (px - cx) / rx;
+            let ny = (py - cy) / ry;
+            if nx * nx + ny * ny <= 1.0 {
+                after[(i64::from(y) * width + i64::from(x)) as usize] = color;
+            }
+        }
+    }
+    if before == after {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+fn clip_rect(
+    operation: Rect,
+    left: i64,
+    top: i64,
+    right: i64,
+    bottom: i64,
+) -> Result<Option<Rect>, RasterError> {
+    let left = left.max(operation.left());
+    let top = top.max(operation.top());
+    let right = right.min(operation.right());
+    let bottom = bottom.min(operation.bottom());
+    if right <= left || bottom <= top {
+        return Ok(None);
+    }
+    Ok(Some(Rect::new(left, top, right, bottom)?))
+}
+
+fn intersect(a: Rect, b: Rect) -> Result<Option<Rect>, RasterError> {
+    clip_rect(a, b.left(), b.top(), b.right(), b.bottom())
+}
+
+/// Fills a half-open rectangle, clipped to the active selection.
+pub fn fill_rect(
+    document: &Document,
+    layer_id: LayerId,
+    rect: Rect,
+    color: Bgra,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let Some(operation) = operation_rect(document) else {
+        return Ok(None);
+    };
+    let Some(rect) = intersect(operation, rect)? else {
+        return Ok(None);
+    };
+    let before = layer.surface().read_region(rect)?;
+    if before.iter().all(|pixel| *pixel == color) {
+        return Ok(None);
+    }
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    after.fill(color);
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}

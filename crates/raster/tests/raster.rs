@@ -265,3 +265,94 @@ fn raster_patches_become_stale_and_fail_without_mutation() {
         Some(&Bgra::WHITE)
     );
 }
+
+#[test]
+fn stroke_connects_points_and_clips_to_the_selection() {
+    let surface = Surface::filled(size(6, 4), Bgra::WHITE).expect("surface");
+    let mut document = Document::from_layers(
+        size(6, 4),
+        vec![Layer::new(LayerId::new(9), "stroke", surface)],
+    )
+    .expect("document");
+    document
+        .set_selection(Some(Rect::new(1, 1, 5, 3).expect("selection")))
+        .expect("selection");
+    let patch = paint_raster::stroke(
+        &document,
+        LayerId::new(9),
+        &[Point::new(0, 2), Point::new(5, 2)],
+        1,
+        Some(Bgra::BLACK),
+    )
+    .expect("stroke")
+    .expect("visible stroke");
+    assert_eq!(patch.rect(), Rect::new(1, 2, 5, 3).expect("clipped"));
+    document.apply_patch(&patch).expect("apply");
+    let pixels = document.active_layer().surface().pixels();
+    for x in 1..5 {
+        assert_eq!(pixels[12 + x as usize], Bgra::BLACK, "x={x}");
+    }
+    assert_eq!(pixels[0], Bgra::WHITE);
+    assert_eq!(pixels[5], Bgra::WHITE);
+}
+
+#[test]
+fn eraser_stroke_writes_transparent_and_ellipse_respects_its_inscribed_bounds() {
+    let surface = Surface::filled(size(5, 5), Bgra::BLACK).expect("surface");
+    let mut document = Document::from_layers(
+        size(5, 5),
+        vec![Layer::new(LayerId::new(3), "tools", surface)],
+    )
+    .expect("document");
+    let erase = paint_raster::stroke(&document, LayerId::new(3), &[Point::new(2, 2)], 1, None)
+        .expect("stroke")
+        .expect("erase patch");
+    document.apply_patch(&erase).expect("erase");
+    assert_eq!(
+        document.active_layer().surface().pixels()[12],
+        Bgra::TRANSPARENT
+    );
+
+    let ellipse = paint_raster::fill_ellipse(
+        &document,
+        LayerId::new(3),
+        Rect::new(0, 0, 5, 5).expect("ellipse bounds"),
+        Bgra::new(10, 20, 30, 255),
+    )
+    .expect("ellipse")
+    .expect("ellipse patch");
+    document.apply_patch(&ellipse).expect("apply ellipse");
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[12], Bgra::new(10, 20, 30, 255));
+    assert_eq!(pixels[0], Bgra::BLACK);
+    assert_eq!(pixels[4], Bgra::BLACK);
+    assert_eq!(pixels[20], Bgra::BLACK);
+    assert_eq!(pixels[24], Bgra::BLACK);
+}
+
+#[test]
+fn ellipse_noop_and_out_of_bounds_are_explicit_none() {
+    let document = Document::from_layers(
+        size(4, 4),
+        vec![solid_layer(5, 4, 4, Bgra::new(1, 2, 3, 255))],
+    )
+    .expect("document");
+    assert_eq!(
+        paint_raster::fill_ellipse(
+            &document,
+            LayerId::new(5),
+            Rect::new(0, 0, 4, 4).expect("bounds"),
+            Bgra::new(1, 2, 3, 255),
+        ),
+        Ok(None)
+    );
+    assert_eq!(
+        paint_raster::fill_ellipse(
+            &document,
+            LayerId::new(5),
+            Rect::new(9, 9, 12, 12).expect("outside"),
+            Bgra::BLACK,
+        ),
+        Ok(None)
+    );
+}

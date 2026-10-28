@@ -1,4 +1,4 @@
-use paint_core::{Bgra, Rect};
+use paint_core::{Bgra, Point, Rect};
 
 /// One UI-neutral operation submitted to the single-writer session.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -8,6 +8,23 @@ pub enum Command {
     ClearSelection,
     /// Fills the active layer and selection, or the whole active layer without a selection.
     Fill(Bgra),
+    /// Paints a hard round stroke. `None` erases to transparent.
+    Stroke {
+        label: &'static str,
+        points: Vec<Point>,
+        size: u32,
+        color: Option<Bgra>,
+    },
+    /// Fills a half-open canvas rectangle.
+    FillRect {
+        rect: Rect,
+        color: Bgra,
+    },
+    /// Fills an ellipse inscribed in a half-open canvas rectangle.
+    FillEllipse {
+        rect: Rect,
+        color: Bgra,
+    },
     /// Inverts RGB in the active layer and selection while preserving alpha.
     Invert,
     /// Flips the complete active layer left-to-right, ignoring the selection.

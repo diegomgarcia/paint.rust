@@ -1,4 +1,4 @@
-use paint_core::{Bgra, Rect, Surface};
+use paint_core::{Bgra, Point, Rect, Surface};
 use paint_document::{Document, DocumentError, Layer, LayerId, PatchError, PixelPatch, Revision};
 use sha2::{Digest, Sha256};
 
@@ -105,6 +105,14 @@ impl AppSession {
             Command::SelectRect(rect) => self.select_rect(rect),
             Command::ClearSelection => self.clear_selection(),
             Command::Fill(color) => self.fill(color),
+            Command::Stroke {
+                label: _,
+                points,
+                size,
+                color,
+            } => self.stroke(&points, size, color),
+            Command::FillRect { rect, color } => self.fill_rect(rect, color),
+            Command::FillEllipse { rect, color } => self.fill_ellipse(rect, color),
             Command::Invert => self.invert(),
             Command::FlipLayerHorizontal => self.flip_layer_horizontal(),
             Command::FlipLayerVertical => self.flip_layer_vertical(),
@@ -143,6 +151,47 @@ impl AppSession {
 
     pub fn fill(&mut self, color: Bgra) -> Result<bool, SessionError> {
         let patch = paint_raster::fill(&self.document, self.document.active_layer_id(), color)?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn stroke(
+        &mut self,
+        points: &[Point],
+        size: u32,
+        color: Option<Bgra>,
+    ) -> Result<bool, SessionError> {
+        let patch = paint_raster::stroke(
+            &self.document,
+            self.document.active_layer_id(),
+            points,
+            size,
+            color,
+        )?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn fill_rect(&mut self, rect: Rect, color: Bgra) -> Result<bool, SessionError> {
+        let patch =
+            paint_raster::fill_rect(&self.document, self.document.active_layer_id(), rect, color)?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn fill_ellipse(&mut self, rect: Rect, color: Bgra) -> Result<bool, SessionError> {
+        let patch = paint_raster::fill_ellipse(
+            &self.document,
+            self.document.active_layer_id(),
+            rect,
+            color,
+        )?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
             None => Ok(false),

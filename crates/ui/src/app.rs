@@ -44,6 +44,8 @@ pub struct PaintApp {
     panels_floating: bool,
     picking_color: bool,
     active_tool: Tool,
+    brush_size: u32,
+    paint_points: Vec<Point>,
     icons: IconTextures,
     tools_window_rect: Option<egui::Rect>,
     history_window_rect: Option<egui::Rect>,
@@ -87,6 +89,8 @@ impl PaintApp {
             panels_floating: false,
             picking_color: false,
             active_tool: Tool::Select,
+            brush_size: 3,
+            paint_points: Vec::new(),
             icons,
             tools_window_rect: None,
             history_window_rect: None,
@@ -468,26 +472,26 @@ impl PaintApp {
                     focus_first_menu_item_on_keyboard_open(ui, &select);
                     if select.clicked() {
                         self.active_tool = Tool::Select;
+                        self.picking_color = false;
                         ui.close();
                     }
-                    if ui.button("Zoom").clicked() {
-                        self.active_tool = Tool::Zoom;
-                        ui.close();
-                    }
-                    if ui.button("Rectangle Shape").clicked() {
-                        self.active_tool = Tool::Rectangle;
-                        ui.close();
-                    }
-                    if ui.button("Fill Selection").clicked() {
-                        self.active_tool = Tool::Fill;
-                        let color = self.fill_color;
-                        self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
-                        ui.close();
-                    }
-                    if ui.button("Pick Color from Canvas").clicked() {
-                        self.active_tool = Tool::Picker;
-                        self.picking_color = !self.picking_color;
-                        ui.close();
+                    let tools = [
+                        ("Zoom", Tool::Zoom),
+                        ("Paint Bucket", Tool::Fill),
+                        ("Color Picker", Tool::Picker),
+                        ("Pencil", Tool::Pencil),
+                        ("Paintbrush", Tool::Brush),
+                        ("Eraser", Tool::Eraser),
+                        ("Line / Curve", Tool::Line),
+                        ("Rectangle", Tool::Rectangle),
+                        ("Ellipse", Tool::Ellipse),
+                    ];
+                    for (label, tool) in tools {
+                        if ui.button(label).clicked() {
+                            self.active_tool = tool;
+                            self.picking_color = tool == Tool::Picker;
+                            ui.close();
+                        }
                     }
                 });
                 ui.menu_button("Window", |ui| {
@@ -587,78 +591,41 @@ impl PaintApp {
         ui.add_space(4.0);
         ui.strong("Tools");
         ui.separator();
+        macro_rules! tool {
+            ($ui:expr, $icon:expr, $label:expr, $tool:expr) => {
+                if tool_button(
+                    $ui,
+                    &self.icons,
+                    $icon,
+                    $label,
+                    true,
+                    self.active_tool == $tool,
+                )
+                .clicked()
+                {
+                    self.active_tool = $tool;
+                    self.picking_color = $tool == Tool::Picker;
+                }
+            };
+        }
         egui::Grid::new("paint-r-tool-grid")
             .num_columns(2)
             .spacing([2.0, 2.0])
             .show(ui, |ui| {
-                if tool_button(
-                    ui,
-                    &self.icons,
-                    Icon::SelectRectangle,
-                    "Select Rectangle",
-                    true,
-                    self.active_tool == Tool::Select,
-                )
-                .clicked()
-                {
-                    self.active_tool = Tool::Select;
-                }
-                if tool_button(
-                    ui,
-                    &self.icons,
-                    Icon::Zoom,
-                    "Zoom",
-                    true,
-                    self.active_tool == Tool::Zoom,
-                )
-                .clicked()
-                {
-                    self.active_tool = Tool::Zoom;
-                }
+                tool!(ui, Icon::SelectRectangle, "Rectangle Select", Tool::Select);
+                tool!(ui, Icon::Zoom, "Zoom", Tool::Zoom);
                 ui.end_row();
-                if tool_button(
-                    ui,
-                    &self.icons,
-                    Icon::Fill,
-                    "Fill",
-                    true,
-                    self.active_tool == Tool::Fill,
-                )
-                .clicked()
-                {
-                    self.active_tool = Tool::Fill;
-                }
-                if tool_button(
-                    ui,
-                    &self.icons,
-                    Icon::RectangleShape,
-                    "Rectangle shape",
-                    true,
-                    self.active_tool == Tool::Rectangle,
-                )
-                .clicked()
-                {
-                    self.active_tool = Tool::Rectangle;
-                }
+                tool!(ui, Icon::Fill, "Paint Bucket", Tool::Fill);
+                tool!(ui, Icon::EyeDropper, "Color Picker", Tool::Picker);
                 ui.end_row();
-                if tool_button(
-                    ui,
-                    &self.icons,
-                    Icon::EyeDropper,
-                    "Pick color from canvas",
-                    true,
-                    self.active_tool == Tool::Picker,
-                )
-                .clicked()
-                {
-                    self.active_tool = Tool::Picker;
-                    self.picking_color = !self.picking_color;
-                    self.status = if self.picking_color {
-                        "Pick a composed canvas color".to_owned()
-                    } else {
-                        "Color picker canceled".to_owned()
-                    };
-                }
+                tool!(ui, Icon::Pencil, "Pencil", Tool::Pencil);
+                tool!(ui, Icon::Brush, "Paintbrush", Tool::Brush);
+                ui.end_row();
+                tool!(ui, Icon::Eraser, "Eraser", Tool::Eraser);
+                tool!(ui, Icon::Line, "Line / Curve", Tool::Line);
+                ui.end_row();
+                tool!(ui, Icon::RectangleShape, "Rectangle", Tool::Rectangle);
+                tool!(ui, Icon::Ellipse, "Ellipse", Tool::Ellipse);
                 ui.end_row();
             });
     }
@@ -718,8 +685,38 @@ impl PaintApp {
                             self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
                         }
                     }
+                    Tool::Pencil | Tool::Brush | Tool::Eraser | Tool::Line => {
+                        ui.label(match self.active_tool {
+                            Tool::Pencil => "Pencil",
+                            Tool::Brush => "Paintbrush",
+                            Tool::Eraser => "Eraser",
+                            _ => "Line / Curve",
+                        });
+                        ui.label("Width");
+                        ui.add(
+                            egui::DragValue::new(&mut self.brush_size)
+                                .range(1..=64)
+                                .suffix(" px"),
+                        );
+                        if self.active_tool == Tool::Eraser {
+                            ui.label("Erases the active layer to transparency");
+                        } else {
+                            let color = self.fill_color;
+                            ui.colored_label(
+                                egui::Color32::from_rgba_unmultiplied(
+                                    color.r, color.g, color.b, color.a,
+                                ),
+                                "Primary color",
+                            );
+                        }
+                        ui.label("Drag on the canvas to paint");
+                    }
                     Tool::Rectangle => {
                         ui.label("Rectangle Shape");
+                        ui.label("Drag on the canvas to fill with the primary color");
+                    }
+                    Tool::Ellipse => {
+                        ui.label("Ellipse Shape");
                         ui.label("Drag on the canvas to fill with the primary color");
                     }
                     Tool::Picker => {
@@ -1149,6 +1146,7 @@ impl PaintApp {
             let picking = self.picking_color;
             let mut picked = None;
             let mut pending_selection = None;
+            let mut pending_paint: Option<(Command, String)> = None;
             egui::ScrollArea::both()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
@@ -1176,6 +1174,10 @@ impl PaintApp {
                         self.cursor_point = pointer
                             .and_then(|position| canvas_point_at(position, rect, zoom, size));
                         if picking {
+                            eprintln!(
+                                "PICKER_FRAME pointer={pointer:?} clicked={}",
+                                response.clicked()
+                            );
                             if response.clicked()
                                 && let Some(point) = pointer.and_then(|position| {
                                     canvas_point_at(position, rect, zoom, size)
@@ -1187,50 +1189,136 @@ impl PaintApp {
                             if response.clicked() {
                                 self.zoom = (self.zoom + 0.25).min(8.0);
                             }
-                        } else if matches!(self.active_tool, Tool::Select | Tool::Rectangle) {
-                            if self.drag_start.is_none()
-                                && response.is_pointer_button_down_on()
-                                && let Some(point) = pointer.and_then(|position| {
+                        } else if self.active_tool != Tool::Picker {
+                            let point = || {
+                                pointer.and_then(|position| {
                                     canvas_point_at(position, rect, zoom, size)
                                 })
+                            };
+                            let is_paint = matches!(
+                                self.active_tool,
+                                Tool::Pencil | Tool::Brush | Tool::Eraser
+                            );
+                            if self.drag_start.is_none()
+                                && response.is_pointer_button_down_on()
+                                && let Some(point) = point()
                             {
                                 self.drag_start = Some(point);
                                 self.drag_current = Some(point);
+                                self.paint_points.clear();
+                                if is_paint {
+                                    self.paint_points.push(point);
+                                }
                             }
                             if response.dragged()
-                                && let Some(point) = pointer.and_then(|position| {
-                                    canvas_point_at(position, rect, zoom, size)
-                                })
+                                && let Some(point) = point()
                             {
                                 self.drag_current = Some(point);
+                                if is_paint && self.paint_points.last() != Some(&point) {
+                                    self.paint_points.push(point);
+                                }
                             }
                             if response.drag_stopped()
                                 && let (Some(start), Some(end)) =
                                     (self.drag_start.take(), self.drag_current.take())
                             {
-                                pending_selection = Some(selection_rect_from_drag(start, end));
+                                let bounds = selection_rect_from_drag(start, end);
+                                let color = self.fill_color;
+                                let size = match self.active_tool {
+                                    Tool::Pencil => 1,
+                                    _ => self.brush_size.max(1),
+                                };
+                                pending_paint = match self.active_tool {
+                                    Tool::Select => {
+                                        pending_selection = Some(bounds);
+                                        None
+                                    }
+                                    Tool::Rectangle => Some((
+                                        Command::FillRect {
+                                            rect: bounds,
+                                            color,
+                                        },
+                                        "Filled rectangle shape".to_owned(),
+                                    )),
+                                    Tool::Ellipse => Some((
+                                        Command::FillEllipse {
+                                            rect: bounds,
+                                            color,
+                                        },
+                                        "Filled ellipse shape".to_owned(),
+                                    )),
+                                    Tool::Line => Some((
+                                        Command::Stroke {
+                                            label: "Line / Curve",
+                                            points: vec![start, end],
+                                            size,
+                                            color: Some(color),
+                                        },
+                                        "Drew a line".to_owned(),
+                                    )),
+                                    Tool::Pencil | Tool::Brush | Tool::Eraser => {
+                                        let points = if self.paint_points.is_empty() {
+                                            vec![start, end]
+                                        } else {
+                                            std::mem::take(&mut self.paint_points)
+                                        };
+                                        let (label, color, message) = match self.active_tool {
+                                            Tool::Pencil => {
+                                                ("Pencil", Some(color), "Painted with the pencil")
+                                            }
+                                            Tool::Brush => (
+                                                "Paintbrush",
+                                                Some(color),
+                                                "Painted with the paintbrush",
+                                            ),
+                                            _ => ("Eraser", None, "Erased pixels"),
+                                        };
+                                        Some((
+                                            Command::Stroke {
+                                                label,
+                                                points,
+                                                size,
+                                                color,
+                                            },
+                                            message.to_owned(),
+                                        ))
+                                    }
+                                    _ => None,
+                                };
                             }
                             if let (Some(start), Some(end)) = (self.drag_start, self.drag_current) {
-                                let marquee = egui::Rect::from_min_max(
-                                    rect.min
-                                        + egui::vec2(start.x as f32 * zoom, start.y as f32 * zoom),
-                                    rect.min
-                                        + egui::vec2(
-                                            (end.x + 1) as f32 * zoom,
-                                            (end.y + 1) as f32 * zoom,
-                                        ),
-                                );
-                                ui.painter().rect_filled(
-                                    marquee,
-                                    0,
-                                    egui::Color32::from_white_alpha(24),
-                                );
-                                ui.painter().rect_stroke(
-                                    marquee,
-                                    0,
-                                    egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
-                                    egui::StrokeKind::Inside,
-                                );
+                                let start_pos = rect.min
+                                    + egui::vec2(start.x as f32 * zoom, start.y as f32 * zoom);
+                                let end_pos = rect.min
+                                    + egui::vec2(
+                                        (end.x + 1) as f32 * zoom,
+                                        (end.y + 1) as f32 * zoom,
+                                    );
+                                let marquee = egui::Rect::from_min_max(start_pos, end_pos);
+                                if matches!(
+                                    self.active_tool,
+                                    Tool::Select | Tool::Rectangle | Tool::Ellipse
+                                ) {
+                                    ui.painter().rect_filled(
+                                        marquee,
+                                        0,
+                                        egui::Color32::from_white_alpha(24),
+                                    );
+                                    ui.painter().rect_stroke(
+                                        marquee,
+                                        0,
+                                        egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
+                                        egui::StrokeKind::Inside,
+                                    );
+                                } else if self.active_tool == Tool::Line {
+                                    ui.painter().line_segment(
+                                        [
+                                            start_pos + egui::vec2(zoom / 2.0, zoom / 2.0),
+                                            end_pos - egui::vec2(zoom / 2.0, zoom / 2.0),
+                                        ],
+                                        egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
+                                    );
+                                }
                             }
                         }
                     } else {
@@ -1245,10 +1333,9 @@ impl PaintApp {
                     Command::SelectRect(selection),
                     "Rectangle selection updated",
                 );
-                if self.active_tool == Tool::Rectangle {
-                    let color = self.fill_color;
-                    self.execute(Command::Fill(color), "Filled rectangle shape");
-                }
+            }
+            if let Some((command, message)) = pending_paint {
+                self.execute(command, &message);
             }
         });
     }
@@ -1672,6 +1759,11 @@ enum Tool {
     Zoom,
     Fill,
     Rectangle,
+    Pencil,
+    Brush,
+    Eraser,
+    Line,
+    Ellipse,
     Picker,
 }
 
@@ -1973,6 +2065,9 @@ fn open_png_preview(
 fn history_label(command: &Command) -> Option<String> {
     match command {
         Command::Fill(_) => Some("Paint Bucket".to_owned()),
+        Command::Stroke { label, .. } => Some((*label).to_owned()),
+        Command::FillRect { .. } => Some("Rectangle".to_owned()),
+        Command::FillEllipse { .. } => Some("Ellipse".to_owned()),
         Command::Invert => Some("Invert Colors".to_owned()),
         Command::FlipLayerHorizontal => Some("Flip Layer Horizontal".to_owned()),
         Command::FlipLayerVertical => Some("Flip Layer Vertical".to_owned()),

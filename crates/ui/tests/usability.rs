@@ -242,7 +242,7 @@ fn dirty_new_cancel_preserves_document_and_history_and_discard_replaces_it() {
 #[test]
 fn rectangle_selection_chosen_bgra_fill_and_clear_selection_are_usable() {
     let mut harness = app();
-    click(&mut harness, "Select Rectangle");
+    click(&mut harness, "Rectangle Select");
     assert_eq!(harness.state().session().document().selection(), None);
     click(&mut harness, "Apply selection");
     assert_eq!(
@@ -259,7 +259,7 @@ fn rectangle_selection_chosen_bgra_fill_and_clear_selection_are_usable() {
         "physical slider click must choose a new color"
     );
 
-    click(&mut harness, "Fill");
+    click(&mut harness, "Paint Bucket");
     click(&mut harness, "Fill Selection");
     let session = harness.state().session();
     let pixels = session.document().active_layer().surface().pixels();
@@ -329,23 +329,34 @@ fn paint_net_style_layout_exposes_tools_options_colors_and_layers() {
     harness.get_by_role_and_label(Role::Label, "Tool Options");
     harness.get_by_role_and_label(Role::Label, "Colors");
     harness.get_by_role_and_label(Role::Label, "Layers");
-    harness.get_by_role_and_label(Role::Button, "Select Rectangle");
-    harness.get_by_role_and_label(Role::Button, "Fill");
-    harness.get_by_role_and_label(Role::Button, "Pick color from canvas");
+    for label in [
+        "Rectangle Select",
+        "Zoom",
+        "Paint Bucket",
+        "Color Picker",
+        "Pencil",
+        "Paintbrush",
+        "Eraser",
+        "Line / Curve",
+        "Rectangle",
+        "Ellipse",
+    ] {
+        harness.get_by_role_and_label(Role::Button, label);
+    }
 }
 
 #[test]
 fn canvas_color_picker_samples_composed_pixels_without_editing() {
     let mut harness = app();
     let before = harness.state().session().document().clone();
-    click(&mut harness, "Pick color from canvas");
+    click(&mut harness, "Color Picker");
     harness
         .get_by_role_and_label(Role::Image, "Composed document canvas")
         .click();
     harness.run();
 
     assert_eq!(harness.state().fill_color(), Bgra::WHITE);
-    harness.get_by_role_and_label(Role::Button, "Pick color from canvas");
+    harness.get_by_role_and_label(Role::Button, "Color Picker");
     assert_eq!(harness.state().session().document(), &before);
     assert!(!harness.state().session().dirty());
 }
@@ -375,7 +386,7 @@ fn canvas_drag_creates_a_half_open_rectangle_selection_without_history() {
 fn rectangle_shape_tool_drag_fills_and_remains_undoable() {
     let mut harness = app();
     dock_tools(&mut harness);
-    click(&mut harness, "Rectangle shape");
+    click(&mut harness, "Rectangle");
     let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
     let rect = canvas.rect();
     harness.drag_at(rect.min + egui::vec2(5.0, 6.0));
@@ -386,10 +397,7 @@ fn rectangle_shape_tool_drag_fills_and_remains_undoable() {
     harness.run();
 
     let session = harness.state().session();
-    assert_eq!(
-        session.document().selection(),
-        Some(Rect::new(5, 6, 15, 16).expect("shape selection"))
-    );
+    assert_eq!(session.document().selection(), None);
     let surface = session.document().active_layer().surface();
     assert_eq!(
         *surface.pixel(Point::new(5, 6)).expect("inside"),
@@ -460,7 +468,7 @@ fn colors_window_supports_primary_secondary_swap_and_reset() {
 fn history_window_tracks_content_edits_and_undo() {
     let mut harness = app();
     assert_eq!(harness.state().history_entries(), ["New Image"]);
-    click(&mut harness, "Fill");
+    click(&mut harness, "Paint Bucket");
     click(&mut harness, "Fill Selection");
     assert_eq!(
         harness.state().history_entries(),
@@ -593,7 +601,7 @@ fn layer_add_opacity_active_selection_and_visibility_change_composition() {
         1
     );
 
-    click(&mut harness, "Fill");
+    click(&mut harness, "Paint Bucket");
     click(&mut harness, "Fill Selection");
     assert!(
         harness
@@ -716,7 +724,7 @@ fn png_open_is_flattened_and_export_preserves_the_layered_session() {
     assert!(!session.can_redo());
 
     click(&mut harness, "Add Layer");
-    click(&mut harness, "Fill");
+    click(&mut harness, "Paint Bucket");
     click(&mut harness, "Fill Selection");
     let before = harness.state().session().snapshot().expect("snapshot");
     assert_eq!(before.layer_count, 2);
@@ -840,4 +848,107 @@ fn post_export_close_is_canceled_until_explicit_discard() {
             .query_by_role_and_label(Role::Button, "Discard")
             .is_none()
     );
+}
+
+fn drag_canvas(harness: &mut Harness<'_, PaintApp>, start: egui::Vec2, end: egui::Vec2) {
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let rect = canvas.rect();
+    harness.drag_at(rect.min + start);
+    harness.run();
+    harness.hover_at(rect.min + end);
+    harness.run();
+    harness.drop_at(rect.min + end);
+    harness.run();
+}
+
+#[test]
+fn pencil_paintbrush_and_eraser_draw_real_pixels_and_undo() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Pencil");
+    drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(20.0, 6.0));
+    {
+        let session = harness.state().session();
+        let surface = session.document().active_layer().surface();
+        for x in [5, 12, 20] {
+            assert_eq!(
+                *surface.pixel(Point::new(x, 6)).expect("pencil pixel"),
+                Bgra::BLACK
+            );
+        }
+        assert!(session.can_undo());
+    }
+    click(&mut harness, "Undo");
+    assert_eq!(
+        *harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(12, 6))
+            .expect("restored"),
+        Bgra::WHITE
+    );
+
+    click(&mut harness, "Paintbrush");
+    drag_canvas(&mut harness, egui::vec2(5.0, 20.0), egui::vec2(10.0, 20.0));
+    let surface = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface();
+    assert_eq!(
+        *surface.pixel(Point::new(8, 21)).expect("brush width"),
+        Bgra::BLACK
+    );
+
+    click(&mut harness, "Eraser");
+    drag_canvas(&mut harness, egui::vec2(5.0, 20.0), egui::vec2(10.0, 20.0));
+    assert_eq!(
+        *harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(8, 20))
+            .expect("erased"),
+        Bgra::TRANSPARENT
+    );
+}
+
+#[test]
+fn line_and_ellipse_shapes_fill_pixels_without_setting_a_selection() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Line / Curve");
+    drag_canvas(&mut harness, egui::vec2(5.0, 5.0), egui::vec2(15.0, 5.0));
+    {
+        let session = harness.state().session();
+        let surface = session.document().active_layer().surface();
+        assert_eq!(
+            *surface.pixel(Point::new(10, 5)).expect("line midpoint"),
+            Bgra::BLACK
+        );
+        assert_eq!(session.document().selection(), None);
+        assert!(session.can_undo());
+    }
+    click(&mut harness, "Undo");
+
+    click(&mut harness, "Ellipse");
+    drag_canvas(&mut harness, egui::vec2(10.0, 10.0), egui::vec2(30.0, 30.0));
+    let session = harness.state().session();
+    let surface = session.document().active_layer().surface();
+    assert_eq!(
+        *surface.pixel(Point::new(20, 20)).expect("ellipse center"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(10, 10)).expect("ellipse corner"),
+        Bgra::WHITE
+    );
+    assert_eq!(session.document().selection(), None);
+    assert!(session.can_undo());
 }
