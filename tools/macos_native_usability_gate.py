@@ -32,6 +32,7 @@ INVERTED = "Inverted colors on the active layer"
 CLOSE_TITLE = "Discard unsaved changes?"
 CLOSE_EXPLANATION = "Closing Paint.R will discard the modified document and its undo history."
 CANVAS_LABEL = "Composed document canvas"
+DUPLICATE_CHROME_BUTTONS = frozenset({"Close window", "Hide"})
 
 MAX_STARTUP_TIMEOUT = 60.0
 MAX_OBSERVATION_TIMEOUT = 30.0
@@ -331,7 +332,9 @@ def parse_observation(raw: dict[str, Any], pid: int) -> ObservedWindow:
         if node.get("role") == "AXButton" and isinstance(node.get("title"), str):
             title = node["title"]
             if title in buttons:
-                raise GateError("INCONCLUSIVE_AX", f"ambiguous Accessibility button: {title}")
+                if title not in DUPLICATE_CHROME_BUTTONS:
+                    raise GateError("INCONCLUSIVE_AX", f"ambiguous Accessibility button: {title}")
+                continue
             buttons[title] = node
     windows = raw.get("windows")
     if not isinstance(windows, list) or len(windows) > 1:

@@ -31,6 +31,17 @@ fn replace_field(harness: &mut Harness<'_, PaintApp>, label: &str, text: &str) {
     harness.run();
 }
 
+fn dock_tools(harness: &mut Harness<'_, PaintApp>) {
+    harness
+        .get_by_role_and_label(Role::Button, "Window")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::CheckBox, "Float Tools")
+        .click();
+    harness.run();
+}
+
 fn menu_item(harness: &mut Harness<'_, PaintApp>, menu: &str, item: &str) {
     click(harness, menu);
     click(harness, item);
@@ -249,6 +260,7 @@ fn rectangle_selection_chosen_bgra_fill_and_clear_selection_are_usable() {
     );
 
     click(&mut harness, "Fill");
+    click(&mut harness, "Fill Selection");
     let session = harness.state().session();
     let pixels = session.document().active_layer().surface().pixels();
     assert_eq!(pixels[0], chosen);
@@ -341,14 +353,7 @@ fn canvas_color_picker_samples_composed_pixels_without_editing() {
 #[test]
 fn canvas_drag_creates_a_half_open_rectangle_selection_without_history() {
     let mut harness = app();
-    harness
-        .get_by_role_and_label(Role::Button, "Window")
-        .click();
-    harness.run();
-    harness
-        .get_by_role_and_label(Role::CheckBox, "Float Tools")
-        .click();
-    harness.run();
+    dock_tools(&mut harness);
     let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
     let rect = canvas.rect();
     harness.drag_at(rect.min + egui::vec2(20.0, 30.0));
@@ -369,6 +374,7 @@ fn canvas_drag_creates_a_half_open_rectangle_selection_without_history() {
 #[test]
 fn rectangle_shape_tool_drag_fills_and_remains_undoable() {
     let mut harness = app();
+    dock_tools(&mut harness);
     click(&mut harness, "Rectangle shape");
     let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
     let rect = canvas.rect();
@@ -408,7 +414,7 @@ fn zoom_tool_click_changes_canvas_zoom_without_editing() {
     let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
     canvas.click();
     harness.run();
-    harness.get_by_label("125%");
+    assert!(harness.get_all_by_label("125%").count() >= 2);
     assert!(!harness.state().session().dirty());
 }
 
@@ -448,6 +454,21 @@ fn colors_window_supports_primary_secondary_swap_and_reset() {
     click(&mut harness, "Reset to black and white");
     assert_eq!(harness.state().fill_color(), Bgra::BLACK);
     assert_eq!(harness.state().secondary_color(), Bgra::WHITE);
+}
+
+#[test]
+fn history_window_tracks_content_edits_and_undo() {
+    let mut harness = app();
+    assert_eq!(harness.state().history_entries(), ["New Image"]);
+    click(&mut harness, "Fill");
+    click(&mut harness, "Fill Selection");
+    assert_eq!(
+        harness.state().history_entries(),
+        ["New Image", "Paint Bucket"]
+    );
+    click(&mut harness, "Undo History");
+    assert_eq!(harness.state().history_entries(), ["New Image"]);
+    assert!(harness.state().session().can_redo());
 }
 
 #[test]
@@ -573,6 +594,7 @@ fn layer_add_opacity_active_selection_and_visibility_change_composition() {
     );
 
     click(&mut harness, "Fill");
+    click(&mut harness, "Fill Selection");
     assert!(
         harness
             .state()
@@ -695,6 +717,7 @@ fn png_open_is_flattened_and_export_preserves_the_layered_session() {
 
     click(&mut harness, "Add Layer");
     click(&mut harness, "Fill");
+    click(&mut harness, "Fill Selection");
     let before = harness.state().session().snapshot().expect("snapshot");
     assert_eq!(before.layer_count, 2);
     assert!(before.dirty);

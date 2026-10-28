@@ -46,8 +46,12 @@ pub struct PaintApp {
     active_tool: Tool,
     drag_start: Option<Point>,
     drag_current: Option<Point>,
+    cursor_point: Option<Point>,
     hex_input: String,
     hex_error: Option<String>,
+    history_entries: Vec<String>,
+    redo_entries: Vec<String>,
+    history_visible: bool,
     selection_input: SelectionInput,
     texture: Option<egui::TextureHandle>,
     texture_dirty: bool,
@@ -79,8 +83,12 @@ impl PaintApp {
             active_tool: Tool::Select,
             drag_start: None,
             drag_current: None,
+            cursor_point: None,
             hex_input: format_hex_color(Bgra::BLACK),
             hex_error: None,
+            history_entries: vec!["New Image".to_owned()],
+            redo_entries: Vec::new(),
+            history_visible: true,
             selection_input: SelectionInput::default(),
             texture: None,
             texture_dirty: true,
@@ -114,6 +122,11 @@ impl PaintApp {
     #[doc(hidden)]
     pub const fn panels_floating(&self) -> bool {
         self.panels_floating
+    }
+
+    #[doc(hidden)]
+    pub fn history_entries(&self) -> &[String] {
+        &self.history_entries
     }
 
     const fn active_color(&self) -> Bgra {
@@ -164,6 +177,8 @@ impl PaintApp {
         self.drag_start = None;
         self.drag_current = None;
         self.layer_thumbnails.clear();
+        self.history_entries = vec!["New Image".to_owned()];
+        self.redo_entries.clear();
         self.status = "New 800×600 opaque-white document".to_owned();
     }
 
@@ -223,8 +238,27 @@ impl PaintApp {
     }
 
     fn execute(&mut self, command: Command, success: impl Into<String>) -> bool {
+        let history_label = history_label(&command);
+        let is_undo = matches!(command, Command::Undo);
+        let is_redo = matches!(command, Command::Redo);
         match self.session.execute(command) {
-            Ok(_changed) => {
+            Ok(changed) => {
+                if changed {
+                    if is_undo {
+                        if self.history_entries.len() > 1
+                            && let Some(entry) = self.history_entries.pop()
+                        {
+                            self.redo_entries.push(entry);
+                        }
+                    } else if is_redo {
+                        if let Some(entry) = self.redo_entries.pop() {
+                            self.history_entries.push(entry);
+                        }
+                    } else if let Some(label) = history_label {
+                        self.history_entries.push(label);
+                        self.redo_entries.clear();
+                    }
+                }
                 self.texture_dirty = true;
                 self.status = success.into();
                 true
@@ -450,6 +484,7 @@ impl PaintApp {
                     ui.checkbox(&mut self.tools_floating, "Float Tools");
                     ui.checkbox(&mut self.colors_visible, "Colors window");
                     ui.checkbox(&mut self.layers_visible, "Layers window");
+                    ui.checkbox(&mut self.history_visible, "History window");
                     ui.separator();
                     let label = if self.panels_floating {
                         "Dock Panels"
@@ -602,28 +637,63 @@ impl PaintApp {
             ui.horizontal_wrapped(|ui| {
                 ui.strong("Tool Options");
                 ui.separator();
-                ui.label("Selection");
-                selection_input(ui, "Selection left", &mut self.selection_input.left);
-                selection_input(ui, "Selection top", &mut self.selection_input.top);
-                selection_input(ui, "Selection right", &mut self.selection_input.right);
-                selection_input(ui, "Selection bottom", &mut self.selection_input.bottom);
-                if ui.button("Apply selection").clicked() {
-                    self.select_rectangle();
-                }
-                if let Some(selection) = self.session.document().selection() {
-                    ui.label(format!(
-                        "({}, {})..({}, {})",
-                        selection.left(),
-                        selection.top(),
-                        selection.right(),
-                        selection.bottom()
-                    ));
-                } else {
-                    ui.label("No selection");
-                }
-                if self.picking_color {
-                    ui.separator();
-                    ui.label("Click the canvas to sample a color");
+                match self.active_tool {
+                    Tool::Select => {
+                        ui.label("Rectangle Select");
+                        selection_input(ui, "Selection left", &mut self.selection_input.left);
+                        selection_input(ui, "Selection top", &mut self.selection_input.top);
+                        selection_input(ui, "Selection right", &mut self.selection_input.right);
+                        selection_input(ui, "Selection bottom", &mut self.selection_input.bottom);
+                        if ui.button("Apply selection").clicked() {
+                            self.select_rectangle();
+                        }
+                        if let Some(selection) = self.session.document().selection() {
+                            ui.label(format!(
+                                "({}, {})..({}, {})",
+                                selection.left(),
+                                selection.top(),
+                                selection.right(),
+                                selection.bottom()
+                            ));
+                        } else {
+                            ui.label("No selection");
+                        }
+                    }
+                    Tool::Zoom => {
+                        ui.label("Zoom");
+                        ui.label(format!("{}%", (self.zoom * 100.0).round() as u32));
+                        for (label, zoom) in
+                            [("50%", 0.5), ("100%", 1.0), ("200%", 2.0), ("400%", 4.0)]
+                        {
+                            if labeled_button(ui, label, label).clicked() {
+                                self.zoom = zoom;
+                            }
+                        }
+                        if labeled_button(ui, "Fit", "Fit canvas").clicked() {
+                            self.fit_canvas_requested = true;
+                        }
+                    }
+                    Tool::Fill => {
+                        ui.label("Paint Bucket");
+                        let color = self.fill_color;
+                        ui.colored_label(
+                            egui::Color32::from_rgba_unmultiplied(
+                                color.r, color.g, color.b, color.a,
+                            ),
+                            "Primary color",
+                        );
+                        if ui.button("Fill Selection").clicked() {
+                            self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
+                        }
+                    }
+                    Tool::Rectangle => {
+                        ui.label("Rectangle Shape");
+                        ui.label("Drag on the canvas to fill with the primary color");
+                    }
+                    Tool::Picker => {
+                        ui.label("Color Picker");
+                        ui.label("Click the canvas to sample the composed color");
+                    }
                 }
             });
             ui.add_space(2.0);
@@ -703,6 +773,36 @@ impl PaintApp {
         if let Some(command) = pending {
             self.execute(command, "Layer properties updated");
         }
+    }
+
+    fn history_content(&mut self, ui: &mut egui::Ui) {
+        ui.heading("History");
+        ui.separator();
+        egui::ScrollArea::vertical()
+            .id_salt("paint-r-history-list")
+            .show(ui, |ui| {
+                for entry in &self.history_entries {
+                    ui.label(entry);
+                }
+                for entry in self.redo_entries.iter().rev() {
+                    ui.add_enabled(false, egui::Label::new(entry).selectable(false));
+                }
+            });
+        ui.separator();
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(self.session.can_undo(), egui::Button::new("Undo History"))
+                .clicked()
+            {
+                self.execute(Command::Undo, "Undid the last edit");
+            }
+            if ui
+                .add_enabled(self.session.can_redo(), egui::Button::new("Redo History"))
+                .clicked()
+            {
+                self.execute(Command::Redo, "Redid the next edit");
+            }
+        });
     }
 
     fn colors_content(&mut self, ui: &mut egui::Ui) {
@@ -887,16 +987,33 @@ impl PaintApp {
             let mut open = self.tools_visible;
             egui::Window::new("Tools")
                 .open(&mut open)
-                .default_pos(egui::pos2(20.0, 470.0))
+                .collapsible(false)
+                .default_pos(egui::pos2(20.0, 180.0))
                 .default_width(158.0)
                 .resizable(false)
                 .show(&context, |ui| self.tools_content(ui));
             self.tools_visible = open;
         }
+        if self.history_visible {
+            let mut open = self.history_visible;
+            egui::Window::new("History")
+                .open(&mut open)
+                .collapsible(false)
+                .default_pos(egui::pos2(620.0, 260.0))
+                .default_width(240.0)
+                .show(&context, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("paint-r-floating-history-scroll")
+                        .max_height(260.0)
+                        .show(ui, |ui| self.history_content(ui));
+                });
+            self.history_visible = open;
+        }
         if self.panels_floating && self.colors_visible {
             let mut open = self.colors_visible;
             egui::Window::new("Colors")
                 .open(&mut open)
+                .collapsible(false)
                 .default_pos(egui::pos2(20.0, 380.0))
                 .default_width(300.0)
                 .show(&context, |ui| {
@@ -911,6 +1028,7 @@ impl PaintApp {
             let mut open = self.layers_visible;
             egui::Window::new("Layers")
                 .open(&mut open)
+                .collapsible(false)
                 .default_pos(egui::pos2(980.0, 260.0))
                 .default_width(320.0)
                 .show(&context, |ui| {
@@ -925,7 +1043,7 @@ impl PaintApp {
 
     fn status_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::bottom("paint-r-status").show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
+            ui.horizontal(|ui| {
                 let dirty = if self.session.dirty() {
                     "Modified"
                 } else {
@@ -934,8 +1052,16 @@ impl PaintApp {
                 ui.strong(dirty);
                 ui.separator();
                 ui.label(&self.status);
-                ui.separator();
-                ui.label("PNG open creates one layer; flattened export does not save layers or clear modified state.");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let size = self.session.document().size();
+                    ui.label(format!("{} × {}", size.width(), size.height()));
+                    ui.separator();
+                    if let Some(point) = self.cursor_point {
+                        ui.label(format!("{}, {} px", point.x, point.y));
+                    } else {
+                        ui.label("—, — px");
+                    }
+                });
             });
         });
     }
@@ -995,6 +1121,8 @@ impl PaintApp {
                             egui::Image::from_texture(&texture).paint_at(ui, rect);
                         }
                         let pointer = response.interact_pointer_pos();
+                        self.cursor_point = pointer
+                            .and_then(|position| canvas_point_at(position, rect, zoom, size));
                         if picking {
                             if response.clicked()
                                 && let Some(point) = pointer.and_then(|position| {
@@ -1466,7 +1594,7 @@ impl eframe::App for PaintApp {
         self.toolbar_panel(ui);
         self.tool_options_panel(ui);
         self.status_panel(ui);
-        if self.tools_floating || self.panels_floating {
+        if self.tools_floating || self.panels_floating || self.history_visible {
             self.floating_panels(ui);
         }
         if !self.tools_floating && self.tools_visible {
@@ -1771,6 +1899,27 @@ fn open_png_preview(
         PREVIEW_HEIGHT,
     );
     Ok(DialogPreview { label, texture })
+}
+
+fn history_label(command: &Command) -> Option<String> {
+    match command {
+        Command::Fill(_) => Some("Paint Bucket".to_owned()),
+        Command::Invert => Some("Invert Colors".to_owned()),
+        Command::FlipLayerHorizontal => Some("Flip Layer Horizontal".to_owned()),
+        Command::FlipLayerVertical => Some("Flip Layer Vertical".to_owned()),
+        Command::AddLayer { name, .. } => Some(format!("Add Layer: {name}")),
+        Command::SetLayerVisibility { index, visible } => {
+            Some(format!("Layer {index} visibility: {visible}"))
+        }
+        Command::SetLayerOpacity { index, opacity } => {
+            Some(format!("Layer {index} opacity: {opacity}"))
+        }
+        Command::SelectRect(_)
+        | Command::ClearSelection
+        | Command::SetActiveLayer { .. }
+        | Command::Undo
+        | Command::Redo => None,
+    }
 }
 
 fn format_hex_color(color: Bgra) -> String {

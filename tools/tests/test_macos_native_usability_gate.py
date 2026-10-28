@@ -645,5 +645,30 @@ class NativeGateTests(unittest.TestCase):
         self.assertEqual(blocked["harness"], harness)
 
 
+class ObservationButtonTests(unittest.TestCase):
+    def test_duplicate_floating_chrome_buttons_do_not_hide_dialog_actions(self) -> None:
+        raw = observation(9001, dialog=True)
+        nodes = raw["ax"]["nodes"]
+        nodes.extend(
+            [
+                {"path": [20], "role": "AXButton", "title": "Close window", "enabled": True},
+                {"path": [21], "role": "AXButton", "title": "Close window", "enabled": True},
+                {"path": [22], "role": "AXButton", "title": "Hide", "enabled": True},
+                {"path": [23], "role": "AXButton", "title": "Hide", "enabled": True},
+            ]
+        )
+        raw["ax"]["node_count"] = len(nodes)
+        parsed = gate.parse_observation(raw, 9001)
+        self.assertIn("Cancel", parsed.buttons)
+        self.assertIn("Discard", parsed.buttons)
+
+    def test_duplicate_dialog_action_remains_ambiguous(self) -> None:
+        raw = observation(9002, dialog=True)
+        nodes = raw["ax"]["nodes"]
+        nodes.append({"path": [20], "role": "AXButton", "title": "Discard", "enabled": True})
+        raw["ax"]["node_count"] = len(nodes)
+        with self.assertRaisesRegex(gate.GateError, "ambiguous Accessibility button"):
+            gate.parse_observation(raw, 9002)
+
 if __name__ == "__main__":
     unittest.main()
