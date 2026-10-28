@@ -35,6 +35,8 @@ pub struct PaintApp {
     session: AppSession,
     fill_color: Bgra,
     picking_color: bool,
+    drag_start: Option<Point>,
+    drag_current: Option<Point>,
     hex_input: String,
     hex_error: Option<String>,
     selection_input: SelectionInput,
@@ -57,6 +59,8 @@ impl PaintApp {
             session: default_session(),
             fill_color: Bgra::BLACK,
             picking_color: false,
+            drag_start: None,
+            drag_current: None,
             hex_input: String::new(),
             hex_error: None,
             selection_input: SelectionInput::default(),
@@ -104,6 +108,8 @@ impl PaintApp {
         self.texture_dirty = true;
         self.zoom = 1.0;
         self.fit_canvas_requested = false;
+        self.drag_start = None;
+        self.drag_current = None;
         self.layer_thumbnails.clear();
         self.status = "New 800×600 opaque-white document".to_owned();
     }
@@ -686,6 +692,7 @@ impl PaintApp {
             let zoom = self.zoom;
             let picking = self.picking_color;
             let mut picked = None;
+            let mut pending_selection = None;
             egui::ScrollArea::both()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
@@ -695,7 +702,7 @@ impl PaintApp {
                         let sense = if picking {
                             egui::Sense::click()
                         } else {
-                            egui::Sense::hover()
+                            egui::Sense::click_and_drag()
                         };
                         let (rect, response) = ui.allocate_exact_size(display, sense);
                         response.widget_info(|| {
@@ -705,26 +712,63 @@ impl PaintApp {
                                 "Composed document canvas",
                             )
                         });
-                        let response = if picking {
-                            response.on_hover_cursor(egui::CursorIcon::Crosshair)
-                        } else {
-                            response
-                        };
+                        let response = response.on_hover_cursor(egui::CursorIcon::Crosshair);
                         if ui.is_rect_visible(rect) {
                             egui::Image::from_texture(&texture).paint_at(ui, rect);
                         }
-                        if picking
-                            && response.clicked()
-                            && let Some(position) = response.interact_pointer_pos()
-                        {
-                            let x = ((position.x - rect.left()) / zoom).floor();
-                            let y = ((position.y - rect.top()) / zoom).floor();
-                            if x >= 0.0
-                                && y >= 0.0
-                                && x < size.width() as f32
-                                && y < size.height() as f32
+                        let pointer = response.interact_pointer_pos();
+                        if picking {
+                            if response.clicked()
+                                && let Some(point) = pointer.and_then(|position| {
+                                    canvas_point_at(position, rect, zoom, size)
+                                })
                             {
-                                picked = Some(Point::new(x as u32, y as u32));
+                                picked = Some(point);
+                            }
+                        } else {
+                            if self.drag_start.is_none()
+                                && response.is_pointer_button_down_on()
+                                && let Some(point) = pointer.and_then(|position| {
+                                    canvas_point_at(position, rect, zoom, size)
+                                })
+                            {
+                                self.drag_start = Some(point);
+                                self.drag_current = Some(point);
+                            }
+                            if response.dragged()
+                                && let Some(point) = pointer.and_then(|position| {
+                                    canvas_point_at(position, rect, zoom, size)
+                                })
+                            {
+                                self.drag_current = Some(point);
+                            }
+                            if response.drag_stopped()
+                                && let (Some(start), Some(end)) =
+                                    (self.drag_start.take(), self.drag_current.take())
+                            {
+                                pending_selection = Some(selection_rect_from_drag(start, end));
+                            }
+                            if let (Some(start), Some(end)) = (self.drag_start, self.drag_current) {
+                                let marquee = egui::Rect::from_min_max(
+                                    rect.min
+                                        + egui::vec2(start.x as f32 * zoom, start.y as f32 * zoom),
+                                    rect.min
+                                        + egui::vec2(
+                                            (end.x + 1) as f32 * zoom,
+                                            (end.y + 1) as f32 * zoom,
+                                        ),
+                                );
+                                ui.painter().rect_filled(
+                                    marquee,
+                                    0,
+                                    egui::Color32::from_white_alpha(24),
+                                );
+                                ui.painter().rect_stroke(
+                                    marquee,
+                                    0,
+                                    egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
+                                    egui::StrokeKind::Inside,
+                                );
                             }
                         }
                     } else {
@@ -733,6 +777,12 @@ impl PaintApp {
                 });
             if let Some(point) = picked {
                 self.pick_color_at(point);
+            }
+            if let Some(selection) = pending_selection {
+                self.execute(
+                    Command::SelectRect(selection),
+                    "Rectangle selection updated",
+                );
             }
         });
     }
@@ -1620,6 +1670,23 @@ fn shortcut_pressed(context: &egui::Context, modifiers: egui::Modifiers, key: eg
 
 fn color_slider(ui: &mut egui::Ui, label: &'static str, value: &mut u8) {
     let _response = ui.add(egui::Slider::new(value, 0..=u8::MAX).text(label));
+}
+
+fn canvas_point_at(position: egui::Pos2, rect: egui::Rect, zoom: f32, size: Size) -> Option<Point> {
+    let x = ((position.x - rect.left()) / zoom).floor();
+    let y = ((position.y - rect.top()) / zoom).floor();
+    if x < 0.0 || y < 0.0 || x >= size.width() as f32 || y >= size.height() as f32 {
+        return None;
+    }
+    Some(Point::new(x as u32, y as u32))
+}
+
+fn selection_rect_from_drag(start: Point, end: Point) -> Rect {
+    let left = i64::from(start.x.min(end.x));
+    let top = i64::from(start.y.min(end.y));
+    let right = i64::from(start.x.max(end.x)) + 1;
+    let bottom = i64::from(start.y.max(end.y)) + 1;
+    Rect::new(left, top, right, bottom).expect("drag selection has positive width and height")
 }
 
 fn selection_input(ui: &mut egui::Ui, label: &'static str, value: &mut i64) {

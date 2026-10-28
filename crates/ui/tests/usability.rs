@@ -329,6 +329,26 @@ fn canvas_color_picker_samples_composed_pixels_without_editing() {
 }
 
 #[test]
+fn canvas_drag_creates_a_half_open_rectangle_selection_without_history() {
+    let mut harness = app();
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let rect = canvas.rect();
+    harness.drag_at(rect.min + egui::vec2(20.0, 30.0));
+    harness.run();
+    harness.hover_at(rect.min + egui::vec2(120.0, 90.0));
+    harness.run();
+    harness.drop_at(rect.min + egui::vec2(120.0, 90.0));
+    harness.run();
+
+    assert_eq!(
+        harness.state().session().document().selection(),
+        Some(Rect::new(20, 30, 121, 91).expect("drag selection"))
+    );
+    assert!(!harness.state().session().dirty());
+    assert!(!harness.state().session().can_undo());
+}
+
+#[test]
 fn layer_menu_exposes_both_active_layer_flips() {
     let mut harness = app();
     harness
