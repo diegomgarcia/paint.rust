@@ -22,6 +22,15 @@ fn click(harness: &mut Harness<'_, PaintApp>, label: &str) {
     harness.run();
 }
 
+fn replace_field(harness: &mut Harness<'_, PaintApp>, label: &str, text: &str) {
+    harness.get_by_label(label).click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.run();
+    harness.get_by_label(label).type_text(text);
+    harness.run();
+}
+
 fn menu_item(harness: &mut Harness<'_, PaintApp>, menu: &str, item: &str) {
     click(harness, menu);
     click(harness, item);
@@ -228,9 +237,8 @@ fn rectangle_selection_chosen_bgra_fill_and_clear_selection_are_usable() {
         Some(Rect::new(0, 0, 1, 1).expect("selection"))
     );
 
-    harness
-        .get_by_role_and_label(Role::Slider, "Fill red")
-        .click();
+    click(&mut harness, "More");
+    harness.get_by_role_and_label(Role::Slider, "Red").click();
     harness.run();
     let chosen = harness.state().fill_color();
     assert!(
@@ -360,6 +368,46 @@ fn layer_menu_exposes_both_active_layer_flips() {
 }
 
 #[test]
+fn colors_window_supports_primary_secondary_swap_and_reset() {
+    let mut harness = app();
+    assert_eq!(harness.state().fill_color(), Bgra::BLACK);
+    assert_eq!(harness.state().secondary_color(), Bgra::WHITE);
+
+    click(&mut harness, "Secondary color");
+    replace_field(&mut harness, "Hex color", "#112233");
+    click(&mut harness, "Apply color");
+    assert_eq!(harness.state().fill_color(), Bgra::BLACK);
+    assert_eq!(
+        harness.state().secondary_color(),
+        Bgra::new(0x33, 0x22, 0x11, 255)
+    );
+
+    click(&mut harness, "Swap colors");
+    assert_eq!(
+        harness.state().fill_color(),
+        Bgra::new(0x33, 0x22, 0x11, 255)
+    );
+    assert_eq!(harness.state().secondary_color(), Bgra::BLACK);
+
+    click(&mut harness, "Reset to black and white");
+    assert_eq!(harness.state().fill_color(), Bgra::BLACK);
+    assert_eq!(harness.state().secondary_color(), Bgra::WHITE);
+}
+
+#[test]
+fn window_menu_can_float_and_dock_the_color_and_layer_panels() {
+    let mut harness = app();
+    assert!(!harness.state().panels_floating());
+    menu_item(&mut harness, "Window", "Float Panels");
+    assert!(harness.state().panels_floating());
+    harness.get_by_role_and_label(Role::Label, "Colors");
+    harness.get_by_role_and_label(Role::Label, "Layers");
+    menu_item(&mut harness, "Window", "Dock Panels");
+    assert!(!harness.state().panels_floating());
+    harness.get_by_role_and_label(Role::Button, "New Layer");
+}
+
+#[test]
 fn hex_color_input_applies_exact_rgb_and_alpha() {
     assert_eq!(
         paint_ui::color_from_hex("#FF0000").expect("red"),
@@ -374,14 +422,10 @@ fn hex_color_input_applies_exact_rgb_and_alpha() {
 
     let mut harness = app();
     let before = harness.state().session().document().clone();
-    let field = harness.get_by_label("Hex color");
-    field.click();
-    field.type_text("#FF8000");
-    harness.run();
+    replace_field(&mut harness, "Hex color", "#FF8000");
     click(&mut harness, "Apply color");
 
     assert_eq!(harness.state().fill_color(), Bgra::new(0, 128, 255, 255));
-    harness.get_by_label_contains("Primary color preview · #FF8000");
     assert_eq!(harness.state().session().document(), &before);
 }
 

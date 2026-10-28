@@ -7,7 +7,7 @@ use paint_app::{AppSession, Command};
 use paint_core::{Bgra, Point, Rect, Size};
 use paint_document::{Document, LayerId, Revision};
 
-use crate::icons::{Icon, icon_button};
+use crate::icons::{Icon, icon_button, tool_button};
 
 const DEFAULT_WIDTH: u32 = 800;
 const DEFAULT_HEIGHT: u32 = 600;
@@ -34,7 +34,14 @@ const PRESET_COLORS: &[(&str, Bgra)] = &[
 pub struct PaintApp {
     session: AppSession,
     fill_color: Bgra,
+    secondary_color: Bgra,
+    active_color_slot: ColorSlot,
+    colors_expanded: bool,
+    colors_visible: bool,
+    layers_visible: bool,
+    panels_floating: bool,
     picking_color: bool,
+    active_tool: Tool,
     drag_start: Option<Point>,
     drag_current: Option<Point>,
     hex_input: String,
@@ -58,10 +65,17 @@ impl PaintApp {
         let mut app = Self {
             session: default_session(),
             fill_color: Bgra::BLACK,
+            secondary_color: Bgra::WHITE,
+            active_color_slot: ColorSlot::Primary,
+            colors_expanded: false,
+            colors_visible: true,
+            layers_visible: true,
+            panels_floating: false,
             picking_color: false,
+            active_tool: Tool::Select,
             drag_start: None,
             drag_current: None,
-            hex_input: String::new(),
+            hex_input: format_hex_color(Bgra::BLACK),
             hex_error: None,
             selection_input: SelectionInput::default(),
             texture: None,
@@ -87,6 +101,41 @@ impl PaintApp {
 
     pub const fn fill_color(&self) -> Bgra {
         self.fill_color
+    }
+
+    pub const fn secondary_color(&self) -> Bgra {
+        self.secondary_color
+    }
+
+    #[doc(hidden)]
+    pub const fn panels_floating(&self) -> bool {
+        self.panels_floating
+    }
+
+    const fn active_color(&self) -> Bgra {
+        match self.active_color_slot {
+            ColorSlot::Primary => self.fill_color,
+            ColorSlot::Secondary => self.secondary_color,
+        }
+    }
+
+    fn set_active_color(&mut self, color: Bgra) {
+        match self.active_color_slot {
+            ColorSlot::Primary => self.fill_color = color,
+            ColorSlot::Secondary => self.secondary_color = color,
+        }
+    }
+
+    fn swap_colors(&mut self) {
+        std::mem::swap(&mut self.fill_color, &mut self.secondary_color);
+    }
+
+    fn reset_colors(&mut self) {
+        self.fill_color = Bgra::BLACK;
+        self.secondary_color = Bgra::WHITE;
+        self.active_color_slot = ColorSlot::Primary;
+        self.hex_input = format_hex_color(self.fill_color);
+        self.hex_error = None;
     }
 
     pub fn status(&self) -> &str {
@@ -358,16 +407,39 @@ impl PaintApp {
                     let select = ui.button("Rectangle Select");
                     focus_first_menu_item_on_keyboard_open(ui, &select);
                     if select.clicked() {
+                        self.active_tool = Tool::Select;
                         self.select_rectangle();
                         ui.close();
                     }
                     if ui.button("Fill Selection").clicked() {
+                        self.active_tool = Tool::Fill;
                         let color = self.fill_color;
                         self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
                         ui.close();
                     }
                     if ui.button("Pick Color from Canvas").clicked() {
+                        self.active_tool = Tool::Picker;
                         self.picking_color = !self.picking_color;
+                        ui.close();
+                    }
+                });
+                ui.menu_button("Window", |ui| {
+                    ui.checkbox(&mut self.colors_visible, "Colors window");
+                    ui.checkbox(&mut self.layers_visible, "Layers window");
+                    ui.separator();
+                    let label = if self.panels_floating {
+                        "Dock Panels"
+                    } else {
+                        "Float Panels"
+                    };
+                    let toggle = ui.button(label);
+                    focus_first_menu_item_on_keyboard_open(ui, &toggle);
+                    if toggle.clicked() {
+                        self.panels_floating = !self.panels_floating;
+                        if self.panels_floating {
+                            self.colors_visible = true;
+                            self.layers_visible = true;
+                        }
                         ui.close();
                     }
                 });
@@ -434,7 +506,16 @@ impl PaintApp {
                 ui.vertical_centered(|ui| {
                     ui.strong("Tools");
                     ui.separator();
-                    if icon_button(ui, Icon::SelectRectangle, "Select Rectangle", true).clicked() {
+                    if tool_button(
+                        ui,
+                        Icon::SelectRectangle,
+                        "Select Rectangle",
+                        true,
+                        self.active_tool == Tool::Select,
+                    )
+                    .clicked()
+                    {
+                        self.active_tool = Tool::Select;
                         self.select_rectangle();
                     }
                     if icon_button(
@@ -447,11 +528,23 @@ impl PaintApp {
                     {
                         self.execute(Command::ClearSelection, "Selection cleared");
                     }
-                    if icon_button(ui, Icon::Fill, "Fill", true).clicked() {
+                    if tool_button(ui, Icon::Fill, "Fill", true, self.active_tool == Tool::Fill)
+                        .clicked()
+                    {
+                        self.active_tool = Tool::Fill;
                         let color = self.fill_color;
                         self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
                     }
-                    if icon_button(ui, Icon::EyeDropper, "Pick color from canvas", true).clicked() {
+                    if tool_button(
+                        ui,
+                        Icon::EyeDropper,
+                        "Pick color from canvas",
+                        true,
+                        self.active_tool == Tool::Picker,
+                    )
+                    .clicked()
+                    {
+                        self.active_tool = Tool::Picker;
                         self.picking_color = !self.picking_color;
                         self.status = if self.picking_color {
                             "Pick a composed canvas color".to_owned()
@@ -499,7 +592,14 @@ impl PaintApp {
 
     fn layers_content(&mut self, ui: &mut egui::Ui) {
         let mut pending = None;
-        ui.heading("Layers");
+        ui.horizontal(|ui| {
+            ui.heading("Layers");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if icon_button(ui, Icon::AddLayer, "New Layer", true).clicked() {
+                    self.add_layer();
+                }
+            });
+        });
         ui.label("Ordered bottom to top; displayed topmost first.");
         ui.separator();
         egui::ScrollArea::vertical()
@@ -567,17 +667,41 @@ impl PaintApp {
 
     fn colors_content(&mut self, ui: &mut egui::Ui) {
         ui.heading("Colors");
-        let initial_color = self.fill_color;
-        let color = self.fill_color;
-        color_preview(ui, color);
-        ui.label(format!(
-            "Primary color preview · #{:02X}{:02X}{:02X}",
-            color.r, color.g, color.b
-        ));
-        ui.label(format!(
-            "Alpha {}% · canonical BGRA channels",
-            (u16::from(color.a) * 100 / 255)
-        ));
+        let initial_slot = self.active_color_slot;
+        let mut active = self.active_color();
+        let initial_color = active;
+        ui.horizontal(|ui| {
+            if let Some(slot) = color_slots_widget(
+                ui,
+                self.fill_color,
+                self.secondary_color,
+                self.active_color_slot,
+            ) {
+                self.active_color_slot = slot;
+            }
+            ui.vertical(|ui| {
+                if ui.button("Swap colors").clicked() {
+                    self.swap_colors();
+                    active = self.active_color();
+                    self.hex_input = format_hex_color(active);
+                    self.hex_error = None;
+                }
+                if ui.button("Reset to black and white").clicked() {
+                    self.reset_colors();
+                    active = self.active_color();
+                }
+            });
+        });
+        if self.active_color_slot != initial_slot {
+            active = self.active_color();
+            self.hex_input = format_hex_color(active);
+            self.hex_error = None;
+        }
+        let slot_name = match self.active_color_slot {
+            ColorSlot::Primary => "Primary",
+            ColorSlot::Secondary => "Secondary",
+        };
+        ui.label(format!("Active color: {slot_name}"));
         ui.horizontal(|ui| {
             let label = ui.label("Hex color");
             let _response = ui
@@ -586,12 +710,18 @@ impl PaintApp {
             if ui.button("Apply color").clicked() {
                 match crate::color_from_hex(&self.hex_input) {
                     Ok(parsed) => {
-                        self.fill_color = parsed;
+                        active = parsed;
                         self.hex_input = format_hex_color(parsed);
                         self.hex_error = None;
                     }
                     Err(error) => self.hex_error = Some(error),
                 }
+            }
+            if ui
+                .button(if self.colors_expanded { "Less" } else { "More" })
+                .clicked()
+            {
+                self.colors_expanded = !self.colors_expanded;
             }
         });
         if let Some(error) = &self.hex_error {
@@ -601,30 +731,85 @@ impl PaintApp {
             );
         }
         ui.label("Color wheel");
-        if let Some(color) = color_wheel(ui, self.fill_color) {
-            self.fill_color = color;
+        if let Some(color) = color_wheel(ui, active) {
+            active = color;
         }
         ui.label("Palette");
         ui.horizontal_wrapped(|ui| {
             for &(label, preset) in PRESET_COLORS {
-                if color_swatch(ui, label, preset, preset == self.fill_color).clicked() {
-                    self.fill_color = preset;
+                let response = color_swatch(ui, label, preset, preset == active);
+                if response.clicked() {
+                    active = preset;
+                }
+                if response.secondary_clicked() {
+                    match self.active_color_slot {
+                        ColorSlot::Primary => self.secondary_color = preset,
+                        ColorSlot::Secondary => self.fill_color = preset,
+                    }
                 }
             }
         });
-        ui.separator();
-        color_slider(ui, "Fill blue", &mut self.fill_color.b);
-        color_slider(ui, "Fill green", &mut self.fill_color.g);
-        color_slider(ui, "Fill red", &mut self.fill_color.r);
-        color_slider(ui, "Fill alpha", &mut self.fill_color.a);
-        if self.fill_color != initial_color {
-            self.hex_input = format_hex_color(self.fill_color);
+        if self.colors_expanded {
+            ui.separator();
+            color_slider(ui, "Blue", &mut active.b);
+            color_slider(ui, "Green", &mut active.g);
+            color_slider(ui, "Red", &mut active.r);
+            color_slider(ui, "Opacity", &mut active.a);
+            let (hue, saturation, value) = hsv_from_color(active);
+            let mut hue_value = hue;
+            let mut saturation_value = saturation * 100.0;
+            let mut brightness_value = value * 100.0;
+            ui.horizontal(|ui| {
+                let hue_label = ui.label("Hue");
+                let _hue = ui
+                    .add(
+                        egui::DragValue::new(&mut hue_value)
+                            .range(0.0..=360.0)
+                            .speed(1.0)
+                            .suffix("°"),
+                    )
+                    .labelled_by(hue_label.id);
+                let sat_label = ui.label("Sat");
+                let _sat = ui
+                    .add(
+                        egui::DragValue::new(&mut saturation_value)
+                            .range(0.0..=100.0)
+                            .speed(1.0)
+                            .suffix("%"),
+                    )
+                    .labelled_by(sat_label.id);
+                let value_label = ui.label("Val");
+                let _value = ui
+                    .add(
+                        egui::DragValue::new(&mut brightness_value)
+                            .range(0.0..=100.0)
+                            .speed(1.0)
+                            .suffix("%"),
+                    )
+                    .labelled_by(value_label.id);
+            });
+            if (hue_value, saturation_value, brightness_value)
+                != (hue, saturation * 100.0, value * 100.0)
+            {
+                active = crate::color_from_hsv(
+                    hue_value,
+                    saturation_value / 100.0,
+                    brightness_value / 100.0,
+                    active.a,
+                );
+            }
+        }
+        self.set_active_color(active);
+        if active != initial_color || self.active_color_slot != initial_slot {
+            self.hex_input = format_hex_color(active);
             self.hex_error = None;
         }
-        let color = self.fill_color;
         ui.colored_label(
-            egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
-            format!("BGRA {}, {}, {}, {}", color.b, color.g, color.r, color.a),
+            egui::Color32::from_rgba_unmultiplied(active.r, active.g, active.b, active.a),
+            format!(
+                "BGRA {}, {}, {}, {}",
+                active.b, active.g, active.r, active.a
+            ),
         );
     }
 
@@ -632,17 +817,60 @@ impl PaintApp {
         egui::Panel::right("paint-r-right-dock")
             .default_size(280.0)
             .show(ui, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("paint-r-colors-scroll")
-                    .max_height(560.0)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.colors_content(ui));
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .id_salt("paint-r-layers-scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.layers_content(ui));
+                let colors_height = if self.colors_expanded {
+                    640.0
+                } else {
+                    (ui.available_height() * 0.60).clamp(470.0, 560.0)
+                };
+                if self.colors_visible {
+                    egui::ScrollArea::vertical()
+                        .id_salt("paint-r-colors-scroll")
+                        .max_height(colors_height)
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| self.colors_content(ui));
+                }
+                if self.colors_visible && self.layers_visible {
+                    ui.separator();
+                }
+                if self.layers_visible {
+                    egui::ScrollArea::vertical()
+                        .id_salt("paint-r-layers-scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| self.layers_content(ui));
+                }
             });
+    }
+
+    fn floating_panels(&mut self, ui: &mut egui::Ui) {
+        let context = ui.ctx().clone();
+        if self.colors_visible {
+            let mut open = self.colors_visible;
+            egui::Window::new("Colors")
+                .open(&mut open)
+                .default_pos(egui::pos2(80.0, 140.0))
+                .default_width(300.0)
+                .show(&context, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("paint-r-floating-colors-scroll")
+                        .max_height(620.0)
+                        .show(ui, |ui| self.colors_content(ui));
+                });
+            self.colors_visible = open;
+        }
+        if self.layers_visible {
+            let mut open = self.layers_visible;
+            egui::Window::new("Layers")
+                .open(&mut open)
+                .default_pos(egui::pos2(880.0, 260.0))
+                .default_width(320.0)
+                .show(&context, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("paint-r-floating-layers-scroll")
+                        .max_height(520.0)
+                        .show(ui, |ui| self.layers_content(ui));
+                });
+            self.layers_visible = open;
+        }
     }
 
     fn status_panel(&mut self, ui: &mut egui::Ui) {
@@ -732,6 +960,7 @@ impl PaintApp {
                                     canvas_point_at(position, rect, zoom, size)
                                 })
                             {
+                                self.active_tool = Tool::Select;
                                 self.drag_start = Some(point);
                                 self.drag_current = Some(point);
                             }
@@ -795,6 +1024,7 @@ impl PaintApp {
                     return;
                 };
                 self.fill_color = *color;
+                self.active_color_slot = ColorSlot::Primary;
                 self.hex_input = format_hex_color(*color);
                 self.hex_error = None;
                 self.picking_color = false;
@@ -1180,7 +1410,11 @@ impl eframe::App for PaintApp {
         self.tool_options_panel(ui);
         self.status_panel(ui);
         self.tools_panel(ui);
-        self.right_dock(ui);
+        if self.panels_floating {
+            self.floating_panels(ui);
+        } else if self.colors_visible || self.layers_visible {
+            self.right_dock(ui);
+        }
         self.canvas_panel(ui);
         self.path_dialog(ui);
         self.discard_confirmation(ui);
@@ -1190,6 +1424,19 @@ impl eframe::App for PaintApp {
             ui.ctx().request_repaint();
         }
     }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum Tool {
+    Select,
+    Fill,
+    Picker,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ColorSlot {
+    Primary,
+    Secondary,
 }
 
 #[derive(Clone, Copy)]
@@ -1475,6 +1722,131 @@ fn format_hex_color(color: Bgra) -> String {
     }
 }
 
+fn color_slots_widget(
+    ui: &mut egui::Ui,
+    primary: Bgra,
+    secondary: Bgra,
+    active: ColorSlot,
+) -> Option<ColorSlot> {
+    let (bounds, _) = ui.allocate_exact_size(egui::vec2(88.0, 74.0), egui::Sense::hover());
+    let primary_rect = egui::Rect::from_min_size(bounds.min, egui::vec2(44.0, 44.0));
+    let secondary_rect =
+        egui::Rect::from_min_size(bounds.min + egui::vec2(32.0, 28.0), egui::vec2(44.0, 44.0));
+    let secondary_response = ui.interact(
+        secondary_rect,
+        ui.make_persistent_id("paint-r-secondary-color"),
+        egui::Sense::click(),
+    );
+    secondary_response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Secondary color"));
+    let primary_response = ui.interact(
+        primary_rect,
+        ui.make_persistent_id("paint-r-primary-color"),
+        egui::Sense::click(),
+    );
+    primary_response.widget_info(|| {
+        egui::WidgetInfo::selected(
+            egui::Role::Button,
+            true,
+            active == ColorSlot::Primary,
+            "Primary color",
+        )
+    });
+    if ui.is_rect_visible(bounds) {
+        paint_color_slot(
+            ui,
+            secondary_rect,
+            secondary,
+            active == ColorSlot::Secondary,
+        );
+        paint_color_slot(ui, primary_rect, primary, active == ColorSlot::Primary);
+    }
+    if primary_response.clicked() {
+        Some(ColorSlot::Primary)
+    } else if secondary_response.clicked() {
+        Some(ColorSlot::Secondary)
+    } else {
+        None
+    }
+}
+
+fn paint_color_slot(ui: &egui::Ui, rect: egui::Rect, color: Bgra, active: bool) {
+    let painter = ui.painter();
+    let checker = 7.0;
+    let mut row = 0;
+    let mut y = rect.top();
+    while y < rect.bottom() {
+        let mut column = 0;
+        let mut x = rect.left();
+        while x < rect.right() {
+            let cell = egui::Rect::from_min_max(
+                egui::pos2(x, y),
+                egui::pos2(
+                    (x + checker).min(rect.right()),
+                    (y + checker).min(rect.bottom()),
+                ),
+            );
+            painter.rect_filled(
+                cell,
+                0,
+                if (row + column) % 2 == 0 {
+                    egui::Color32::from_gray(190)
+                } else {
+                    egui::Color32::from_gray(120)
+                },
+            );
+            x += checker;
+            column += 1;
+        }
+        y += checker;
+        row += 1;
+    }
+    painter.rect_filled(
+        rect,
+        3,
+        egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+    );
+    let stroke = if active {
+        egui::Stroke::new(2.0, egui::Color32::WHITE)
+    } else {
+        egui::Stroke::new(1.0, egui::Color32::from_gray(80))
+    };
+    painter.rect_stroke(rect, 3, stroke, egui::StrokeKind::Inside);
+    if active {
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                rect.left_top() + egui::vec2(1.0, 1.0),
+                rect.left_top() + egui::vec2(13.0, 1.0),
+                rect.left_top() + egui::vec2(1.0, 13.0),
+            ],
+            egui::Color32::WHITE,
+            egui::Stroke::NONE,
+        ));
+    }
+}
+
+fn hsv_from_color(color: Bgra) -> (f32, f32, f32) {
+    let maximum = color.r.max(color.g).max(color.b);
+    let minimum = color.r.min(color.g).min(color.b);
+    let chroma = maximum - minimum;
+    let value = f32::from(maximum) / 255.0;
+    let saturation = if maximum == 0 {
+        0.0
+    } else {
+        f32::from(chroma) / f32::from(maximum)
+    };
+    let hue = if chroma == 0 {
+        0.0
+    } else if maximum == color.r {
+        (f32::from(color.g) - f32::from(color.b)) / f32::from(chroma)
+    } else if maximum == color.g {
+        (f32::from(color.b) - f32::from(color.r)) / f32::from(chroma) + 2.0
+    } else {
+        (f32::from(color.r) - f32::from(color.g)) / f32::from(chroma) + 4.0
+    } * 60.0;
+    (hue.rem_euclid(360.0), saturation, value)
+}
+
 fn color_wheel(ui: &mut egui::Ui, current: Bgra) -> Option<Bgra> {
     let diameter = ui.available_width().clamp(96.0, 170.0);
     let (rect, response) =
@@ -1604,46 +1976,6 @@ fn color_swatch(
         painter.rect_stroke(rect, 3, stroke, egui::StrokeKind::Inside);
     }
     response.on_hover_text(label)
-}
-
-fn color_preview(ui: &mut egui::Ui, color: Bgra) {
-    let size = egui::vec2(ui.available_width().clamp(80.0, 184.0), 48.0);
-    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-    let painter = ui.painter();
-    let checker = 8.0;
-    let light = egui::Color32::from_rgb(190, 190, 190);
-    let dark = egui::Color32::from_rgb(120, 120, 120);
-    let mut y = rect.top();
-    let mut row = 0;
-    while y < rect.bottom() {
-        let mut x = rect.left();
-        let mut column = 0;
-        while x < rect.right() {
-            let cell = egui::Rect::from_min_max(
-                egui::pos2(x, y),
-                egui::pos2(
-                    (x + checker).min(rect.right()),
-                    (y + checker).min(rect.bottom()),
-                ),
-            );
-            painter.rect_filled(cell, 0, if (row + column) % 2 == 0 { light } else { dark });
-            x += checker;
-            column += 1;
-        }
-        y += checker;
-        row += 1;
-    }
-    painter.rect_filled(
-        rect,
-        4,
-        egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
-    );
-    painter.rect_stroke(
-        rect,
-        4,
-        egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
-        egui::StrokeKind::Inside,
-    );
 }
 
 fn default_session() -> AppSession {
