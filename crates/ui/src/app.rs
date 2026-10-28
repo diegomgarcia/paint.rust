@@ -560,9 +560,9 @@ impl PaintApp {
 
     fn tools_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::left("paint-r-tools")
-            .default_size(158.0)
-            .min_size(158.0)
-            .max_size(158.0)
+            .default_size(106.0)
+            .min_size(106.0)
+            .max_size(106.0)
             .resizable(false)
             .show(ui, |ui| self.tools_content(ui));
     }
@@ -987,9 +987,10 @@ impl PaintApp {
             let mut open = self.tools_visible;
             egui::Window::new("Tools")
                 .open(&mut open)
+                .frame(floating_window_frame(&context))
                 .collapsible(false)
                 .default_pos(egui::pos2(20.0, 180.0))
-                .default_width(158.0)
+                .default_width(106.0)
                 .resizable(false)
                 .show(&context, |ui| self.tools_content(ui));
             self.tools_visible = open;
@@ -998,6 +999,7 @@ impl PaintApp {
             let mut open = self.history_visible;
             egui::Window::new("History")
                 .open(&mut open)
+                .frame(floating_window_frame(&context))
                 .collapsible(false)
                 .default_pos(egui::pos2(500.0, 260.0))
                 .default_width(220.0)
@@ -1013,6 +1015,7 @@ impl PaintApp {
             let mut open = self.colors_visible;
             egui::Window::new("Colors")
                 .open(&mut open)
+                .frame(floating_window_frame(&context))
                 .collapsible(false)
                 .default_pos(egui::pos2(20.0, 380.0))
                 .default_width(300.0)
@@ -1028,6 +1031,7 @@ impl PaintApp {
             let mut open = self.layers_visible;
             egui::Window::new("Layers")
                 .open(&mut open)
+                .frame(floating_window_frame(&context))
                 .collapsible(false)
                 .default_pos(egui::pos2(980.0, 260.0))
                 .default_width(320.0)
@@ -1739,6 +1743,13 @@ impl PathDialog {
 struct LayerThumbnail {
     revision: Revision,
     texture: egui::TextureHandle,
+}
+
+fn floating_window_frame(context: &egui::Context) -> egui::Frame {
+    let style = context.style_of(egui::Theme::Dark);
+    let mut frame = egui::Frame::window(&style);
+    frame.fill = egui::Color32::from_rgba_unmultiplied(38, 38, 38, 232);
+    frame
 }
 
 fn configure_style(context: &egui::Context) {

@@ -1242,6 +1242,9 @@ def package_release(
         license_path = repo_root / "LICENSE"
         if license_path.is_file():
             shutil.copyfile(license_path, payload / "LICENSE")
+        lucide_license = repo_root / "docs/licenses/LUCIDE-ISC.txt"
+        if lucide_license.is_file():
+            shutil.copyfile(lucide_license, payload / "LUCIDE-ISC.txt")
         (payload / "PREVIEW_SMOKE.json").write_bytes(_json_bytes(smoke_evidence))
         (payload / "PREVIEW_BINARY.json").write_bytes(
             _json_bytes(
@@ -1263,7 +1266,7 @@ def package_release(
         if platform == "macos-aarch64":
             resources = payload / "Paint.R.app/Contents/Resources/Preview"
             resources.mkdir(parents=True, exist_ok=True)
-            for name in ("README-PREVIEW.md", "PARITY_LEDGER.md", "LICENSE", "PREVIEW_SMOKE.json", "PREVIEW_BINARY.json", "THIRD_PARTY_NOTICES.md", "sbom.cdx.json"):
+            for name in ("README-PREVIEW.md", "PARITY_LEDGER.md", "LICENSE", "LUCIDE-ISC.txt", "PREVIEW_SMOKE.json", "PREVIEW_BINARY.json", "THIRD_PARTY_NOTICES.md", "sbom.cdx.json"):
                 if not (payload / name).is_file():
                     continue
                 shutil.copyfile(payload / name, resources / name)

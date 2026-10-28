@@ -100,6 +100,62 @@ fn polyline(painter: &Painter, rect: egui::Rect, points: &[(f32, f32)], stroke: 
     );
 }
 
+fn p24(rect: egui::Rect, x: f32, y: f32) -> Pos2 {
+    rect.min + vec2(rect.width() * x / 24.0, rect.height() * y / 24.0)
+}
+
+fn s24(rect: egui::Rect, width: f32) -> f32 {
+    rect.width() * width / 24.0
+}
+
+fn line24(painter: &Painter, rect: egui::Rect, a: (f32, f32), b: (f32, f32), stroke: Stroke) {
+    painter.line_segment([p24(rect, a.0, a.1), p24(rect, b.0, b.1)], stroke);
+}
+
+fn poly24(
+    painter: &Painter,
+    rect: egui::Rect,
+    points: &[(f32, f32)],
+    closed: bool,
+    stroke: Stroke,
+    fill: Color32,
+) {
+    let mut mapped: Vec<Pos2> = points.iter().map(|&(x, y)| p24(rect, x, y)).collect();
+    if closed && let Some(first) = mapped.first().copied() {
+        mapped.push(first);
+    }
+    painter.add(Shape::line(mapped, stroke));
+    if fill != Color32::TRANSPARENT && points.len() >= 3 {
+        painter.add(Shape::convex_polygon(
+            points.iter().map(|&(x, y)| p24(rect, x, y)).collect(),
+            fill,
+            Stroke::NONE,
+        ));
+    }
+}
+
+fn arc24(
+    painter: &Painter,
+    rect: egui::Rect,
+    center: (f32, f32),
+    radius: f32,
+    angles: (f32, f32),
+    stroke: Stroke,
+) {
+    let steps = 5;
+    let points: Vec<Pos2> = (0..=steps)
+        .map(|index| {
+            let angle = angles.0 + (angles.1 - angles.0) * index as f32 / steps as f32;
+            p24(
+                rect,
+                center.0 + radius * angle.cos(),
+                center.1 + radius * angle.sin(),
+            )
+        })
+        .collect();
+    painter.add(Shape::line(points, stroke));
+}
+
 fn paint_icon(painter: &Painter, rect: egui::Rect, icon: Icon, color: Color32) {
     let stroke = Stroke::new(2.3, color);
     let accent = Color32::from_rgb(88, 170, 235);
@@ -205,89 +261,128 @@ fn paint_icon(painter: &Painter, rect: egui::Rect, icon: Icon, color: Color32) {
             ));
         }
         Icon::SelectRectangle => {
-            for y in [0.2, 0.8] {
-                for (x0, x1) in [(0.12, 0.28), (0.36, 0.52), (0.6, 0.76), (0.84, 0.9)] {
-                    painter.line_segment(
-                        [point(rect, x0, y), point(rect, x1, y)],
-                        Stroke::new(2.0, color),
-                    );
-                }
+            let dash = Stroke::new(s24(rect, 2.0), color);
+            for (x0, x1) in [(6.0, 9.0), (11.0, 14.0), (16.0, 19.0)] {
+                line24(painter, rect, (x0, 3.0), (x1, 3.0), dash);
+                line24(painter, rect, (x0, 21.0), (x1, 21.0), dash);
             }
-            for x in [0.12, 0.9] {
-                for (y0, y1) in [(0.2, 0.36), (0.44, 0.6), (0.68, 0.8)] {
-                    painter.line_segment(
-                        [point(rect, x, y0), point(rect, x, y1)],
-                        Stroke::new(2.0, color),
-                    );
-                }
+            for (y0, y1) in [(6.0, 9.0), (11.0, 14.0), (16.0, 19.0)] {
+                line24(painter, rect, (3.0, y0), (3.0, y1), dash);
+                line24(painter, rect, (21.0, y0), (21.0, y1), dash);
             }
-            painter.rect_filled(
-                egui::Rect::from_min_max(point(rect, 0.12, 0.2), point(rect, 0.9, 0.8)),
-                0,
-                color.gamma_multiply(0.06),
+            arc24(
+                painter,
+                rect,
+                (5.0, 5.0),
+                2.0,
+                (std::f32::consts::PI, 1.5 * std::f32::consts::PI),
+                dash,
+            );
+            arc24(
+                painter,
+                rect,
+                (19.0, 5.0),
+                2.0,
+                (1.5 * std::f32::consts::PI, std::f32::consts::TAU),
+                dash,
+            );
+            arc24(
+                painter,
+                rect,
+                (19.0, 19.0),
+                2.0,
+                (0.0, 0.5 * std::f32::consts::PI),
+                dash,
+            );
+            arc24(
+                painter,
+                rect,
+                (5.0, 19.0),
+                2.0,
+                (0.5 * std::f32::consts::PI, std::f32::consts::PI),
+                dash,
             );
         }
         Icon::Zoom => {
-            painter.circle_stroke(point(rect, 0.4, 0.4), rect.width() * 0.2, stroke);
-            painter.line_segment(
-                [point(rect, 0.55, 0.55), point(rect, 0.84, 0.84)],
-                Stroke::new(3.2, color),
+            painter.circle_stroke(p24(rect, 11.0, 11.0), s24(rect, 8.0), stroke);
+            line24(
+                painter,
+                rect,
+                (21.0, 21.0),
+                (16.65, 16.65),
+                Stroke::new(s24(rect, 2.4), color),
             );
-            painter.line_segment(
-                [point(rect, 0.29, 0.4), point(rect, 0.51, 0.4)],
-                Stroke::new(2.0, accent),
-            );
-            painter.line_segment(
-                [point(rect, 0.4, 0.29), point(rect, 0.4, 0.51)],
-                Stroke::new(2.0, accent),
-            );
+            line24(painter, rect, (11.0, 8.0), (11.0, 14.0), stroke);
+            line24(painter, rect, (8.0, 11.0), (14.0, 11.0), stroke);
         }
         Icon::RectangleShape => {
-            painter.rect_filled(
-                egui::Rect::from_min_max(point(rect, 0.14, 0.28), point(rect, 0.86, 0.78)),
-                2,
-                accent.gamma_multiply(0.42),
-            );
+            let shape = egui::Rect::from_min_max(p24(rect, 2.0, 6.0), p24(rect, 22.0, 18.0));
+            painter.rect_filled(shape, s24(rect, 2.0), color.gamma_multiply(0.14));
             painter.rect_stroke(
-                egui::Rect::from_min_max(point(rect, 0.14, 0.28), point(rect, 0.86, 0.78)),
-                2,
-                Stroke::new(2.2, color),
+                shape,
+                s24(rect, 2.0),
+                Stroke::new(s24(rect, 2.0), color),
                 StrokeKind::Inside,
             );
         }
         Icon::Fill => {
-            painter.add(Shape::convex_polygon(
-                vec![
-                    point(rect, 0.18, 0.42),
-                    point(rect, 0.48, 0.12),
-                    point(rect, 0.82, 0.43),
-                    point(rect, 0.55, 0.7),
-                    point(rect, 0.31, 0.66),
-                ],
-                color.gamma_multiply(0.22),
-                stroke,
-            ));
-            polyline(
+            let body = [
+                (19.0, 11.0),
+                (11.0, 3.0),
+                (2.4, 11.6),
+                (2.4, 13.0),
+                (7.6, 18.2),
+                (9.0, 19.0),
+                (10.6, 18.2),
+            ];
+            poly24(
                 painter,
                 rect,
-                &[(0.28, 0.4), (0.38, 0.23), (0.62, 0.23), (0.72, 0.42)],
-                Stroke::new(1.3, color),
+                &body,
+                true,
+                stroke,
+                color.gamma_multiply(0.12),
             );
-            painter.circle_filled(point(rect, 0.8, 0.7), rect.width() * 0.08, accent);
+            line24(painter, rect, (5.0, 2.0), (10.0, 7.0), stroke);
+            line24(
+                painter,
+                rect,
+                (2.0, 13.0),
+                (17.0, 13.0),
+                Stroke::new(s24(rect, 1.8), color),
+            );
+            let droplet = [
+                (21.8, 19.8),
+                (20.6, 18.2),
+                (19.2, 20.2),
+                (19.7, 21.5),
+                (20.9, 21.8),
+                (21.8, 20.8),
+            ];
+            poly24(
+                painter,
+                rect,
+                &droplet,
+                true,
+                stroke,
+                color.gamma_multiply(0.25),
+            );
         }
         Icon::EyeDropper => {
-            painter.circle_stroke(point(rect, 0.72, 0.26), rect.width() * 0.14, stroke);
-            painter.line_segment([point(rect, 0.62, 0.37), point(rect, 0.3, 0.69)], stroke);
-            painter.add(Shape::convex_polygon(
-                vec![
-                    point(rect, 0.28, 0.7),
-                    point(rect, 0.36, 0.78),
-                    point(rect, 0.16, 0.86),
-                ],
-                accent.gamma_multiply(0.35),
-                stroke,
-            ));
-            painter.circle_filled(point(rect, 0.46, 0.78), rect.width() * 0.06, accent);
+            line24(painter, rect, (2.0, 22.0), (3.0, 21.0), stroke);
+            line24(painter, rect, (3.0, 21.0), (6.0, 21.0), stroke);
+            line24(painter, rect, (6.0, 21.0), (15.0, 12.0), stroke);
+            line24(painter, rect, (3.0, 21.0), (3.0, 18.0), stroke);
+            line24(painter, rect, (3.0, 18.0), (12.0, 9.0), stroke);
+            line24(
+                painter,
+                rect,
+                (15.0, 6.0),
+                (18.4, 2.6),
+                Stroke::new(s24(rect, 2.6), color),
+            );
+            painter.circle_stroke(p24(rect, 19.4, 3.6), s24(rect, 2.0), stroke);
+            line24(painter, rect, (12.0, 9.0), (15.0, 6.0), stroke);
         }
         Icon::AddLayer => {
             painter.rect_stroke(

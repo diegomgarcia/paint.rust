@@ -12,3 +12,10 @@ application icon is reproduced.
 These marks are first-party project source covered by the repository MIT license. They
 introduce no identified third-party notice or attribution obligation. This file remains
 provenance evidence, not a legal review of non-icon assets.
+
+## Lucide reference geometry
+
+Tool silhouettes are based on Lucide v0.468.0 (`square-dashed`, `zoom-in`,
+`paint-bucket`, `pipette`, `rectangle-horizontal`). Lucide is ISC-licensed; the full
+notice is in `docs/licenses/LUCIDE-ISC.txt`. Geometry is redrawn on the same 24-unit
+round-stroke grid and tinted by Paint.R, not copied as raster assets.
