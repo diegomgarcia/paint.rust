@@ -999,8 +999,8 @@ impl PaintApp {
             egui::Window::new("History")
                 .open(&mut open)
                 .collapsible(false)
-                .default_pos(egui::pos2(620.0, 260.0))
-                .default_width(240.0)
+                .default_pos(egui::pos2(500.0, 260.0))
+                .default_width(220.0)
                 .show(&context, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("paint-r-floating-history-scroll")
