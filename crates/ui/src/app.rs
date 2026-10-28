@@ -45,6 +45,10 @@ pub struct PaintApp {
     picking_color: bool,
     active_tool: Tool,
     icons: IconTextures,
+    tools_window_rect: Option<egui::Rect>,
+    history_window_rect: Option<egui::Rect>,
+    colors_window_rect: Option<egui::Rect>,
+    layers_window_rect: Option<egui::Rect>,
     drag_start: Option<Point>,
     drag_current: Option<Point>,
     cursor_point: Option<Point>,
@@ -84,6 +88,10 @@ impl PaintApp {
             picking_color: false,
             active_tool: Tool::Select,
             icons,
+            tools_window_rect: None,
+            history_window_rect: None,
+            colors_window_rect: None,
+            layers_window_rect: None,
             drag_start: None,
             drag_current: None,
             cursor_point: None,
@@ -632,6 +640,7 @@ impl PaintApp {
                 {
                     self.active_tool = Tool::Rectangle;
                 }
+                ui.end_row();
                 if tool_button(
                     ui,
                     &self.icons,
@@ -1008,21 +1017,26 @@ impl PaintApp {
         let context = ui.ctx().clone();
         if self.tools_visible && self.tools_floating {
             let mut open = self.tools_visible;
-            egui::Window::new("Tools")
+            let frame = floating_window_frame(&context, self.tools_window_rect);
+            if let Some(inner) = egui::Window::new("Tools")
                 .open(&mut open)
-                .frame(floating_window_frame(&context))
+                .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(20.0, 180.0))
                 .default_width(106.0)
                 .resizable(false)
-                .show(&context, |ui| self.tools_content(ui));
+                .show(&context, |ui| self.tools_content(ui))
+            {
+                self.tools_window_rect = Some(inner.response.rect);
+            }
             self.tools_visible = open;
         }
         if self.history_visible {
             let mut open = self.history_visible;
-            egui::Window::new("History")
+            let frame = floating_window_frame(&context, self.history_window_rect);
+            if let Some(inner) = egui::Window::new("History")
                 .open(&mut open)
-                .frame(floating_window_frame(&context))
+                .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(500.0, 260.0))
                 .default_width(220.0)
@@ -1031,14 +1045,18 @@ impl PaintApp {
                         .id_salt("paint-r-floating-history-scroll")
                         .max_height(260.0)
                         .show(ui, |ui| self.history_content(ui));
-                });
+                })
+            {
+                self.history_window_rect = Some(inner.response.rect);
+            }
             self.history_visible = open;
         }
         if self.panels_floating && self.colors_visible {
             let mut open = self.colors_visible;
-            egui::Window::new("Colors")
+            let frame = floating_window_frame(&context, self.colors_window_rect);
+            if let Some(inner) = egui::Window::new("Colors")
                 .open(&mut open)
-                .frame(floating_window_frame(&context))
+                .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(20.0, 380.0))
                 .default_width(300.0)
@@ -1047,14 +1065,18 @@ impl PaintApp {
                         .id_salt("paint-r-floating-colors-scroll")
                         .max_height(620.0)
                         .show(ui, |ui| self.colors_content(ui));
-                });
+                })
+            {
+                self.colors_window_rect = Some(inner.response.rect);
+            }
             self.colors_visible = open;
         }
         if self.panels_floating && self.layers_visible {
             let mut open = self.layers_visible;
-            egui::Window::new("Layers")
+            let frame = floating_window_frame(&context, self.layers_window_rect);
+            if let Some(inner) = egui::Window::new("Layers")
                 .open(&mut open)
-                .frame(floating_window_frame(&context))
+                .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(980.0, 260.0))
                 .default_width(320.0)
@@ -1063,7 +1085,10 @@ impl PaintApp {
                         .id_salt("paint-r-floating-layers-scroll")
                         .max_height(520.0)
                         .show(ui, |ui| self.layers_content(ui));
-                });
+                })
+            {
+                self.layers_window_rect = Some(inner.response.rect);
+            }
             self.layers_visible = open;
         }
     }
@@ -1768,10 +1793,20 @@ struct LayerThumbnail {
     texture: egui::TextureHandle,
 }
 
-fn floating_window_frame(context: &egui::Context) -> egui::Frame {
+fn floating_window_frame(
+    context: &egui::Context,
+    previous_rect: Option<egui::Rect>,
+) -> egui::Frame {
     let style = context.style_of(egui::Theme::Dark);
     let mut frame = egui::Frame::window(&style);
-    frame.fill = egui::Color32::from_rgba_unmultiplied(38, 38, 38, 232);
+    let pointer_over = previous_rect.is_some_and(|rect| {
+        context
+            .pointer_hover_pos()
+            .is_some_and(|position| rect.contains(position))
+    });
+    // Paint.NET uses 0.75 opacity while floating and 1.0 once the pointer enters.
+    let alpha = if pointer_over { 255 } else { 191 };
+    frame.fill = egui::Color32::from_rgba_unmultiplied(38, 38, 38, alpha);
     frame
 }
 
