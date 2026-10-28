@@ -7,7 +7,7 @@ use paint_app::{AppSession, Command};
 use paint_core::{Bgra, Point, Rect, Size};
 use paint_document::{Document, LayerId, Revision};
 
-use crate::icons::{Icon, icon_button, tool_button};
+use crate::icons::{Icon, IconTextures, icon_button, tool_button};
 
 const DEFAULT_WIDTH: u32 = 800;
 const DEFAULT_HEIGHT: u32 = 600;
@@ -44,6 +44,7 @@ pub struct PaintApp {
     panels_floating: bool,
     picking_color: bool,
     active_tool: Tool,
+    icons: IconTextures,
     drag_start: Option<Point>,
     drag_current: Option<Point>,
     cursor_point: Option<Point>,
@@ -68,6 +69,7 @@ pub struct PaintApp {
 
 impl PaintApp {
     pub fn new(creation_context: &eframe::CreationContext<'_>) -> Self {
+        let icons = IconTextures::load(&creation_context.egui_ctx);
         let mut app = Self {
             session: default_session(),
             fill_color: Bgra::BLACK,
@@ -81,6 +83,7 @@ impl PaintApp {
             panels_floating: false,
             picking_color: false,
             active_tool: Tool::Select,
+            icons,
             drag_start: None,
             drag_current: None,
             cursor_point: None,
@@ -529,28 +532,33 @@ impl PaintApp {
             ui.add_space(3.0);
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 3.0;
-                if icon_button(ui, Icon::NewDocument, "New document", true).clicked() {
+                if icon_button(ui, &self.icons, Icon::NewDocument, "New document", true).clicked() {
                     self.request_new();
                 }
-                if icon_button(ui, Icon::OpenFile, "Open PNG file", true).clicked() {
+                if icon_button(ui, &self.icons, Icon::OpenFile, "Open PNG file", true).clicked() {
                     self.show_path_dialog(PathDialogKind::Open);
                 }
-                if icon_button(ui, Icon::ExportFile, "Export PNG file", true).clicked() {
+                if icon_button(ui, &self.icons, Icon::ExportFile, "Export PNG file", true).clicked()
+                {
                     self.show_path_dialog(PathDialogKind::Export);
                 }
                 ui.add_space(5.0);
                 ui.separator();
                 ui.add_space(5.0);
-                if icon_button(ui, Icon::Undo, "Undo", self.session.can_undo()).clicked() {
+                if icon_button(ui, &self.icons, Icon::Undo, "Undo", self.session.can_undo())
+                    .clicked()
+                {
                     self.execute(Command::Undo, "Undid the last edit");
                 }
-                if icon_button(ui, Icon::Redo, "Redo", self.session.can_redo()).clicked() {
+                if icon_button(ui, &self.icons, Icon::Redo, "Redo", self.session.can_redo())
+                    .clicked()
+                {
                     self.execute(Command::Redo, "Redid the next edit");
                 }
                 ui.add_space(5.0);
                 ui.separator();
                 ui.add_space(5.0);
-                if icon_button(ui, Icon::AddLayer, "Add Layer", true).clicked() {
+                if icon_button(ui, &self.icons, Icon::AddLayer, "Add Layer", true).clicked() {
                     self.add_layer();
                 }
             });
@@ -572,11 +580,12 @@ impl PaintApp {
         ui.strong("Tools");
         ui.separator();
         egui::Grid::new("paint-r-tool-grid")
-            .num_columns(3)
+            .num_columns(2)
             .spacing([2.0, 2.0])
             .show(ui, |ui| {
                 if tool_button(
                     ui,
+                    &self.icons,
                     Icon::SelectRectangle,
                     "Select Rectangle",
                     true,
@@ -586,21 +595,34 @@ impl PaintApp {
                 {
                     self.active_tool = Tool::Select;
                 }
-                if tool_button(ui, Icon::Zoom, "Zoom", true, self.active_tool == Tool::Zoom)
-                    .clicked()
+                if tool_button(
+                    ui,
+                    &self.icons,
+                    Icon::Zoom,
+                    "Zoom",
+                    true,
+                    self.active_tool == Tool::Zoom,
+                )
+                .clicked()
                 {
                     self.active_tool = Tool::Zoom;
-                }
-                if tool_button(ui, Icon::Fill, "Fill", true, self.active_tool == Tool::Fill)
-                    .clicked()
-                {
-                    self.active_tool = Tool::Fill;
-                    let color = self.fill_color;
-                    self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
                 }
                 ui.end_row();
                 if tool_button(
                     ui,
+                    &self.icons,
+                    Icon::Fill,
+                    "Fill",
+                    true,
+                    self.active_tool == Tool::Fill,
+                )
+                .clicked()
+                {
+                    self.active_tool = Tool::Fill;
+                }
+                if tool_button(
+                    ui,
+                    &self.icons,
                     Icon::RectangleShape,
                     "Rectangle shape",
                     true,
@@ -612,6 +634,7 @@ impl PaintApp {
                 }
                 if tool_button(
                     ui,
+                    &self.icons,
                     Icon::EyeDropper,
                     "Pick color from canvas",
                     true,
@@ -705,7 +728,7 @@ impl PaintApp {
         ui.horizontal(|ui| {
             ui.heading("Layers");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if icon_button(ui, Icon::AddLayer, "New Layer", true).clicked() {
+                if icon_button(ui, &self.icons, Icon::AddLayer, "New Layer", true).clicked() {
                     self.add_layer();
                 }
             });
