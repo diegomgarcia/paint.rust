@@ -45,6 +45,7 @@ pub struct PaintApp {
     picking_color: bool,
     active_tool: Tool,
     brush_size: u32,
+    recolor_tolerance: u8,
     paint_points: Vec<Point>,
     icons: IconTextures,
     tools_window_rect: Option<egui::Rect>,
@@ -90,6 +91,7 @@ impl PaintApp {
             picking_color: false,
             active_tool: Tool::Select,
             brush_size: 3,
+            recolor_tolerance: 32,
             paint_points: Vec::new(),
             icons,
             tools_window_rect: None,
@@ -485,6 +487,9 @@ impl PaintApp {
                         ("Line / Curve", Tool::Line),
                         ("Rectangle", Tool::Rectangle),
                         ("Ellipse", Tool::Ellipse),
+                        ("Gradient", Tool::Gradient),
+                        ("Recolor", Tool::Recolor),
+                        ("Move Selected Pixels", Tool::Move),
                     ];
                     for (label, tool) in tools {
                         if ui.button(label).clicked() {
@@ -627,6 +632,11 @@ impl PaintApp {
                 tool!(ui, Icon::RectangleShape, "Rectangle", Tool::Rectangle);
                 tool!(ui, Icon::Ellipse, "Ellipse", Tool::Ellipse);
                 ui.end_row();
+                tool!(ui, Icon::Gradient, "Gradient", Tool::Gradient);
+                tool!(ui, Icon::Recolor, "Recolor", Tool::Recolor);
+                ui.end_row();
+                tool!(ui, Icon::Move, "Move Selected Pixels", Tool::Move);
+                ui.end_row();
             });
     }
 
@@ -718,6 +728,50 @@ impl PaintApp {
                     Tool::Ellipse => {
                         ui.label("Ellipse Shape");
                         ui.label("Drag on the canvas to fill with the primary color");
+                    }
+                    Tool::Gradient => {
+                        ui.label("Gradient");
+                        let (from, to) = (self.fill_color, self.secondary_color);
+                        ui.colored_label(
+                            egui::Color32::from_rgba_unmultiplied(from.r, from.g, from.b, from.a),
+                            "Primary",
+                        );
+                        ui.label("to");
+                        ui.colored_label(
+                            egui::Color32::from_rgba_unmultiplied(to.r, to.g, to.b, to.a),
+                            "Secondary",
+                        );
+                        ui.label("Drag to set the gradient direction");
+                    }
+                    Tool::Recolor => {
+                        ui.label("Recolor");
+                        let (target, replacement) = (self.secondary_color, self.fill_color);
+                        ui.colored_label(
+                            egui::Color32::from_rgba_unmultiplied(
+                                target.r, target.g, target.b, target.a,
+                            ),
+                            "Target: secondary",
+                        );
+                        ui.colored_label(
+                            egui::Color32::from_rgba_unmultiplied(
+                                replacement.r,
+                                replacement.g,
+                                replacement.b,
+                                replacement.a,
+                            ),
+                            "Replacement: primary",
+                        );
+                        ui.label("Tolerance");
+                        ui.add(
+                            egui::DragValue::new(&mut self.recolor_tolerance)
+                                .range(0..=255)
+                                .suffix(" levels"),
+                        );
+                        ui.label("Click the canvas to recolor matching pixels");
+                    }
+                    Tool::Move => {
+                        ui.label("Move Selected Pixels");
+                        ui.label("Drag to move the selection, or the active layer without one");
                     }
                     Tool::Picker => {
                         ui.label("Color Picker");
@@ -1189,6 +1243,17 @@ impl PaintApp {
                             if response.clicked() {
                                 self.zoom = (self.zoom + 0.25).min(8.0);
                             }
+                        } else if self.active_tool == Tool::Recolor {
+                            if response.clicked() {
+                                pending_paint = Some((
+                                    Command::Recolor {
+                                        target: self.secondary_color,
+                                        replacement: self.fill_color,
+                                        tolerance: self.recolor_tolerance,
+                                    },
+                                    "Recolored matching pixels".to_owned(),
+                                ));
+                            }
                         } else if self.active_tool != Tool::Picker {
                             let point = || {
                                 pointer.and_then(|position| {
@@ -1256,6 +1321,36 @@ impl PaintApp {
                                         },
                                         "Drew a line".to_owned(),
                                     )),
+                                    Tool::Gradient => Some((
+                                        Command::Gradient {
+                                            start,
+                                            end,
+                                            from: color,
+                                            to: self.secondary_color,
+                                        },
+                                        "Painted a gradient".to_owned(),
+                                    )),
+                                    Tool::Recolor => Some((
+                                        Command::Recolor {
+                                            target: self.secondary_color,
+                                            replacement: color,
+                                            tolerance: self.recolor_tolerance,
+                                        },
+                                        "Recolored matching pixels".to_owned(),
+                                    )),
+                                    Tool::Move => {
+                                        let dx = i64::from(end.x) - i64::from(start.x);
+                                        let dy = i64::from(end.y) - i64::from(start.y);
+                                        (dx != 0 || dy != 0).then(|| {
+                                            (
+                                                Command::Move {
+                                                    dx: dx as i32,
+                                                    dy: dy as i32,
+                                                },
+                                                "Moved selected pixels".to_owned(),
+                                            )
+                                        })
+                                    }
                                     Tool::Pencil | Tool::Brush | Tool::Eraser => {
                                         let points = if self.paint_points.is_empty() {
                                             vec![start, end]
@@ -1310,7 +1405,7 @@ impl PaintApp {
                                         egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
                                         egui::StrokeKind::Inside,
                                     );
-                                } else if self.active_tool == Tool::Line {
+                                } else if matches!(self.active_tool, Tool::Line | Tool::Gradient) {
                                     ui.painter().line_segment(
                                         [
                                             start_pos + egui::vec2(zoom / 2.0, zoom / 2.0),
@@ -1764,6 +1859,9 @@ enum Tool {
     Eraser,
     Line,
     Ellipse,
+    Gradient,
+    Recolor,
+    Move,
     Picker,
 }
 
@@ -2068,6 +2166,9 @@ fn history_label(command: &Command) -> Option<String> {
         Command::Stroke { label, .. } => Some((*label).to_owned()),
         Command::FillRect { .. } => Some("Rectangle".to_owned()),
         Command::FillEllipse { .. } => Some("Ellipse".to_owned()),
+        Command::Gradient { .. } => Some("Gradient".to_owned()),
+        Command::Recolor { .. } => Some("Recolor".to_owned()),
+        Command::Move { .. } => Some("Move Selected Pixels".to_owned()),
         Command::Invert => Some("Invert Colors".to_owned()),
         Command::FlipLayerHorizontal => Some("Flip Layer Horizontal".to_owned()),
         Command::FlipLayerVertical => Some("Flip Layer Vertical".to_owned()),

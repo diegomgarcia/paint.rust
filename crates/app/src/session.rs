@@ -113,6 +113,18 @@ impl AppSession {
             } => self.stroke(&points, size, color),
             Command::FillRect { rect, color } => self.fill_rect(rect, color),
             Command::FillEllipse { rect, color } => self.fill_ellipse(rect, color),
+            Command::Gradient {
+                start,
+                end,
+                from,
+                to,
+            } => self.linear_gradient(start, end, from, to),
+            Command::Recolor {
+                target,
+                replacement,
+                tolerance,
+            } => self.recolor(target, replacement, tolerance),
+            Command::Move { dx, dy } => self.translate(dx, dy),
             Command::Invert => self.invert(),
             Command::FlipLayerHorizontal => self.flip_layer_horizontal(),
             Command::FlipLayerVertical => self.flip_layer_vertical(),
@@ -179,6 +191,55 @@ impl AppSession {
     pub fn fill_rect(&mut self, rect: Rect, color: Bgra) -> Result<bool, SessionError> {
         let patch =
             paint_raster::fill_rect(&self.document, self.document.active_layer_id(), rect, color)?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn linear_gradient(
+        &mut self,
+        start: Point,
+        end: Point,
+        from: Bgra,
+        to: Bgra,
+    ) -> Result<bool, SessionError> {
+        let patch = paint_raster::linear_gradient(
+            &self.document,
+            self.document.active_layer_id(),
+            start,
+            end,
+            from,
+            to,
+        )?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn recolor(
+        &mut self,
+        target: Bgra,
+        replacement: Bgra,
+        tolerance: u8,
+    ) -> Result<bool, SessionError> {
+        let patch = paint_raster::recolor(
+            &self.document,
+            self.document.active_layer_id(),
+            target,
+            replacement,
+            tolerance,
+        )?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn translate(&mut self, dx: i32, dy: i32) -> Result<bool, SessionError> {
+        let patch =
+            paint_raster::translate(&self.document, self.document.active_layer_id(), dx, dy)?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
             None => Ok(false),

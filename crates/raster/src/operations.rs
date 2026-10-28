@@ -329,3 +329,184 @@ pub fn fill_rect(
         after,
     )?))
 }
+
+/// Paints a straight-alpha linear gradient from `start` to `end` through the selection.
+pub fn linear_gradient(
+    document: &Document,
+    layer_id: LayerId,
+    start: paint_core::Point,
+    end: paint_core::Point,
+    from: Bgra,
+    to: Bgra,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let Some(rect) = operation_rect(document) else {
+        return Ok(None);
+    };
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let dx = f64::from(end.x) - f64::from(start.x);
+    let dy = f64::from(end.y) - f64::from(start.y);
+    let length_squared = dx * dx + dy * dy;
+    let width = i64::from(rect.width());
+    for y in 0..rect.height() {
+        for x in 0..rect.width() {
+            let px = (rect.left() + i64::from(x)) as f64 + 0.5;
+            let py = (rect.top() + i64::from(y)) as f64 + 0.5;
+            let t = if length_squared == 0.0 {
+                0.0
+            } else {
+                (((px - f64::from(start.x)) * dx + (py - f64::from(start.y)) * dy) / length_squared)
+                    .clamp(0.0, 1.0)
+            };
+            after[(i64::from(y) * width + i64::from(x)) as usize] = lerp_bgra(from, to, t);
+        }
+    }
+    if before == after {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+/// Replaces pixels close to `target` with `replacement` through the selection.
+pub fn recolor(
+    document: &Document,
+    layer_id: LayerId,
+    target: Bgra,
+    replacement: Bgra,
+    tolerance: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let Some(rect) = operation_rect(document) else {
+        return Ok(None);
+    };
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let tolerance = i16::from(tolerance);
+    for (before_pixel, after_pixel) in before.iter().zip(&mut after) {
+        let close = (i16::from(before_pixel.r) - i16::from(target.r)).abs() <= tolerance
+            && (i16::from(before_pixel.g) - i16::from(target.g)).abs() <= tolerance
+            && (i16::from(before_pixel.b) - i16::from(target.b)).abs() <= tolerance;
+        if close {
+            *after_pixel = replacement;
+        }
+    }
+    if before == after {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+/// Translates the selection contents, or the complete layer without a selection.
+pub fn translate(
+    document: &Document,
+    layer_id: LayerId,
+    dx: i32,
+    dy: i32,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let rect = document.canvas_rect();
+    let before = layer.surface().read_region(rect)?;
+    let width = i64::from(rect.width());
+    let height = i64::from(rect.height());
+    let dx = i64::from(dx);
+    let dy = i64::from(dy);
+    let mut after = vec![Bgra::TRANSPARENT; before.len()];
+    match document.selection() {
+        Some(selection) => {
+            after.copy_from_slice(&before);
+            for y in 0..height {
+                for x in 0..width {
+                    let source_x = rect.left() + x;
+                    let source_y = rect.top() + y;
+                    if source_x >= selection.left()
+                        && source_x < selection.right()
+                        && source_y >= selection.top()
+                        && source_y < selection.bottom()
+                    {
+                        after[(y * width + x) as usize] = Bgra::TRANSPARENT;
+                    }
+                }
+            }
+            for y in 0..height {
+                for x in 0..width {
+                    let source_x = rect.left() + x;
+                    let source_y = rect.top() + y;
+                    if source_x < selection.left()
+                        || source_x >= selection.right()
+                        || source_y < selection.top()
+                        || source_y >= selection.bottom()
+                    {
+                        continue;
+                    }
+                    let dest_x = source_x + dx;
+                    let dest_y = source_y + dy;
+                    if dest_x >= rect.left()
+                        && dest_x < rect.right()
+                        && dest_y >= rect.top()
+                        && dest_y < rect.bottom()
+                    {
+                        let source = (y * width + x) as usize;
+                        let dest =
+                            ((dest_y - rect.top()) * width + (dest_x - rect.left())) as usize;
+                        after[dest] = before[source];
+                    }
+                }
+            }
+        }
+        None => {
+            for y in 0..height {
+                for x in 0..width {
+                    let dest_x = rect.left() + x + dx;
+                    let dest_y = rect.top() + y + dy;
+                    if dest_x >= rect.left()
+                        && dest_x < rect.right()
+                        && dest_y >= rect.top()
+                        && dest_y < rect.bottom()
+                    {
+                        after[((dest_y - rect.top()) * width + (dest_x - rect.left())) as usize] =
+                            before[(y * width + x) as usize];
+                    }
+                }
+            }
+        }
+    }
+    if before == after {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+fn lerp_bgra(from: Bgra, to: Bgra, t: f64) -> Bgra {
+    let channel = |a: u8, b: u8| {
+        (f64::from(a) + (f64::from(b) - f64::from(a)) * t)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    Bgra::new(
+        channel(from.b, to.b),
+        channel(from.g, to.g),
+        channel(from.r, to.r),
+        channel(from.a, to.a),
+    )
+}

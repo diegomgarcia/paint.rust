@@ -23,6 +23,9 @@ pub(crate) enum Icon {
     Eraser,
     Line,
     Ellipse,
+    Gradient,
+    Recolor,
+    Move,
     EyeDropper,
     AddLayer,
 }
@@ -48,6 +51,9 @@ impl IconTextures {
             Icon::Eraser,
             Icon::Line,
             Icon::Ellipse,
+            Icon::Gradient,
+            Icon::Recolor,
+            Icon::Move,
             Icon::EyeDropper,
             Icon::AddLayer,
         ];
@@ -179,6 +185,9 @@ fn icon_png(icon: Icon) -> &'static [u8] {
         Icon::Eraser => include_bytes!("../assets/lucide/eraser.png"),
         Icon::Line => include_bytes!("../assets/lucide/line.png"),
         Icon::Ellipse => include_bytes!("../assets/lucide/ellipse.png"),
+        Icon::Gradient => include_bytes!("../assets/lucide/gradient.png"),
+        Icon::Recolor => include_bytes!("../assets/lucide/recolor.png"),
+        Icon::Move => include_bytes!("../assets/lucide/move.png"),
         Icon::EyeDropper => include_bytes!("../assets/lucide/picker.png"),
         Icon::AddLayer => include_bytes!("../assets/lucide/add-layer.png"),
     }
@@ -200,6 +209,9 @@ fn icon_name(icon: Icon) -> &'static str {
         Icon::Eraser => "eraser",
         Icon::Line => "line",
         Icon::Ellipse => "ellipse",
+        Icon::Gradient => "gradient",
+        Icon::Recolor => "recolor",
+        Icon::Move => "move",
         Icon::EyeDropper => "picker",
         Icon::AddLayer => "add-layer",
     }

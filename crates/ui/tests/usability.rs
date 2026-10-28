@@ -340,6 +340,9 @@ fn paint_net_style_layout_exposes_tools_options_colors_and_layers() {
         "Line / Curve",
         "Rectangle",
         "Ellipse",
+        "Gradient",
+        "Recolor",
+        "Move Selected Pixels",
     ] {
         harness.get_by_role_and_label(Role::Button, label);
     }
@@ -951,4 +954,74 @@ fn line_and_ellipse_shapes_fill_pixels_without_setting_a_selection() {
     );
     assert_eq!(session.document().selection(), None);
     assert!(session.can_undo());
+}
+
+#[test]
+fn gradient_tool_paints_primary_to_secondary_across_the_drag() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Gradient");
+    drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(25.0, 6.0));
+    let session = harness.state().session();
+    let surface = session.document().active_layer().surface();
+    let left = *surface.pixel(Point::new(5, 6)).expect("gradient left");
+    let right = *surface.pixel(Point::new(25, 6)).expect("gradient right");
+    assert!(left.r < right.r, "left={left:?} right={right:?}");
+    assert_eq!(right, Bgra::WHITE);
+    assert_eq!(session.document().selection(), None);
+    assert!(session.can_undo());
+}
+
+#[test]
+fn recolor_tool_click_replaces_secondary_pixels_with_primary() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Recolor");
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    canvas.click();
+    harness.run();
+    let session = harness.state().session();
+    assert_eq!(
+        *session
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(400, 300))
+            .expect("recolored pixel"),
+        Bgra::BLACK
+    );
+    assert!(session.can_undo());
+}
+
+#[test]
+fn move_tool_shifts_the_active_layer_and_is_undoable() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Move Selected Pixels");
+    drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(6.0, 6.0));
+    {
+        let session = harness.state().session();
+        let surface = session.document().active_layer().surface();
+        assert_eq!(
+            *surface.pixel(Point::new(0, 0)).expect("vacated pixel"),
+            Bgra::TRANSPARENT
+        );
+        assert_eq!(
+            *surface.pixel(Point::new(1, 0)).expect("shifted pixel"),
+            Bgra::WHITE
+        );
+        assert!(session.can_undo());
+    }
+    click(&mut harness, "Undo");
+    assert_eq!(
+        *harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(0, 0))
+            .expect("restored"),
+        Bgra::WHITE
+    );
 }

@@ -25,6 +25,24 @@ pub enum Command {
         rect: Rect,
         color: Bgra,
     },
+    /// Paints a linear gradient between two canvas points.
+    Gradient {
+        start: Point,
+        end: Point,
+        from: Bgra,
+        to: Bgra,
+    },
+    /// Replaces colors near a target with a replacement color.
+    Recolor {
+        target: Bgra,
+        replacement: Bgra,
+        tolerance: u8,
+    },
+    /// Moves the selection contents, or the whole layer without a selection.
+    Move {
+        dx: i32,
+        dy: i32,
+    },
     /// Inverts RGB in the active layer and selection while preserving alpha.
     Invert,
     /// Flips the complete active layer left-to-right, ignoring the selection.

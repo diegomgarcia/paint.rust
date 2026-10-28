@@ -356,3 +356,104 @@ fn ellipse_noop_and_out_of_bounds_are_explicit_none() {
         Ok(None)
     );
 }
+
+#[test]
+fn linear_gradient_interpolates_across_the_selection_and_is_monotonic() {
+    let surface = Surface::filled(size(5, 1), Bgra::WHITE).expect("surface");
+    let mut document = Document::from_layers(
+        size(5, 1),
+        vec![Layer::new(LayerId::new(12), "gradient", surface)],
+    )
+    .expect("document");
+    let patch = paint_raster::linear_gradient(
+        &document,
+        LayerId::new(12),
+        Point::new(0, 0),
+        Point::new(4, 0),
+        Bgra::BLACK,
+        Bgra::WHITE,
+    )
+    .expect("gradient")
+    .expect("gradient patch");
+    document.apply_patch(&patch).expect("apply");
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], Bgra::new(32, 32, 32, 255));
+    assert_eq!(pixels[4], Bgra::WHITE);
+    for pair in pixels.windows(2) {
+        assert!(pair[0].r <= pair[1].r);
+    }
+}
+
+#[test]
+fn recolor_only_replaces_pixels_within_tolerance() {
+    let surface = Surface::from_pixels(
+        size(3, 1),
+        vec![
+            Bgra::new(0, 0, 255, 255),
+            Bgra::new(0, 1, 254, 255),
+            Bgra::new(0, 255, 0, 255),
+        ],
+    )
+    .expect("surface");
+    let mut document = Document::from_layers(
+        size(3, 1),
+        vec![Layer::new(LayerId::new(13), "recolor", surface)],
+    )
+    .expect("document");
+    let patch = paint_raster::recolor(
+        &document,
+        LayerId::new(13),
+        Bgra::new(0, 0, 255, 255),
+        Bgra::new(255, 0, 0, 255),
+        0,
+    )
+    .expect("recolor")
+    .expect("recolor patch");
+    document.apply_patch(&patch).expect("apply");
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], Bgra::new(255, 0, 0, 255));
+    assert_eq!(pixels[1], Bgra::new(0, 1, 254, 255));
+    assert_eq!(pixels[2], Bgra::new(0, 255, 0, 255));
+}
+
+#[test]
+fn translate_moves_selection_contents_and_whole_layer_without_selection() {
+    let surface = Surface::from_pixels(
+        size(4, 1),
+        vec![
+            Bgra::new(0, 0, 255, 255),
+            Bgra::new(0, 255, 0, 255),
+            Bgra::new(255, 0, 0, 255),
+            Bgra::WHITE,
+        ],
+    )
+    .expect("surface");
+    let mut document = Document::from_layers(
+        size(4, 1),
+        vec![Layer::new(LayerId::new(14), "move", surface)],
+    )
+    .expect("document");
+    document
+        .set_selection(Some(Rect::new(0, 0, 2, 1).expect("selection")))
+        .expect("set selection");
+    let patch = paint_raster::translate(&document, LayerId::new(14), 2, 0)
+        .expect("translate")
+        .expect("move patch");
+    document.apply_patch(&patch).expect("apply");
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], Bgra::TRANSPARENT);
+    assert_eq!(pixels[1], Bgra::TRANSPARENT);
+    assert_eq!(pixels[2], Bgra::new(0, 0, 255, 255));
+    assert_eq!(pixels[3], Bgra::new(0, 255, 0, 255));
+
+    document.clear_selection().expect("clear selection");
+    let patch = paint_raster::translate(&document, LayerId::new(14), 1, 0)
+        .expect("translate")
+        .expect("layer move");
+    document.apply_patch(&patch).expect("apply");
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], Bgra::TRANSPARENT);
+    assert_eq!(pixels[1], Bgra::TRANSPARENT);
+    assert_eq!(pixels[2], Bgra::TRANSPARENT);
+    assert_eq!(pixels[3], Bgra::new(0, 0, 255, 255));
+}
