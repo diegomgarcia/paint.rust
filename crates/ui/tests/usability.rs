@@ -260,7 +260,7 @@ fn rectangle_selection_chosen_bgra_fill_and_clear_selection_are_usable() {
     );
 
     click(&mut harness, "Paint Bucket");
-    click(&mut harness, "Fill Selection");
+    click_canvas_at(&mut harness, egui::vec2(0.5, 0.5));
     let session = harness.state().session();
     let pixels = session.document().active_layer().surface().pixels();
     assert_eq!(pixels[0], chosen);
@@ -472,7 +472,7 @@ fn history_window_tracks_content_edits_and_undo() {
     let mut harness = app();
     assert_eq!(harness.state().history_entries(), ["New Image"]);
     click(&mut harness, "Paint Bucket");
-    click(&mut harness, "Fill Selection");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
     assert_eq!(
         harness.state().history_entries(),
         ["New Image", "Paint Bucket"]
@@ -605,7 +605,7 @@ fn layer_add_opacity_active_selection_and_visibility_change_composition() {
     );
 
     click(&mut harness, "Paint Bucket");
-    click(&mut harness, "Fill Selection");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
     assert!(
         harness
             .state()
@@ -728,7 +728,7 @@ fn png_open_is_flattened_and_export_preserves_the_layered_session() {
 
     click(&mut harness, "Add Layer");
     click(&mut harness, "Paint Bucket");
-    click(&mut harness, "Fill Selection");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
     let before = harness.state().session().snapshot().expect("snapshot");
     assert_eq!(before.layer_count, 2);
     assert!(before.dirty);
@@ -864,6 +864,15 @@ fn drag_canvas(harness: &mut Harness<'_, PaintApp>, start: egui::Vec2, end: egui
     harness.run();
 }
 
+fn click_canvas_at(harness: &mut Harness<'_, PaintApp>, offset: egui::Vec2) {
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let rect = canvas.rect();
+    harness.drag_at(rect.min + offset);
+    harness.run();
+    harness.drop_at(rect.min + offset);
+    harness.run();
+}
+
 #[test]
 fn pencil_paintbrush_and_eraser_draw_real_pixels_and_undo() {
     let mut harness = app();
@@ -977,9 +986,11 @@ fn recolor_tool_click_replaces_secondary_pixels_with_primary() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Recolor");
-    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
-    canvas.click();
-    harness.run();
+    drag_canvas(
+        &mut harness,
+        egui::vec2(400.0, 300.0),
+        egui::vec2(410.0, 300.0),
+    );
     let session = harness.state().session();
     assert_eq!(
         *session

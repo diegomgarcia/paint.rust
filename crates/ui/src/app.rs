@@ -47,6 +47,7 @@ pub struct PaintApp {
     brush_size: u32,
     recolor_tolerance: u8,
     fill_tolerance: u8,
+    fill_global: bool,
     paint_points: Vec<Point>,
     icons: IconTextures,
     tools_window_rect: Option<egui::Rect>,
@@ -91,9 +92,10 @@ impl PaintApp {
             panels_floating: false,
             picking_color: false,
             active_tool: Tool::Select,
-            brush_size: 3,
-            recolor_tolerance: 32,
-            fill_tolerance: 32,
+            brush_size: 45,
+            recolor_tolerance: 50,
+            fill_tolerance: 50,
+            fill_global: false,
             paint_points: Vec::new(),
             icons,
             tools_window_rect: None,
@@ -693,16 +695,23 @@ impl PaintApp {
                             ),
                             "Primary color",
                         );
-                        ui.label("Tolerance");
+                        ui.label("Flood Mode");
+                        ui.selectable_value(&mut self.fill_global, false, "Contiguous");
+                        ui.selectable_value(&mut self.fill_global, true, "Global");
+                        ui.label("Fill");
+                        ui.label("Solid Color");
+                        let tolerance_label = ui.label("Tolerance");
                         ui.add(
                             egui::DragValue::new(&mut self.fill_tolerance)
-                                .range(0..=255)
-                                .suffix(" levels"),
-                        );
-                        if ui.button("Fill Selection").clicked() {
-                            self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
-                        }
-                        ui.label("Click the canvas to fill a contiguous area");
+                                .range(0..=100)
+                                .suffix("%"),
+                        )
+                        .labelled_by(tolerance_label.id);
+                        ui.label("Sampling");
+                        ui.label("Layer");
+                        ui.label("Blend Mode");
+                        ui.label("Normal");
+                        ui.label("Click the canvas to fill");
                     }
                     Tool::Pencil | Tool::Brush | Tool::Eraser | Tool::Line => {
                         ui.label(match self.active_tool {
@@ -774,13 +783,20 @@ impl PaintApp {
                             ),
                             "Replacement: primary",
                         );
-                        ui.label("Tolerance");
+                        ui.label("Width");
+                        ui.add(
+                            egui::DragValue::new(&mut self.brush_size)
+                                .range(1..=64)
+                                .suffix(" px"),
+                        );
+                        let tolerance_label = ui.label("Tolerance");
                         ui.add(
                             egui::DragValue::new(&mut self.recolor_tolerance)
-                                .range(0..=255)
-                                .suffix(" levels"),
-                        );
-                        ui.label("Click the canvas to recolor matching pixels");
+                                .range(0..=100)
+                                .suffix("%"),
+                        )
+                        .labelled_by(tolerance_label.id);
+                        ui.label("Drag over matching pixels to recolor");
                     }
                     Tool::Move => {
                         ui.label("Move Selected Pixels");
@@ -1262,24 +1278,19 @@ impl PaintApp {
                                     canvas_point_at(position, rect, zoom, size)
                                 })
                             {
+                                let threshold = (u16::from(self.fill_tolerance) * 255 / 100) as u8;
                                 pending_paint = Some((
                                     Command::FloodFill {
                                         point,
                                         color: self.fill_color,
-                                        tolerance: self.fill_tolerance,
+                                        tolerance: threshold,
+                                        global: self.fill_global,
                                     },
-                                    "Filled a contiguous area".to_owned(),
-                                ));
-                            }
-                        } else if self.active_tool == Tool::Recolor {
-                            if response.clicked() {
-                                pending_paint = Some((
-                                    Command::Recolor {
-                                        target: self.secondary_color,
-                                        replacement: self.fill_color,
-                                        tolerance: self.recolor_tolerance,
+                                    if self.fill_global {
+                                        "Filled matching pixels globally".to_owned()
+                                    } else {
+                                        "Filled a contiguous area".to_owned()
                                     },
-                                    "Recolored matching pixels".to_owned(),
                                 ));
                             }
                         } else if self.active_tool != Tool::Picker {
@@ -1290,7 +1301,7 @@ impl PaintApp {
                             };
                             let is_paint = matches!(
                                 self.active_tool,
-                                Tool::Pencil | Tool::Brush | Tool::Eraser
+                                Tool::Pencil | Tool::Brush | Tool::Eraser | Tool::Recolor
                             );
                             if self.drag_start.is_none()
                                 && response.is_pointer_button_down_on()
@@ -1358,14 +1369,25 @@ impl PaintApp {
                                         },
                                         "Painted a gradient".to_owned(),
                                     )),
-                                    Tool::Recolor => Some((
-                                        Command::Recolor {
-                                            target: self.secondary_color,
-                                            replacement: color,
-                                            tolerance: self.recolor_tolerance,
-                                        },
-                                        "Recolored matching pixels".to_owned(),
-                                    )),
+                                    Tool::Recolor => {
+                                        let points = if self.paint_points.is_empty() {
+                                            vec![start, end]
+                                        } else {
+                                            std::mem::take(&mut self.paint_points)
+                                        };
+                                        Some((
+                                            Command::Recolor {
+                                                points,
+                                                size,
+                                                target: self.secondary_color,
+                                                replacement: color,
+                                                tolerance: (u16::from(self.recolor_tolerance) * 255
+                                                    / 100)
+                                                    as u8,
+                                            },
+                                            "Recolored matching pixels".to_owned(),
+                                        ))
+                                    }
                                     Tool::Move => {
                                         let dx = i64::from(end.x) - i64::from(start.x);
                                         let dy = i64::from(end.y) - i64::from(start.y);

@@ -115,7 +115,8 @@ impl AppSession {
                 point,
                 color,
                 tolerance,
-            } => self.flood_fill(point, color, tolerance),
+                global,
+            } => self.flood_fill(point, color, tolerance, global),
             Command::FillRect { rect, color } => self.fill_rect(rect, color),
             Command::FillEllipse { rect, color } => self.fill_ellipse(rect, color),
             Command::Gradient {
@@ -125,10 +126,12 @@ impl AppSession {
                 to,
             } => self.linear_gradient(start, end, from, to),
             Command::Recolor {
+                points,
+                size,
                 target,
                 replacement,
                 tolerance,
-            } => self.recolor(target, replacement, tolerance),
+            } => self.recolor(&points, size, target, replacement, tolerance),
             Command::Move { dx, dy } => self.translate(dx, dy),
             Command::Invert => self.invert(),
             Command::FlipLayerHorizontal => self.flip_layer_horizontal(),
@@ -198,14 +201,25 @@ impl AppSession {
         point: Point,
         color: Bgra,
         tolerance: u8,
+        global: bool,
     ) -> Result<bool, SessionError> {
-        let patch = paint_raster::flood_fill(
-            &self.document,
-            self.document.active_layer_id(),
-            point,
-            color,
-            tolerance,
-        )?;
+        let patch = if global {
+            paint_raster::global_fill(
+                &self.document,
+                self.document.active_layer_id(),
+                point,
+                color,
+                tolerance,
+            )?
+        } else {
+            paint_raster::flood_fill(
+                &self.document,
+                self.document.active_layer_id(),
+                point,
+                color,
+                tolerance,
+            )?
+        };
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
             None => Ok(false),
@@ -244,13 +258,17 @@ impl AppSession {
 
     pub fn recolor(
         &mut self,
+        points: &[Point],
+        size: u32,
         target: Bgra,
         replacement: Bgra,
         tolerance: u8,
     ) -> Result<bool, SessionError> {
-        let patch = paint_raster::recolor(
+        let patch = paint_raster::recolor_stroke(
             &self.document,
             self.document.active_layer_id(),
+            points,
+            size,
             target,
             replacement,
             tolerance,

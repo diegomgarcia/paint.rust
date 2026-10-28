@@ -580,3 +580,152 @@ pub fn flood_fill(
         after,
     )?))
 }
+
+/// Fills every matching pixel in the selection regardless of connectivity.
+pub fn global_fill(
+    document: &Document,
+    layer_id: LayerId,
+    point: paint_core::Point,
+    color: Bgra,
+    tolerance: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let Some(rect) = operation_rect(document) else {
+        return Ok(None);
+    };
+    let width = i64::from(rect.width());
+    let start_x = i64::from(point.x);
+    let start_y = i64::from(point.y);
+    if start_x < rect.left()
+        || start_x >= rect.right()
+        || start_y < rect.top()
+        || start_y >= rect.bottom()
+    {
+        return Ok(None);
+    }
+    let before = layer.surface().read_region(rect)?;
+    let target = before[((start_y - rect.top()) * width + (start_x - rect.left())) as usize];
+    if target == color {
+        return Ok(None);
+    }
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let tolerance = i16::from(tolerance);
+    for (before_pixel, after_pixel) in before.iter().zip(&mut after) {
+        let close = (i16::from(before_pixel.b) - i16::from(target.b)).abs() <= tolerance
+            && (i16::from(before_pixel.g) - i16::from(target.g)).abs() <= tolerance
+            && (i16::from(before_pixel.r) - i16::from(target.r)).abs() <= tolerance
+            && (i16::from(before_pixel.a) - i16::from(target.a)).abs() <= tolerance;
+        if close {
+            *after_pixel = color;
+        }
+    }
+    if before == after {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+/// Recolors pixels near `target` only inside a round brush stroke.
+pub fn recolor_stroke(
+    document: &Document,
+    layer_id: LayerId,
+    points: &[paint_core::Point],
+    size: u32,
+    target: Bgra,
+    replacement: Bgra,
+    tolerance: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let Some(operation) = operation_rect(document) else {
+        return Ok(None);
+    };
+    let Some(first) = points.first() else {
+        return Ok(None);
+    };
+    let radius = size.max(1).saturating_sub(1) / 2;
+    let radius_i64 = i64::from(radius);
+    let mut min_x = i64::from(first.x);
+    let mut min_y = i64::from(first.y);
+    let mut max_x = min_x;
+    let mut max_y = min_y;
+    for point in points {
+        min_x = min_x.min(i64::from(point.x));
+        min_y = min_y.min(i64::from(point.y));
+        max_x = max_x.max(i64::from(point.x));
+        max_y = max_y.max(i64::from(point.y));
+    }
+    let Some(rect) = clip_rect(
+        operation,
+        min_x - radius_i64,
+        min_y - radius_i64,
+        max_x + radius_i64 + 1,
+        max_y + radius_i64 + 1,
+    )?
+    else {
+        return Ok(None);
+    };
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let left = rect.left();
+    let top = rect.top();
+    let width = i64::from(rect.width());
+    let radius_squared = i128::from(radius) * i128::from(radius);
+    let tolerance = i16::from(tolerance);
+    let matches = |pixel: Bgra| {
+        (i16::from(pixel.b) - i16::from(target.b)).abs() <= tolerance
+            && (i16::from(pixel.g) - i16::from(target.g)).abs() <= tolerance
+            && (i16::from(pixel.r) - i16::from(target.r)).abs() <= tolerance
+            && (i16::from(pixel.a) - i16::from(target.a)).abs() <= tolerance
+    };
+    let mut stamp = |x: i64, y: i64| {
+        for py in (y - radius_i64)..=(y + radius_i64) {
+            if py < top || py >= top + i64::from(rect.height()) {
+                continue;
+            }
+            for px in (x - radius_i64)..=(x + radius_i64) {
+                if px < left || px >= left + width {
+                    continue;
+                }
+                let dx = i128::from(px - x);
+                let dy = i128::from(py - y);
+                if dx * dx + dy * dy > radius_squared {
+                    continue;
+                }
+                let index = ((py - top) * width + (px - left)) as usize;
+                if matches(before[index]) {
+                    after[index] = replacement;
+                }
+            }
+        }
+    };
+    stamp(i64::from(first.x), i64::from(first.y));
+    for pair in points.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let dx = i64::from(b.x) - i64::from(a.x);
+        let dy = i64::from(b.y) - i64::from(a.y);
+        let steps = dx.unsigned_abs().max(dy.unsigned_abs());
+        for step in 1..=steps {
+            let x = i64::from(a.x) + (dx * i64::from(step as u32)) / i64::from(steps as u32);
+            let y = i64::from(a.y) + (dy * i64::from(step as u32)) / i64::from(steps as u32);
+            stamp(x, y);
+        }
+    }
+    if before == after {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}

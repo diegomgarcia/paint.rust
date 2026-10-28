@@ -20,6 +20,7 @@ pub enum Command {
         point: Point,
         color: Bgra,
         tolerance: u8,
+        global: bool,
     },
     /// Fills a half-open canvas rectangle.
     FillRect {
@@ -38,8 +39,10 @@ pub enum Command {
         from: Bgra,
         to: Bgra,
     },
-    /// Replaces colors near a target with a replacement color.
+    /// Recolors matching colors only under a round brush stroke.
     Recolor {
+        points: Vec<Point>,
+        size: u32,
         target: Bgra,
         replacement: Bgra,
         tolerance: u8,

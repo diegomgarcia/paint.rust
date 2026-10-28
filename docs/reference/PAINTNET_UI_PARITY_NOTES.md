@@ -63,3 +63,31 @@ node.exe pnpm.mjs dlx rea-agents@6.8.0 inspect-managed-members \
 `ildasm.exe /UTF8 /ITEM=<type> /OUT=<file>.il "C:\Program Files\Paint.NET\paintdotnet.dll"`
 was used to read exact literal constants and opacity branches. Static inspection does not
 execute target code and does not establish visual identity or full behavior parity.
+
+## Runtime observations (Windows session automation)
+
+Paint.NET 5.1.12 was launched in the authorized Windows reference VM as the interactive
+user and inspected through Win32 window capture plus accessibility/UIA metadata. A hidden
+scheduled-task helper clicked real tool buttons and captured the resulting Tool Options.
+
+- Paint Bucket Tool Options: Flood Mode `Contiguous`, Fill `Solid Color`, Tolerance `50%`,
+  Sampling `Layer`, Blend Mode `Normal`. A canvas click filled the entire contiguous white
+  document, added one `Paint Bucket` history entry, and updated the layer thumbnail.
+- Pencil exposes only `Blend Mode: Normal`; it is a fixed one-pixel tool.
+- Paintbrush defaults to `Brush size: 45`, `Hardness: 75%`, `Spacing: 15%`, Blend Mode
+  `Normal`.
+- Eraser exposes Brush size, Hardness and Spacing.
+- Recolor is a brush tool with Brush size, Hardness, Spacing and Tolerance; it is not a
+  global color replacement.
+- Move Selected Pixels exposes Sampling `Bicubic` and a `Finish` action.
+- Gradient exposes five gradient-shape buttons, `No Repeat`, Blend Mode `Normal`, and a
+  `Finish` action.
+- Text exposes font family, font size, bold/italic/underline, alignment, antialiasing,
+  Blend Mode and Finish.
+- The real Paint.NET toolbox is two columns; Move is near the top, Paint Bucket and
+  Gradient share a row, and Brush/Eraser and Text/Shape groups follow.
+
+Paint.R now aligns the Paint Bucket to Contiguous/Global plus percentage tolerance,
+defaults the brush to 45 px, keeps Pencil fixed at one pixel, and makes Recolor a brush
+stroke. Hardness, spacing, bicubic move sampling, and Finish-style transacted previews
+are recorded as remaining parity work.

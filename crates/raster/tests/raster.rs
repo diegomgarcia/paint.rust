@@ -530,3 +530,75 @@ fn flood_fill_respects_selection_and_tolerance() {
     assert_eq!(pixels[2], Bgra::BLACK);
     assert_eq!(pixels[3], Bgra::new(0, 255, 0, 255));
 }
+
+#[test]
+fn global_fill_reaches_disconnected_regions_of_the_same_color() {
+    let surface = Surface::from_pixels(
+        size(5, 1),
+        vec![
+            Bgra::WHITE,
+            Bgra::BLACK,
+            Bgra::WHITE,
+            Bgra::BLACK,
+            Bgra::WHITE,
+        ],
+    )
+    .expect("surface");
+    let mut document = Document::from_layers(
+        size(5, 1),
+        vec![Layer::new(LayerId::new(17), "global", surface)],
+    )
+    .expect("document");
+    let patch = paint_raster::global_fill(
+        &document,
+        LayerId::new(17),
+        Point::new(0, 0),
+        Bgra::new(255, 0, 0, 255),
+        0,
+    )
+    .expect("global fill")
+    .expect("global patch");
+    document.apply_patch(&patch).expect("apply");
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], Bgra::new(255, 0, 0, 255));
+    assert_eq!(pixels[1], Bgra::BLACK);
+    assert_eq!(pixels[2], Bgra::new(255, 0, 0, 255));
+    assert_eq!(pixels[3], Bgra::BLACK);
+    assert_eq!(pixels[4], Bgra::new(255, 0, 0, 255));
+}
+
+#[test]
+fn recolor_stroke_only_changes_matching_pixels_under_the_brush() {
+    let surface = Surface::from_pixels(
+        size(5, 1),
+        vec![
+            Bgra::new(0, 0, 255, 255),
+            Bgra::new(0, 255, 0, 255),
+            Bgra::new(0, 0, 255, 255),
+            Bgra::new(0, 255, 0, 255),
+            Bgra::new(0, 0, 255, 255),
+        ],
+    )
+    .expect("surface");
+    let mut document = Document::from_layers(
+        size(5, 1),
+        vec![Layer::new(LayerId::new(18), "recolor", surface)],
+    )
+    .expect("document");
+    let patch = paint_raster::recolor_stroke(
+        &document,
+        LayerId::new(18),
+        &[Point::new(0, 0)],
+        1,
+        Bgra::new(0, 0, 255, 255),
+        Bgra::new(255, 0, 0, 255),
+        0,
+    )
+    .expect("recolor stroke")
+    .expect("patch");
+    document.apply_patch(&patch).expect("apply");
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], Bgra::new(255, 0, 0, 255));
+    assert_eq!(pixels[2], Bgra::new(0, 0, 255, 255));
+    assert_eq!(pixels[4], Bgra::new(0, 0, 255, 255));
+}
