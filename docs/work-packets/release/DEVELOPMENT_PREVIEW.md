@@ -96,7 +96,7 @@ acceptance.
 
 ### Distribution and legal gates
 
-- The owner must select the public distribution model and project license.
+- First-party source is MIT-licensed under the repository `LICENSE`; third-party components retain their own terms.
 - Resolve asset/font redistribution rights and complete a reviewed third-party/native
   dependency notice audit. Heuristic Cargo-source extraction is not sufficient where texts
   are missing or where non-Cargo assets are present.

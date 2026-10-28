@@ -20,8 +20,9 @@ This document is a go/no-go summary, not a release announcement. Machine-readabl
 | Native Linux window/input | **NOT RUN** | No native Linux desktop gate |
 | Native Windows ARM64/x64 | **BLOCKED** | UTM guest RPC times out (`-2700`) before guest execution |
 | Hosted three-OS CI | **NOT CONFIGURED** | No git remote and no authenticated GitHub CLI |
+| First-party project license | **PASS** | MIT `LICENSE`; all workspace packages declare MIT |
 | Third-party notices | **INCOMPLETE** | 447/457 packages with texts; 50 curated; 10 irreducible gaps |
-| Owner legal clearance | **NOT PROVIDED** | No redistribution approval |
+| Third-party/asset legal clearance | **NOT PROVIDED** | MIT does not relicense dependencies or bundled assets |
 | Signing/notarization for distribution | **NOT RUN** | No Developer ID Application identity/notary submission |
 | Public release | **BLOCKED** | Package tool continues to refuse public distribution |
 
@@ -43,10 +44,10 @@ It proves bundle-signature integrity and runtime compatibility only. `spctl` rej
 1. Ten notice gaps: seven egui-family packages with an unavailable exact commit, two `r-efi`
    versions with no exact-root license resource, and one `dispatch` version with HTTP-only locked
    repository metadata. No forbidden substitution was used.
-2. Owner licensing/legal clearance for redistribution.
+2. Third-party/asset legal clearance for redistribution; project MIT licensing is resolved.
 3. Developer ID Application signing and notarization.
 4. Windows native execution and native Windows packaging.
 5. Hosted three-OS CI.
 6. Native Linux x86_64 hardware and native Linux window/input gates.
-7. Broader reference-driven tool and visual parity; the editor remains Paint.NET-inspired, not a
-   parity clone.
+7. Broader reference-driven tool and visual parity. Implemented shapes follow Paint.NET's
+   interaction hierarchy, but no exact pixel-parity or full tool-parity claim is made.

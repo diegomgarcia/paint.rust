@@ -41,6 +41,7 @@ pub struct PaintApp {
     texture: Option<egui::TextureHandle>,
     texture_dirty: bool,
     zoom: f32,
+    fit_canvas_requested: bool,
     layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
     next_layer_number: usize,
     status: String,
@@ -62,6 +63,7 @@ impl PaintApp {
             texture: None,
             texture_dirty: true,
             zoom: 1.0,
+            fit_canvas_requested: false,
             layer_thumbnails: HashMap::new(),
             next_layer_number: 1,
             status: "New 800×600 opaque-white document".to_owned(),
@@ -101,6 +103,7 @@ impl PaintApp {
         self.focus_discard_buttons = false;
         self.texture_dirty = true;
         self.zoom = 1.0;
+        self.fit_canvas_requested = false;
         self.layer_thumbnails.clear();
         self.status = "New 800×600 opaque-white document".to_owned();
     }
@@ -284,7 +287,42 @@ impl PaintApp {
                         ui.close();
                     }
                 });
-                ui.menu_button("Layer", |ui| {
+                ui.menu_button("Edit", |ui| {
+                    let undo = ui.add_enabled(self.session.can_undo(), egui::Button::new("Undo"));
+                    focus_first_menu_item_on_keyboard_open(ui, &undo);
+                    if undo.clicked() {
+                        self.execute(Command::Undo, "Undid the last edit");
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(self.session.can_redo(), egui::Button::new("Redo"))
+                        .clicked()
+                    {
+                        self.execute(Command::Redo, "Redid the next edit");
+                        ui.close();
+                    }
+                });
+                ui.menu_button("View", |ui| {
+                    let zoom_in = ui.button("Zoom In");
+                    focus_first_menu_item_on_keyboard_open(ui, &zoom_in);
+                    if zoom_in.clicked() {
+                        self.zoom = (self.zoom + 0.25).min(8.0);
+                        ui.close();
+                    }
+                    if ui.button("Zoom Out").clicked() {
+                        self.zoom = (self.zoom - 0.25).max(0.1);
+                        ui.close();
+                    }
+                    if ui.button("Actual Size").clicked() {
+                        self.zoom = 1.0;
+                        ui.close();
+                    }
+                    if ui.button("Fit Canvas").clicked() {
+                        self.fit_canvas_requested = true;
+                        ui.close();
+                    }
+                });
+                ui.menu_button("Layers", |ui| {
                     let horizontal = ui.button("Flip Active Layer Horizontally");
                     focus_first_menu_item_on_keyboard_open(ui, &horizontal);
                     if horizontal.clicked() {
@@ -310,11 +348,30 @@ impl PaintApp {
                         ui.close();
                     }
                 });
-                ui.menu_button("Keyboard", |ui| {
-                    ui.label("Development-preview shortcuts (Cmd/Ctrl):");
+                ui.menu_button("Tools", |ui| {
+                    let select = ui.button("Rectangle Select");
+                    focus_first_menu_item_on_keyboard_open(ui, &select);
+                    if select.clicked() {
+                        self.select_rectangle();
+                        ui.close();
+                    }
+                    if ui.button("Fill Selection").clicked() {
+                        let color = self.fill_color;
+                        self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
+                        ui.close();
+                    }
+                    if ui.button("Pick Color from Canvas").clicked() {
+                        self.picking_color = !self.picking_color;
+                        ui.close();
+                    }
+                });
+                ui.menu_button("Help", |ui| {
+                    ui.label("Paint.R development preview · MIT first-party license");
+                    ui.separator();
+                    ui.label("Keyboard shortcuts (Cmd/Ctrl):");
                     ui.label("N New | O Open | Shift+E Export");
                     ui.label("I Invert | F Fill | R Rectangle selection");
-                    ui.label("Layer menu flips the complete active layer");
+                    ui.label("Layers menu flips the complete active layer");
                     ui.label("Shift+L Add layer | Z Undo | Shift+Z Redo");
                     ui.separator();
                     ui.label("Tab / Shift+Tab move focus; Enter / Space activate");
@@ -352,34 +409,6 @@ impl PaintApp {
                 ui.add_space(5.0);
                 ui.separator();
                 ui.add_space(5.0);
-                if icon_button(ui, Icon::SelectRectangle, "Select Rectangle", true).clicked() {
-                    self.select_rectangle();
-                }
-                if icon_button(
-                    ui,
-                    Icon::ClearSelection,
-                    "Clear Selection",
-                    self.session.document().selection().is_some(),
-                )
-                .clicked()
-                {
-                    self.execute(Command::ClearSelection, "Selection cleared");
-                }
-                if icon_button(ui, Icon::Fill, "Fill", true).clicked() {
-                    let color = self.fill_color;
-                    self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
-                }
-                if icon_button(ui, Icon::EyeDropper, "Pick color from canvas", true).clicked() {
-                    self.picking_color = !self.picking_color;
-                    self.status = if self.picking_color {
-                        "Pick a composed canvas color".to_owned()
-                    } else {
-                        "Color picker canceled".to_owned()
-                    };
-                }
-                ui.add_space(5.0);
-                ui.separator();
-                ui.add_space(5.0);
                 if icon_button(ui, Icon::AddLayer, "Add Layer", true).clicked() {
                     self.add_layer();
                 }
@@ -388,162 +417,225 @@ impl PaintApp {
         });
     }
 
-    fn layers_panel(&mut self, ui: &mut egui::Ui) {
-        let mut pending = None;
-        egui::Panel::right("paint-r-layers")
-            .default_size(270.0)
+    fn tools_panel(&mut self, ui: &mut egui::Ui) {
+        egui::Panel::left("paint-r-tools")
+            .default_size(64.0)
+            .min_size(64.0)
+            .max_size(64.0)
+            .resizable(false)
             .show(ui, |ui| {
-                ui.heading("Layers");
-                ui.label("Ordered bottom to top; displayed topmost first.");
-                ui.separator();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let document = self.session.document();
-                    for index in (0..document.layers().len()).rev() {
-                        let layer = &document.layers()[index];
-                        let active = layer.id() == document.active_layer_id();
-                        ui.group(|ui| {
-                            ui.horizontal_top(|ui| {
-                                if let Some(thumbnail) = self.layer_thumbnails.get(&layer.id()) {
-                                    egui::Frame::new()
-                                        .fill(egui::Color32::from_rgb(24, 24, 24))
-                                        .corner_radius(3)
-                                        .inner_margin(2)
-                                        .show(ui, |ui| {
-                                            ui.add(
-                                                egui::Image::from_texture(&thumbnail.texture)
-                                                    .maintain_aspect_ratio(true)
-                                                    .fit_to_exact_size(egui::vec2(48.0, 38.0))
-                                                    .alt_text(format!(
-                                                        "Layer {index} thumbnail: {}",
-                                                        layer.name()
-                                                    )),
-                                            );
-                                        });
-                                }
-                                ui.vertical(|ui| {
-                                    if ui
-                                        .selectable_label(
-                                            active,
-                                            format!("Active layer {index}: {}", layer.name()),
-                                        )
-                                        .clicked()
-                                    {
-                                        pending = Some(Command::SetActiveLayer { index });
-                                    }
-                                    let mut visible = layer.is_visible();
-                                    if ui
-                                        .checkbox(&mut visible, format!("Layer {index} visible"))
-                                        .changed()
-                                    {
-                                        pending =
-                                            Some(Command::SetLayerVisibility { index, visible });
-                                    }
-                                });
-                            });
-                            let mut opacity = layer.opacity();
-                            if ui
-                                .add(
-                                    egui::Slider::new(&mut opacity, 0..=u8::MAX)
-                                        .text(format!("Layer {index} opacity")),
-                                )
-                                .changed()
-                            {
-                                pending = Some(Command::SetLayerOpacity { index, opacity });
-                            }
-                        });
+                ui.add_space(4.0);
+                ui.vertical_centered(|ui| {
+                    ui.strong("Tools");
+                    ui.separator();
+                    if icon_button(ui, Icon::SelectRectangle, "Select Rectangle", true).clicked() {
+                        self.select_rectangle();
+                    }
+                    if icon_button(
+                        ui,
+                        Icon::ClearSelection,
+                        "Clear Selection",
+                        self.session.document().selection().is_some(),
+                    )
+                    .clicked()
+                    {
+                        self.execute(Command::ClearSelection, "Selection cleared");
+                    }
+                    if icon_button(ui, Icon::Fill, "Fill", true).clicked() {
+                        let color = self.fill_color;
+                        self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
+                    }
+                    if icon_button(ui, Icon::EyeDropper, "Pick color from canvas", true).clicked() {
+                        self.picking_color = !self.picking_color;
+                        self.status = if self.picking_color {
+                            "Pick a composed canvas color".to_owned()
+                        } else {
+                            "Color picker canceled".to_owned()
+                        };
                     }
                 });
+            });
+    }
+
+    fn tool_options_panel(&mut self, ui: &mut egui::Ui) {
+        egui::Panel::top("paint-r-tool-options").show(ui, |ui| {
+            ui.add_space(2.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.strong("Tool Options");
+                ui.separator();
+                ui.label("Selection");
+                selection_input(ui, "Selection left", &mut self.selection_input.left);
+                selection_input(ui, "Selection top", &mut self.selection_input.top);
+                selection_input(ui, "Selection right", &mut self.selection_input.right);
+                selection_input(ui, "Selection bottom", &mut self.selection_input.bottom);
+                if ui.button("Apply selection").clicked() {
+                    self.select_rectangle();
+                }
+                if let Some(selection) = self.session.document().selection() {
+                    ui.label(format!(
+                        "({}, {})..({}, {})",
+                        selection.left(),
+                        selection.top(),
+                        selection.right(),
+                        selection.bottom()
+                    ));
+                } else {
+                    ui.label("No selection");
+                }
+                if self.picking_color {
+                    ui.separator();
+                    ui.label("Click the canvas to sample a color");
+                }
+            });
+            ui.add_space(2.0);
+        });
+    }
+
+    fn layers_content(&mut self, ui: &mut egui::Ui) {
+        let mut pending = None;
+        ui.heading("Layers");
+        ui.label("Ordered bottom to top; displayed topmost first.");
+        ui.separator();
+        egui::ScrollArea::vertical()
+            .id_salt("paint-r-layer-list")
+            .show(ui, |ui| {
+                let document = self.session.document();
+                for index in (0..document.layers().len()).rev() {
+                    let layer = &document.layers()[index];
+                    let active = layer.id() == document.active_layer_id();
+                    ui.group(|ui| {
+                        ui.horizontal_top(|ui| {
+                            if let Some(thumbnail) = self.layer_thumbnails.get(&layer.id()) {
+                                egui::Frame::new()
+                                    .fill(egui::Color32::from_rgb(24, 24, 24))
+                                    .corner_radius(3)
+                                    .inner_margin(2)
+                                    .show(ui, |ui| {
+                                        ui.add(
+                                            egui::Image::from_texture(&thumbnail.texture)
+                                                .maintain_aspect_ratio(true)
+                                                .fit_to_exact_size(egui::vec2(48.0, 38.0))
+                                                .alt_text(format!(
+                                                    "Layer {index} thumbnail: {}",
+                                                    layer.name()
+                                                )),
+                                        );
+                                    });
+                            }
+                            ui.vertical(|ui| {
+                                if ui
+                                    .selectable_label(
+                                        active,
+                                        format!("Active layer {index}: {}", layer.name()),
+                                    )
+                                    .clicked()
+                                {
+                                    pending = Some(Command::SetActiveLayer { index });
+                                }
+                                let mut visible = layer.is_visible();
+                                if ui
+                                    .checkbox(&mut visible, format!("Layer {index} visible"))
+                                    .changed()
+                                {
+                                    pending = Some(Command::SetLayerVisibility { index, visible });
+                                }
+                            });
+                        });
+                        let mut opacity = layer.opacity();
+                        if ui
+                            .add(
+                                egui::Slider::new(&mut opacity, 0..=u8::MAX)
+                                    .text(format!("Layer {index} opacity")),
+                            )
+                            .changed()
+                        {
+                            pending = Some(Command::SetLayerOpacity { index, opacity });
+                        }
+                    });
+                }
             });
         if let Some(command) = pending {
             self.execute(command, "Layer properties updated");
         }
     }
 
-    fn colors_panel(&mut self, ui: &mut egui::Ui) {
-        egui::Panel::left("paint-r-colors")
-            .default_size(240.0)
-            .show(ui, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.heading("Colors");
-                    let initial_color = self.fill_color;
-                    let color = self.fill_color;
-                    color_preview(ui, color);
-                    ui.label(format!(
-                        "Primary color preview · #{:02X}{:02X}{:02X}",
-                        color.r, color.g, color.b
-                    ));
-                    ui.label(format!(
-                        "Alpha {}% · canonical BGRA channels",
-                        (u16::from(color.a) * 100 / 255)
-                    ));
-                    ui.horizontal(|ui| {
-                        let label = ui.label("Hex color");
-                        let _response = ui
-                            .text_edit_singleline(&mut self.hex_input)
-                            .labelled_by(label.id);
-                        if ui.button("Apply color").clicked() {
-                            match crate::color_from_hex(&self.hex_input) {
-                                Ok(parsed) => {
-                                    self.fill_color = parsed;
-                                    self.hex_input = format_hex_color(parsed);
-                                    self.hex_error = None;
-                                }
-                                Err(error) => self.hex_error = Some(error),
-                            }
-                        }
-                    });
-                    if let Some(error) = &self.hex_error {
-                        ui.colored_label(
-                            egui::Color32::LIGHT_RED,
-                            format!("Invalid hex color: {error}"),
-                        );
-                    }
-                    ui.label("Color wheel");
-                    if let Some(color) = color_wheel(ui, self.fill_color) {
-                        self.fill_color = color;
-                    }
-                    ui.label("Palette");
-                    ui.horizontal_wrapped(|ui| {
-                        for &(label, preset) in PRESET_COLORS {
-                            if color_swatch(ui, label, preset, preset == self.fill_color).clicked()
-                            {
-                                self.fill_color = preset;
-                            }
-                        }
-                    });
-                    ui.separator();
-                    color_slider(ui, "Fill blue", &mut self.fill_color.b);
-                    color_slider(ui, "Fill green", &mut self.fill_color.g);
-                    color_slider(ui, "Fill red", &mut self.fill_color.r);
-                    color_slider(ui, "Fill alpha", &mut self.fill_color.a);
-                    if self.fill_color != initial_color {
-                        self.hex_input = format_hex_color(self.fill_color);
+    fn colors_content(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Colors");
+        let initial_color = self.fill_color;
+        let color = self.fill_color;
+        color_preview(ui, color);
+        ui.label(format!(
+            "Primary color preview · #{:02X}{:02X}{:02X}",
+            color.r, color.g, color.b
+        ));
+        ui.label(format!(
+            "Alpha {}% · canonical BGRA channels",
+            (u16::from(color.a) * 100 / 255)
+        ));
+        ui.horizontal(|ui| {
+            let label = ui.label("Hex color");
+            let _response = ui
+                .text_edit_singleline(&mut self.hex_input)
+                .labelled_by(label.id);
+            if ui.button("Apply color").clicked() {
+                match crate::color_from_hex(&self.hex_input) {
+                    Ok(parsed) => {
+                        self.fill_color = parsed;
+                        self.hex_input = format_hex_color(parsed);
                         self.hex_error = None;
                     }
-                    let color = self.fill_color;
-                    ui.colored_label(
-                        egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
-                        format!("BGRA {}, {}, {}, {}", color.b, color.g, color.r, color.a),
-                    );
-                    ui.separator();
-                    ui.heading("Rectangle selection");
-                    ui.label("Signed half-open edges; raster operations clip to the canvas.");
-                    selection_input(ui, "Selection left", &mut self.selection_input.left);
-                    selection_input(ui, "Selection top", &mut self.selection_input.top);
-                    selection_input(ui, "Selection right", &mut self.selection_input.right);
-                    selection_input(ui, "Selection bottom", &mut self.selection_input.bottom);
-                    if let Some(selection) = self.session.document().selection() {
-                        ui.label(format!(
-                            "Current: ({}, {})..({}, {})",
-                            selection.left(),
-                            selection.top(),
-                            selection.right(),
-                            selection.bottom()
-                        ));
-                    } else {
-                        ui.label("Current: no selection");
-                    }
-                });
+                    Err(error) => self.hex_error = Some(error),
+                }
+            }
+        });
+        if let Some(error) = &self.hex_error {
+            ui.colored_label(
+                egui::Color32::LIGHT_RED,
+                format!("Invalid hex color: {error}"),
+            );
+        }
+        ui.label("Color wheel");
+        if let Some(color) = color_wheel(ui, self.fill_color) {
+            self.fill_color = color;
+        }
+        ui.label("Palette");
+        ui.horizontal_wrapped(|ui| {
+            for &(label, preset) in PRESET_COLORS {
+                if color_swatch(ui, label, preset, preset == self.fill_color).clicked() {
+                    self.fill_color = preset;
+                }
+            }
+        });
+        ui.separator();
+        color_slider(ui, "Fill blue", &mut self.fill_color.b);
+        color_slider(ui, "Fill green", &mut self.fill_color.g);
+        color_slider(ui, "Fill red", &mut self.fill_color.r);
+        color_slider(ui, "Fill alpha", &mut self.fill_color.a);
+        if self.fill_color != initial_color {
+            self.hex_input = format_hex_color(self.fill_color);
+            self.hex_error = None;
+        }
+        let color = self.fill_color;
+        ui.colored_label(
+            egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+            format!("BGRA {}, {}, {}, {}", color.b, color.g, color.r, color.a),
+        );
+    }
+
+    fn right_dock(&mut self, ui: &mut egui::Ui) {
+        egui::Panel::right("paint-r-right-dock")
+            .default_size(280.0)
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("paint-r-colors-scroll")
+                    .max_height(560.0)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.colors_content(ui));
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .id_salt("paint-r-layers-scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.layers_content(ui));
             });
     }
 
@@ -567,12 +659,11 @@ impl PaintApp {
     fn canvas_panel(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show(ui, |ui| {
             let size = self.session.document().size();
-            let mut fit_requested = false;
             ui.horizontal(|ui| {
                 ui.heading(format!("Canvas — {}×{}", size.width(), size.height()));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if labeled_button(ui, "Fit", "Fit canvas").clicked() {
-                        fit_requested = true;
+                        self.fit_canvas_requested = true;
                     }
                     if labeled_button(ui, "+", "Zoom in").clicked() {
                         self.zoom = (self.zoom + 0.25).min(8.0);
@@ -583,11 +674,12 @@ impl PaintApp {
                     }
                 });
             });
-            if fit_requested {
+            if self.fit_canvas_requested {
                 let available = ui.available_size();
                 self.zoom = ((available.x - 24.0).max(32.0) / size.width() as f32)
                     .min((available.y - 24.0).max(32.0) / size.height() as f32)
                     .clamp(0.05, 8.0);
+                self.fit_canvas_requested = false;
             }
             ui.label("Actual composed session surface");
             let texture = self.texture.clone();
@@ -1035,9 +1127,10 @@ impl eframe::App for PaintApp {
         self.refresh_layer_thumbnails(ui.ctx());
         self.menu_panel(ui);
         self.toolbar_panel(ui);
-        self.layers_panel(ui);
-        self.colors_panel(ui);
+        self.tool_options_panel(ui);
         self.status_panel(ui);
+        self.tools_panel(ui);
+        self.right_dock(ui);
         self.canvas_panel(ui);
         self.path_dialog(ui);
         self.discard_confirmation(ui);

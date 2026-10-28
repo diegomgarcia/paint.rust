@@ -101,10 +101,9 @@ output was reused.
 - Windows x64 tooling passed its reference tests, but QGA failed before exact-source
   verification or any x64 Cargo/smoke command. The raw writer-open gate stopped before
   UI actions because Paint.NET was not running.
-- Public packaging remains blocked by the owner-selected project license, asset/font
-  rights, signing/notarization, and legal notice review. A local inventory has 457
-  packages: 397 with discovered texts and 60 missing/error entries requiring exact
-  upstream review, not invented notices.
+- Public packaging remains blocked by third-party asset/font rights, signing/notarization,
+  and notice review. The current local inventory covers 447/457 packages with 50 curated
+  supplements and 10 irreducible gaps; first-party source itself is MIT-licensed.
 
 The isolated Lima instance was gracefully stopped only after all artifacts and evidence
 were copied and independently verified on the host. It is preserved for reuse.

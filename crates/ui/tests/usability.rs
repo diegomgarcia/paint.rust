@@ -301,6 +301,18 @@ fn open_dialog_previews_a_valid_png_without_changing_the_session() {
 }
 
 #[test]
+fn paint_net_style_layout_exposes_tools_options_colors_and_layers() {
+    let harness = app();
+    harness.get_by_role_and_label(Role::Label, "Tools");
+    harness.get_by_role_and_label(Role::Label, "Tool Options");
+    harness.get_by_role_and_label(Role::Label, "Colors");
+    harness.get_by_role_and_label(Role::Label, "Layers");
+    harness.get_by_role_and_label(Role::Button, "Select Rectangle");
+    harness.get_by_role_and_label(Role::Button, "Fill");
+    harness.get_by_role_and_label(Role::Button, "Pick color from canvas");
+}
+
+#[test]
 fn canvas_color_picker_samples_composed_pixels_without_editing() {
     let mut harness = app();
     let before = harness.state().session().document().clone();
@@ -319,7 +331,9 @@ fn canvas_color_picker_samples_composed_pixels_without_editing() {
 #[test]
 fn layer_menu_exposes_both_active_layer_flips() {
     let mut harness = app();
-    harness.get_by_role_and_label(Role::Button, "Layer").click();
+    harness
+        .get_by_role_and_label(Role::Button, "Layers")
+        .click();
     harness.run();
     harness.get_by_label("Flip Active Layer Horizontally");
     harness.get_by_label("Flip Active Layer Vertically");

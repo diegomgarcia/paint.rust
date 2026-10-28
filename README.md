@@ -7,7 +7,7 @@ An original, cross-platform Rust image editor being developed against a pinned P
 ## Implemented preview slice
 
 - A real `eframe`/`egui` native window with an 800×600 opaque-white new document and an actual composed-surface canvas.
-- A denser graphite editor shell with first-party runtime-drawn New/Open/Export, Undo/Redo, selection, fill, and Add Layer icons; a primary-color preview with hex and alpha; an interactive HSV color wheel; exact RGB/RGBA hex input; horizontal and vertical active-layer flips; a composed-canvas color picker; an 11-swatch palette; cached per-layer thumbnails; and a bounded Open-dialog folder browser with explicit PNG thumbnails. The canvas has 25%-step zoom controls and fit-to-window. The icons are original geometry, not copied Paint.NET assets; see [icon provenance](docs/ICON_PROVENANCE.md).
+- A Paint.NET-oriented workspace: File/Edit/View/Layers/Adjustments/Tools/Help menus, a toolbar, a fixed left Tools rail, a Tool Options strip, Colors stacked above Layers in a right dock, a central canvas, and a full-width status bar. It includes first-party runtime-drawn New/Open/Export, Undo/Redo, selection, fill, picker, and Add Layer icons; a primary-color preview with hex and alpha; an interactive HSV color wheel; exact RGB/RGBA hex input; horizontal and vertical active-layer flips; a composed-canvas color picker; an 11-swatch palette; and cached per-layer thumbnails. The canvas has 25%-step zoom controls and fit-to-window. Layout follows Paint.NET's interaction hierarchy, but exact shape/pixel parity is not claimed. Icons are original geometry, not copied Paint.NET assets; see [icon provenance](docs/ICON_PROVENANCE.md).
 - Rectangle selection, chosen-BGRA fill, RGB-only Invert, undo/redo, layer creation/selection, visibility, and opacity through the single-writer `AppSession`.
 - Flat PNG open and atomic PNG export. Opening creates one layer; exporting preserves the layered session, history, and modified state. PNG is not lossless layered-document persistence.
 - Dirty New, Open, Command-Q, Command-W, File → Close Window/Quit, and native window-close paths require explicit Discard confirmation; Cancel preserves the current session, and exporting does not bypass the close guard.
@@ -17,7 +17,7 @@ An original, cross-platform Rust image editor being developed against a pinned P
 - An isolated Rust↔.NET source-owned plugin transport proof. This does not load arbitrary Paint.NET plugin DLLs.
 - The current source also builds a reproducible x86_64 Linux artifact in an isolated ARM64 Lima VZ/Rosetta VM. It passed 219 Rust tests across 40 suite records, strict Linux Clippy/format, deterministic packaging, and independent extraction smoke; clean-target independence was established at `5af5981`. This is emulated userspace evidence, not native x86_64 hardware CI or native Linux window acceptance.
 
-The development UI uses a custom dark `egui` theme, original first-party icon geometry, and a text-path PNG dialog. On macOS the default native menu bar is intentionally disabled so Command-Q and Command-W pass through the document dirty guard; application actions remain in the in-window menu. The UI is not a pixel-parity skin and does not include a native OS file picker or full image-library management. The Open dialog has an app-drawn, bounded folder browser: it lists at most 200 directories and regular `.png` files, skips hidden and symlink entries, and previews one bounded PNG without changing the current session. Keyboard evidence is semantic `egui_kittest` input/focus coverage, not native OS, screen-reader, or Paint.NET shortcut-parity evidence. Use disposable test documents; the preview is not a complete document-safety or Paint.NET workflow implementation.
+The development UI uses a custom dark `egui` theme, original first-party icon geometry, and a text-path PNG dialog. On macOS the default native menu bar is intentionally disabled so Command-Q and Command-W pass through the document dirty guard; application actions remain in the in-window menu. The layout is parity-oriented, but exact pixel parity is not claimed; it does not include a native OS file picker or full image-library management. The Open dialog has an app-drawn, bounded folder browser: it lists at most 200 directories and regular `.png` files, skips hidden and symlink entries, and previews one bounded PNG without changing the current session. Keyboard evidence is semantic `egui_kittest` input/focus coverage, not native OS, screen-reader, or Paint.NET shortcut-parity evidence. Use disposable test documents; the preview is not a complete document-safety or Paint.NET workflow implementation.
 
 ## Prerequisites
 
@@ -96,7 +96,14 @@ python3 tools/package/preview_package.py \
   --repeat 2 --cargo-command ./tools/cargo-pinned.sh
 ```
 
-Packaging always runs the real-binary smoke gate, then reopens the archive and repeats that smoke against the extracted executable before writing its verification receipt. This remains headless, not native-window, evidence. Internal archives are unsigned and unnotarized. `public` packaging is deliberately refused while project licensing, asset/font rights, and required notices remain unresolved.
+Packaging always runs the real-binary smoke gate, then reopens the archive and repeats that smoke against the extracted executable before writing its verification receipt. This remains headless, not native-window, evidence. Internal archives are unsigned and unnotarized. `public` packaging is deliberately refused while asset/font rights and required third-party notices remain unresolved.
+
+## License
+
+Paint.R's first-party source code is licensed under the [MIT License](LICENSE). Third-party
+components retain their own licenses and notices; the generated notice inventory does not
+relicense them. Paint.NET and its assemblies are reference-only and are not distributed with
+Paint.R.
 
 ## Engineering rules
 

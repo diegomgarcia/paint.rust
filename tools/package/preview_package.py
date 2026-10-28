@@ -701,7 +701,8 @@ def collect_third_party_notices(
     lines = [
         "# Third-party notices — internal development preview",
         "",
-        "Paint.R has no selected public project license. This inventory does not grant one.",
+        "Paint.R first-party code is licensed under the MIT License (see `LICENSE`).",
+        "This inventory covers third-party components and does not relicense them.",
         "Package-source discovery is heuristic; curated supplements contain hash-verified bytes from",
         "commit-pinned upstream URLs. This is **not a legal review** or a claim that redistribution",
         "obligations are satisfied. Cargo license expressions are metadata, not license texts.",
@@ -1182,7 +1183,7 @@ def package_release(
     """Build, reopen, and smoke an internal-only deterministic archive before returning it."""
     if distribution != "internal-preview":
         raise PackagingError(
-            "public redistribution is blocked: the project license/asset rights are unresolved "
+            "public redistribution is blocked: third-party asset/notice rights are unresolved "
             "and third-party notice extraction is not legally verified"
         )
     if platform not in PLATFORMS:
@@ -1238,6 +1239,9 @@ def package_release(
         readme = readme.replace("{{VERSION}}", version).replace("{{PLATFORM}}", platform)
         (payload / "README-PREVIEW.md").write_bytes(readme.encode("utf-8"))
         shutil.copyfile(parity_path, payload / "PARITY_LEDGER.md")
+        license_path = repo_root / "LICENSE"
+        if license_path.is_file():
+            shutil.copyfile(license_path, payload / "LICENSE")
         (payload / "PREVIEW_SMOKE.json").write_bytes(_json_bytes(smoke_evidence))
         (payload / "PREVIEW_BINARY.json").write_bytes(
             _json_bytes(
@@ -1259,7 +1263,9 @@ def package_release(
         if platform == "macos-aarch64":
             resources = payload / "Paint.R.app/Contents/Resources/Preview"
             resources.mkdir(parents=True, exist_ok=True)
-            for name in ("README-PREVIEW.md", "PARITY_LEDGER.md", "PREVIEW_SMOKE.json", "PREVIEW_BINARY.json", "THIRD_PARTY_NOTICES.md", "sbom.cdx.json"):
+            for name in ("README-PREVIEW.md", "PARITY_LEDGER.md", "LICENSE", "PREVIEW_SMOKE.json", "PREVIEW_BINARY.json", "THIRD_PARTY_NOTICES.md", "sbom.cdx.json"):
+                if not (payload / name).is_file():
+                    continue
                 shutil.copyfile(payload / name, resources / name)
         for path, _ in _payload_files(payload):
             if path.stat().st_mode & 0o111 == 0:

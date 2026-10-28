@@ -9,6 +9,6 @@ The glyphs use familiar editing conventions so the controls read similarly to Pa
 they are deliberately simplified and separately authored. No Paint.NET trademark, logo, or
 application icon is reproduced.
 
-These marks are first-party project source. They introduce no identified third-party notice
-or attribution obligation. Repository-wide licensing and redistribution terms remain an
-owner decision, so this file is provenance evidence rather than a project license.
+These marks are first-party project source covered by the repository MIT license. They
+introduce no identified third-party notice or attribution obligation. This file remains
+provenance evidence, not a legal review of non-icon assets.

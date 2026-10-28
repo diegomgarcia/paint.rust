@@ -4,10 +4,11 @@ Platform: `{{PLATFORM}}`.
 
 ## Distribution restriction
 
-**This archive is an internal engineering artifact, not a public release.** The Paint.R
-project has not selected a public license and public asset/font redistribution rights
-remain unresolved. This archive does not grant a license for public redistribution.
-Do not upload it to a release page or otherwise redistribute it publicly.
+**This archive is an internal engineering artifact, not a public release.** Paint.R
+first-party source code is MIT-licensed and the license text is included as `LICENSE`.
+Third-party asset/font rights and required notices remain unresolved. This archive does
+not grant rights to third-party content. Do not upload it to a release page or otherwise
+redistribute it publicly.
 
 The dependency notices are copied from locked Cargo package sources where discoverable.
 `THIRD_PARTY_NOTICES.md` and `third-party-notices/index.json` state whether extraction

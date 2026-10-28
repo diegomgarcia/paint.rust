@@ -2,7 +2,7 @@
 
 `preview_package.py` is a Python-standard-library packager for the **future real
 `paint-ui` release binary**. It creates internal engineering artifacts only. It does not
-create a GitHub release, publish packages, select a license, or sign/notarize a product.
+create a GitHub release, publish packages, or sign/notarize a product. The project itself is MIT-licensed.
 
 ## Mandatory product gate
 
@@ -285,7 +285,7 @@ upstream license content for their recorded VCS commit `7c0b40402271e8d40cda69f8
 was unavailable during curation; no moving-branch, latest, or release-tag content was substituted.
 Other package gaps remain explicit. Curated retrieval and file coverage are not legal review or a
 claim of redistribution compliance. Incomplete extraction is disclosed in internal artifacts;
-public packaging remains refused. No first-party license is invented.
+public packaging remains refused. The first-party project license is MIT; third-party texts are never invented.
 
 ## Tests
 

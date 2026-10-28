@@ -188,7 +188,19 @@ fn tab_enter_space_and_dirty_new_are_keyboard_usable() {
     press(&mut harness, Key::Tab);
     assert!(
         harness
-            .get_by_role_and_label(Role::Button, "Layer")
+            .get_by_role_and_label(Role::Button, "Edit")
+            .is_focused()
+    );
+    press(&mut harness, Key::Tab);
+    assert!(
+        harness
+            .get_by_role_and_label(Role::Button, "View")
+            .is_focused()
+    );
+    press(&mut harness, Key::Tab);
+    assert!(
+        harness
+            .get_by_role_and_label(Role::Button, "Layers")
             .is_focused()
     );
     press(&mut harness, Key::Tab);
@@ -256,9 +268,9 @@ fn tab_enter_space_and_dirty_new_are_keyboard_usable() {
     assert!(!harness.state().session().can_redo());
     assert_eq!(harness.state().session().document().layers().len(), 1);
 
-    focus(&mut harness, Role::Button, "Keyboard");
+    focus(&mut harness, Role::Button, "Help");
     press(&mut harness, Key::Enter);
-    harness.get_by_label_contains("Development-preview shortcuts");
+    harness.get_by_label_contains("Keyboard shortcuts");
     harness.get_by_label_contains("Tab / Shift+Tab");
 }
 
