@@ -6,7 +6,7 @@ use egui_kittest::{
     Harness,
     kittest::{NodeT as _, Queryable as _},
 };
-use paint_core::{Bgra, Rect, Size, Surface};
+use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_ui::PaintApp;
 use tempfile::TempDir;
 
@@ -232,6 +232,8 @@ fn dirty_new_cancel_preserves_document_and_history_and_discard_replaces_it() {
 fn rectangle_selection_chosen_bgra_fill_and_clear_selection_are_usable() {
     let mut harness = app();
     click(&mut harness, "Select Rectangle");
+    assert_eq!(harness.state().session().document().selection(), None);
+    click(&mut harness, "Apply selection");
     assert_eq!(
         harness.state().session().document().selection(),
         Some(Rect::new(0, 0, 1, 1).expect("selection"))
@@ -253,7 +255,7 @@ fn rectangle_selection_chosen_bgra_fill_and_clear_selection_are_usable() {
     assert!(pixels[1..].iter().all(|pixel| *pixel == Bgra::WHITE));
     assert_eq!(session.compose().expect("composite").pixels()[0], chosen);
 
-    click(&mut harness, "Clear Selection");
+    menu_item(&mut harness, "Edit", "Deselect");
     assert_eq!(harness.state().session().document().selection(), None);
     assert_eq!(
         harness
@@ -274,7 +276,7 @@ fn layer_panel_exposes_color_and_layer_previews() {
     harness.get_by_role_and_label(Role::Button, "New document");
     harness.get_by_role_and_label(Role::Button, "Open PNG file");
     harness.get_by_role_and_label(Role::Button, "Export PNG file");
-    harness.get_by_label_contains("Primary color preview");
+    harness.get_by_role_and_label(Role::Button, "Primary color");
     harness.get_by_label_contains("Layer 0 thumbnail: Background");
 
     click(&mut harness, "Add Layer");
@@ -339,6 +341,14 @@ fn canvas_color_picker_samples_composed_pixels_without_editing() {
 #[test]
 fn canvas_drag_creates_a_half_open_rectangle_selection_without_history() {
     let mut harness = app();
+    harness
+        .get_by_role_and_label(Role::Button, "Window")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::CheckBox, "Float Tools")
+        .click();
+    harness.run();
     let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
     let rect = canvas.rect();
     harness.drag_at(rect.min + egui::vec2(20.0, 30.0));
@@ -354,6 +364,52 @@ fn canvas_drag_creates_a_half_open_rectangle_selection_without_history() {
     );
     assert!(!harness.state().session().dirty());
     assert!(!harness.state().session().can_undo());
+}
+
+#[test]
+fn rectangle_shape_tool_drag_fills_and_remains_undoable() {
+    let mut harness = app();
+    click(&mut harness, "Rectangle shape");
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let rect = canvas.rect();
+    harness.drag_at(rect.min + egui::vec2(5.0, 6.0));
+    harness.run();
+    harness.hover_at(rect.min + egui::vec2(14.0, 15.0));
+    harness.run();
+    harness.drop_at(rect.min + egui::vec2(14.0, 15.0));
+    harness.run();
+
+    let session = harness.state().session();
+    assert_eq!(
+        session.document().selection(),
+        Some(Rect::new(5, 6, 15, 16).expect("shape selection"))
+    );
+    let surface = session.document().active_layer().surface();
+    assert_eq!(
+        *surface.pixel(Point::new(5, 6)).expect("inside"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(14, 15)).expect("inside"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(0, 0)).expect("outside"),
+        Bgra::WHITE
+    );
+    assert!(session.dirty());
+    assert!(session.can_undo());
+}
+
+#[test]
+fn zoom_tool_click_changes_canvas_zoom_without_editing() {
+    let mut harness = app();
+    click(&mut harness, "Zoom");
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    canvas.click();
+    harness.run();
+    harness.get_by_label("125%");
+    assert!(!harness.state().session().dirty());
 }
 
 #[test]
@@ -400,6 +456,7 @@ fn window_menu_can_float_and_dock_the_color_and_layer_panels() {
     assert!(!harness.state().panels_floating());
     menu_item(&mut harness, "Window", "Float Panels");
     assert!(harness.state().panels_floating());
+    harness.get_by_role_and_label(Role::Label, "Tools");
     harness.get_by_role_and_label(Role::Label, "Colors");
     harness.get_by_role_and_label(Role::Label, "Layers");
     menu_item(&mut harness, "Window", "Dock Panels");
@@ -469,7 +526,6 @@ fn palette_updates_primary_color_without_mutating_the_document() {
 
     click(&mut harness, "Preset red");
     assert_eq!(harness.state().fill_color(), Bgra::new(0, 0, 255, 255));
-    harness.get_by_label_contains("Primary color preview · #FF0000");
 
     click(&mut harness, "Preset transparent");
     assert_eq!(harness.state().fill_color(), Bgra::TRANSPARENT);

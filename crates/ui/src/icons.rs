@@ -11,8 +11,9 @@ pub(crate) enum Icon {
     Undo,
     Redo,
     SelectRectangle,
-    ClearSelection,
+    Zoom,
     Fill,
+    RectangleShape,
     EyeDropper,
     AddLayer,
 }
@@ -203,32 +204,56 @@ fn paint_icon(painter: &Painter, rect: egui::Rect, icon: Icon, color: Color32) {
                 Stroke::NONE,
             ));
         }
-        Icon::SelectRectangle | Icon::ClearSelection => {
-            let weak = if matches!(icon, Icon::ClearSelection) {
-                Stroke::new(1.4, color.gamma_multiply(0.55))
-            } else {
-                stroke
-            };
-            for (a, b) in [
-                ((0.12, 0.22), (0.4, 0.22)),
-                ((0.6, 0.22), (0.88, 0.22)),
-                ((0.12, 0.78), (0.4, 0.78)),
-                ((0.6, 0.78), (0.88, 0.78)),
-                ((0.12, 0.22), (0.12, 0.45)),
-                ((0.12, 0.58), (0.12, 0.78)),
-                ((0.88, 0.22), (0.88, 0.45)),
-                ((0.88, 0.58), (0.88, 0.78)),
-            ] {
-                painter.line_segment([point(rect, a.0, a.1), point(rect, b.0, b.1)], weak);
+        Icon::SelectRectangle => {
+            for y in [0.2, 0.8] {
+                for (x0, x1) in [(0.12, 0.28), (0.36, 0.52), (0.6, 0.76), (0.84, 0.9)] {
+                    painter.line_segment(
+                        [point(rect, x0, y), point(rect, x1, y)],
+                        Stroke::new(2.0, color),
+                    );
+                }
             }
-            for (x, y) in [(0.12, 0.22), (0.88, 0.22), (0.12, 0.78), (0.88, 0.78)] {
-                let p = point(rect, x, y);
-                painter.rect_filled(egui::Rect::from_center_size(p, vec2(3.5, 3.5)), 0, color);
+            for x in [0.12, 0.9] {
+                for (y0, y1) in [(0.2, 0.36), (0.44, 0.6), (0.68, 0.8)] {
+                    painter.line_segment(
+                        [point(rect, x, y0), point(rect, x, y1)],
+                        Stroke::new(2.0, color),
+                    );
+                }
             }
-            if matches!(icon, Icon::ClearSelection) {
-                painter.line_segment([point(rect, 0.62, 0.58), point(rect, 0.82, 0.78)], stroke);
-                painter.line_segment([point(rect, 0.82, 0.58), point(rect, 0.62, 0.78)], stroke);
-            }
+            painter.rect_filled(
+                egui::Rect::from_min_max(point(rect, 0.12, 0.2), point(rect, 0.9, 0.8)),
+                0,
+                color.gamma_multiply(0.06),
+            );
+        }
+        Icon::Zoom => {
+            painter.circle_stroke(point(rect, 0.4, 0.4), rect.width() * 0.2, stroke);
+            painter.line_segment(
+                [point(rect, 0.55, 0.55), point(rect, 0.84, 0.84)],
+                Stroke::new(3.2, color),
+            );
+            painter.line_segment(
+                [point(rect, 0.29, 0.4), point(rect, 0.51, 0.4)],
+                Stroke::new(2.0, accent),
+            );
+            painter.line_segment(
+                [point(rect, 0.4, 0.29), point(rect, 0.4, 0.51)],
+                Stroke::new(2.0, accent),
+            );
+        }
+        Icon::RectangleShape => {
+            painter.rect_filled(
+                egui::Rect::from_min_max(point(rect, 0.14, 0.28), point(rect, 0.86, 0.78)),
+                2,
+                accent.gamma_multiply(0.42),
+            );
+            painter.rect_stroke(
+                egui::Rect::from_min_max(point(rect, 0.14, 0.28), point(rect, 0.86, 0.78)),
+                2,
+                Stroke::new(2.2, color),
+                StrokeKind::Inside,
+            );
         }
         Icon::Fill => {
             painter.add(Shape::convex_polygon(

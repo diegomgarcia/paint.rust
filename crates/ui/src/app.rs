@@ -37,6 +37,8 @@ pub struct PaintApp {
     secondary_color: Bgra,
     active_color_slot: ColorSlot,
     colors_expanded: bool,
+    tools_visible: bool,
+    tools_floating: bool,
     colors_visible: bool,
     layers_visible: bool,
     panels_floating: bool,
@@ -68,6 +70,8 @@ impl PaintApp {
             secondary_color: Bgra::WHITE,
             active_color_slot: ColorSlot::Primary,
             colors_expanded: false,
+            tools_visible: true,
+            tools_floating: true,
             colors_visible: true,
             layers_visible: true,
             panels_floating: false,
@@ -356,6 +360,17 @@ impl PaintApp {
                         self.execute(Command::Redo, "Redid the next edit");
                         ui.close();
                     }
+                    ui.separator();
+                    if ui
+                        .add_enabled(
+                            self.session.document().selection().is_some(),
+                            egui::Button::new("Deselect"),
+                        )
+                        .clicked()
+                    {
+                        self.execute(Command::ClearSelection, "Selection cleared");
+                        ui.close();
+                    }
                 });
                 ui.menu_button("View", |ui| {
                     let zoom_in = ui.button("Zoom In");
@@ -408,7 +423,14 @@ impl PaintApp {
                     focus_first_menu_item_on_keyboard_open(ui, &select);
                     if select.clicked() {
                         self.active_tool = Tool::Select;
-                        self.select_rectangle();
+                        ui.close();
+                    }
+                    if ui.button("Zoom").clicked() {
+                        self.active_tool = Tool::Zoom;
+                        ui.close();
+                    }
+                    if ui.button("Rectangle Shape").clicked() {
+                        self.active_tool = Tool::Rectangle;
                         ui.close();
                     }
                     if ui.button("Fill Selection").clicked() {
@@ -424,6 +446,8 @@ impl PaintApp {
                     }
                 });
                 ui.menu_button("Window", |ui| {
+                    ui.checkbox(&mut self.tools_visible, "Tools window");
+                    ui.checkbox(&mut self.tools_floating, "Float Tools");
                     ui.checkbox(&mut self.colors_visible, "Colors window");
                     ui.checkbox(&mut self.layers_visible, "Layers window");
                     ui.separator();
@@ -437,8 +461,12 @@ impl PaintApp {
                     if toggle.clicked() {
                         self.panels_floating = !self.panels_floating;
                         if self.panels_floating {
+                            self.tools_visible = true;
+                            self.tools_floating = true;
                             self.colors_visible = true;
                             self.layers_visible = true;
+                        } else {
+                            self.tools_floating = false;
                         }
                         ui.close();
                     }
@@ -497,62 +525,74 @@ impl PaintApp {
 
     fn tools_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::left("paint-r-tools")
-            .default_size(64.0)
-            .min_size(64.0)
-            .max_size(64.0)
+            .default_size(158.0)
+            .min_size(158.0)
+            .max_size(158.0)
             .resizable(false)
+            .show(ui, |ui| self.tools_content(ui));
+    }
+
+    fn tools_content(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(4.0);
+        ui.strong("Tools");
+        ui.separator();
+        egui::Grid::new("paint-r-tool-grid")
+            .num_columns(3)
+            .spacing([2.0, 2.0])
             .show(ui, |ui| {
-                ui.add_space(4.0);
-                ui.vertical_centered(|ui| {
-                    ui.strong("Tools");
-                    ui.separator();
-                    if tool_button(
-                        ui,
-                        Icon::SelectRectangle,
-                        "Select Rectangle",
-                        true,
-                        self.active_tool == Tool::Select,
-                    )
+                if tool_button(
+                    ui,
+                    Icon::SelectRectangle,
+                    "Select Rectangle",
+                    true,
+                    self.active_tool == Tool::Select,
+                )
+                .clicked()
+                {
+                    self.active_tool = Tool::Select;
+                }
+                if tool_button(ui, Icon::Zoom, "Zoom", true, self.active_tool == Tool::Zoom)
                     .clicked()
-                    {
-                        self.active_tool = Tool::Select;
-                        self.select_rectangle();
-                    }
-                    if icon_button(
-                        ui,
-                        Icon::ClearSelection,
-                        "Clear Selection",
-                        self.session.document().selection().is_some(),
-                    )
+                {
+                    self.active_tool = Tool::Zoom;
+                }
+                if tool_button(ui, Icon::Fill, "Fill", true, self.active_tool == Tool::Fill)
                     .clicked()
-                    {
-                        self.execute(Command::ClearSelection, "Selection cleared");
-                    }
-                    if tool_button(ui, Icon::Fill, "Fill", true, self.active_tool == Tool::Fill)
-                        .clicked()
-                    {
-                        self.active_tool = Tool::Fill;
-                        let color = self.fill_color;
-                        self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
-                    }
-                    if tool_button(
-                        ui,
-                        Icon::EyeDropper,
-                        "Pick color from canvas",
-                        true,
-                        self.active_tool == Tool::Picker,
-                    )
-                    .clicked()
-                    {
-                        self.active_tool = Tool::Picker;
-                        self.picking_color = !self.picking_color;
-                        self.status = if self.picking_color {
-                            "Pick a composed canvas color".to_owned()
-                        } else {
-                            "Color picker canceled".to_owned()
-                        };
-                    }
-                });
+                {
+                    self.active_tool = Tool::Fill;
+                    let color = self.fill_color;
+                    self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
+                }
+                ui.end_row();
+                if tool_button(
+                    ui,
+                    Icon::RectangleShape,
+                    "Rectangle shape",
+                    true,
+                    self.active_tool == Tool::Rectangle,
+                )
+                .clicked()
+                {
+                    self.active_tool = Tool::Rectangle;
+                }
+                if tool_button(
+                    ui,
+                    Icon::EyeDropper,
+                    "Pick color from canvas",
+                    true,
+                    self.active_tool == Tool::Picker,
+                )
+                .clicked()
+                {
+                    self.active_tool = Tool::Picker;
+                    self.picking_color = !self.picking_color;
+                    self.status = if self.picking_color {
+                        "Pick a composed canvas color".to_owned()
+                    } else {
+                        "Color picker canceled".to_owned()
+                    };
+                }
+                ui.end_row();
             });
     }
 
@@ -843,11 +883,21 @@ impl PaintApp {
 
     fn floating_panels(&mut self, ui: &mut egui::Ui) {
         let context = ui.ctx().clone();
-        if self.colors_visible {
+        if self.tools_visible && self.tools_floating {
+            let mut open = self.tools_visible;
+            egui::Window::new("Tools")
+                .open(&mut open)
+                .default_pos(egui::pos2(20.0, 470.0))
+                .default_width(158.0)
+                .resizable(false)
+                .show(&context, |ui| self.tools_content(ui));
+            self.tools_visible = open;
+        }
+        if self.panels_floating && self.colors_visible {
             let mut open = self.colors_visible;
             egui::Window::new("Colors")
                 .open(&mut open)
-                .default_pos(egui::pos2(80.0, 140.0))
+                .default_pos(egui::pos2(20.0, 380.0))
                 .default_width(300.0)
                 .show(&context, |ui| {
                     egui::ScrollArea::vertical()
@@ -857,11 +907,11 @@ impl PaintApp {
                 });
             self.colors_visible = open;
         }
-        if self.layers_visible {
+        if self.panels_floating && self.layers_visible {
             let mut open = self.layers_visible;
             egui::Window::new("Layers")
                 .open(&mut open)
-                .default_pos(egui::pos2(880.0, 260.0))
+                .default_pos(egui::pos2(980.0, 260.0))
                 .default_width(320.0)
                 .show(&context, |ui| {
                     egui::ScrollArea::vertical()
@@ -953,14 +1003,17 @@ impl PaintApp {
                             {
                                 picked = Some(point);
                             }
-                        } else {
+                        } else if self.active_tool == Tool::Zoom {
+                            if response.clicked() {
+                                self.zoom = (self.zoom + 0.25).min(8.0);
+                            }
+                        } else if matches!(self.active_tool, Tool::Select | Tool::Rectangle) {
                             if self.drag_start.is_none()
                                 && response.is_pointer_button_down_on()
                                 && let Some(point) = pointer.and_then(|position| {
                                     canvas_point_at(position, rect, zoom, size)
                                 })
                             {
-                                self.active_tool = Tool::Select;
                                 self.drag_start = Some(point);
                                 self.drag_current = Some(point);
                             }
@@ -1012,6 +1065,10 @@ impl PaintApp {
                     Command::SelectRect(selection),
                     "Rectangle selection updated",
                 );
+                if self.active_tool == Tool::Rectangle {
+                    let color = self.fill_color;
+                    self.execute(Command::Fill(color), "Filled rectangle shape");
+                }
             }
         });
     }
@@ -1409,10 +1466,13 @@ impl eframe::App for PaintApp {
         self.toolbar_panel(ui);
         self.tool_options_panel(ui);
         self.status_panel(ui);
-        self.tools_panel(ui);
-        if self.panels_floating {
+        if self.tools_floating || self.panels_floating {
             self.floating_panels(ui);
-        } else if self.colors_visible || self.layers_visible {
+        }
+        if !self.tools_floating && self.tools_visible {
+            self.tools_panel(ui);
+        }
+        if !self.panels_floating && (self.colors_visible || self.layers_visible) {
             self.right_dock(ui);
         }
         self.canvas_panel(ui);
@@ -1429,7 +1489,9 @@ impl eframe::App for PaintApp {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Tool {
     Select,
+    Zoom,
     Fill,
+    Rectangle,
     Picker,
 }
 
