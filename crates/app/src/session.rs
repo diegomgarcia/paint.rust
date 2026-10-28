@@ -111,6 +111,11 @@ impl AppSession {
                 size,
                 color,
             } => self.stroke(&points, size, color),
+            Command::FloodFill {
+                point,
+                color,
+                tolerance,
+            } => self.flood_fill(point, color, tolerance),
             Command::FillRect { rect, color } => self.fill_rect(rect, color),
             Command::FillEllipse { rect, color } => self.fill_ellipse(rect, color),
             Command::Gradient {
@@ -181,6 +186,25 @@ impl AppSession {
             points,
             size,
             color,
+        )?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn flood_fill(
+        &mut self,
+        point: Point,
+        color: Bgra,
+        tolerance: u8,
+    ) -> Result<bool, SessionError> {
+        let patch = paint_raster::flood_fill(
+            &self.document,
+            self.document.active_layer_id(),
+            point,
+            color,
+            tolerance,
         )?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),

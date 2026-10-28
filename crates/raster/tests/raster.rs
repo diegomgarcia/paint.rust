@@ -457,3 +457,76 @@ fn translate_moves_selection_contents_and_whole_layer_without_selection() {
     assert_eq!(pixels[2], Bgra::TRANSPARENT);
     assert_eq!(pixels[3], Bgra::new(0, 0, 255, 255));
 }
+
+#[test]
+fn flood_fill_stops_at_contiguous_color_boundaries() {
+    let surface = Surface::from_pixels(
+        size(5, 1),
+        vec![
+            Bgra::WHITE,
+            Bgra::WHITE,
+            Bgra::BLACK,
+            Bgra::WHITE,
+            Bgra::WHITE,
+        ],
+    )
+    .expect("surface");
+    let mut document = Document::from_layers(
+        size(5, 1),
+        vec![Layer::new(LayerId::new(15), "bucket", surface)],
+    )
+    .expect("document");
+    let patch = paint_raster::flood_fill(
+        &document,
+        LayerId::new(15),
+        Point::new(0, 0),
+        Bgra::new(255, 0, 0, 255),
+        0,
+    )
+    .expect("bucket")
+    .expect("bucket patch");
+    document.apply_patch(&patch).expect("apply");
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], Bgra::new(255, 0, 0, 255));
+    assert_eq!(pixels[1], Bgra::new(255, 0, 0, 255));
+    assert_eq!(pixels[2], Bgra::BLACK);
+    assert_eq!(pixels[3], Bgra::WHITE);
+    assert_eq!(pixels[4], Bgra::WHITE);
+}
+
+#[test]
+fn flood_fill_respects_selection_and_tolerance() {
+    let surface = Surface::from_pixels(
+        size(4, 1),
+        vec![
+            Bgra::WHITE,
+            Bgra::new(1, 1, 1, 255),
+            Bgra::new(2, 2, 2, 255),
+            Bgra::new(0, 255, 0, 255),
+        ],
+    )
+    .expect("surface");
+    let mut document = Document::from_layers(
+        size(4, 1),
+        vec![Layer::new(LayerId::new(16), "bucket", surface)],
+    )
+    .expect("document");
+    document
+        .set_selection(Some(Rect::new(1, 0, 3, 1).expect("selection")))
+        .expect("set selection");
+    let patch = paint_raster::flood_fill(
+        &document,
+        LayerId::new(16),
+        Point::new(1, 0),
+        Bgra::BLACK,
+        2,
+    )
+    .expect("bucket")
+    .expect("bucket patch");
+    document.apply_patch(&patch).expect("apply");
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], Bgra::WHITE);
+    assert_eq!(pixels[1], Bgra::BLACK);
+    assert_eq!(pixels[2], Bgra::BLACK);
+    assert_eq!(pixels[3], Bgra::new(0, 255, 0, 255));
+}

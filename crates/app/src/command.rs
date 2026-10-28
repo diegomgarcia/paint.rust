@@ -15,6 +15,12 @@ pub enum Command {
         size: u32,
         color: Option<Bgra>,
     },
+    /// Fills the contiguous region around a canvas point.
+    FloodFill {
+        point: Point,
+        color: Bgra,
+        tolerance: u8,
+    },
     /// Fills a half-open canvas rectangle.
     FillRect {
         rect: Rect,

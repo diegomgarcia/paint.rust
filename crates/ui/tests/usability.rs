@@ -1025,3 +1025,24 @@ fn move_tool_shifts_the_active_layer_and_is_undoable() {
         Bgra::WHITE
     );
 }
+
+#[test]
+fn paint_bucket_click_fills_the_contiguous_canvas_area() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Paint Bucket");
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    canvas.click();
+    harness.run();
+    let session = harness.state().session();
+    let surface = session.document().active_layer().surface();
+    assert_eq!(
+        *surface.pixel(Point::new(400, 300)).expect("filled center"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(0, 0)).expect("filled corner"),
+        Bgra::BLACK
+    );
+    assert!(session.can_undo());
+}

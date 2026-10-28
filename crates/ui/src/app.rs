@@ -46,6 +46,7 @@ pub struct PaintApp {
     active_tool: Tool,
     brush_size: u32,
     recolor_tolerance: u8,
+    fill_tolerance: u8,
     paint_points: Vec<Point>,
     icons: IconTextures,
     tools_window_rect: Option<egui::Rect>,
@@ -92,6 +93,7 @@ impl PaintApp {
             active_tool: Tool::Select,
             brush_size: 3,
             recolor_tolerance: 32,
+            fill_tolerance: 32,
             paint_points: Vec::new(),
             icons,
             tools_window_rect: None,
@@ -691,9 +693,16 @@ impl PaintApp {
                             ),
                             "Primary color",
                         );
+                        ui.label("Tolerance");
+                        ui.add(
+                            egui::DragValue::new(&mut self.fill_tolerance)
+                                .range(0..=255)
+                                .suffix(" levels"),
+                        );
                         if ui.button("Fill Selection").clicked() {
                             self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
                         }
+                        ui.label("Click the canvas to fill a contiguous area");
                     }
                     Tool::Pencil | Tool::Brush | Tool::Eraser | Tool::Line => {
                         ui.label(match self.active_tool {
@@ -702,12 +711,16 @@ impl PaintApp {
                             Tool::Eraser => "Eraser",
                             _ => "Line / Curve",
                         });
-                        ui.label("Width");
-                        ui.add(
-                            egui::DragValue::new(&mut self.brush_size)
-                                .range(1..=64)
-                                .suffix(" px"),
-                        );
+                        if self.active_tool == Tool::Pencil {
+                            ui.label("Width is fixed at 1 px");
+                        } else {
+                            ui.label("Width");
+                            ui.add(
+                                egui::DragValue::new(&mut self.brush_size)
+                                    .range(1..=64)
+                                    .suffix(" px"),
+                            );
+                        }
                         if self.active_tool == Tool::Eraser {
                             ui.label("Erases the active layer to transparency");
                         } else {
@@ -1242,6 +1255,21 @@ impl PaintApp {
                         } else if self.active_tool == Tool::Zoom {
                             if response.clicked() {
                                 self.zoom = (self.zoom + 0.25).min(8.0);
+                            }
+                        } else if self.active_tool == Tool::Fill {
+                            if response.clicked()
+                                && let Some(point) = pointer.and_then(|position| {
+                                    canvas_point_at(position, rect, zoom, size)
+                                })
+                            {
+                                pending_paint = Some((
+                                    Command::FloodFill {
+                                        point,
+                                        color: self.fill_color,
+                                        tolerance: self.fill_tolerance,
+                                    },
+                                    "Filled a contiguous area".to_owned(),
+                                ));
                             }
                         } else if self.active_tool == Tool::Recolor {
                             if response.clicked() {
@@ -2162,7 +2190,7 @@ fn open_png_preview(
 
 fn history_label(command: &Command) -> Option<String> {
     match command {
-        Command::Fill(_) => Some("Paint Bucket".to_owned()),
+        Command::Fill(_) | Command::FloodFill { .. } => Some("Paint Bucket".to_owned()),
         Command::Stroke { label, .. } => Some((*label).to_owned()),
         Command::FillRect { .. } => Some("Rectangle".to_owned()),
         Command::FillEllipse { .. } => Some("Ellipse".to_owned()),

@@ -510,3 +510,73 @@ fn lerp_bgra(from: Bgra, to: Bgra, t: f64) -> Bgra {
         channel(from.a, to.a),
     )
 }
+
+/// Fills the contiguous region around `start`, clipped to the active selection.
+pub fn flood_fill(
+    document: &Document,
+    layer_id: LayerId,
+    start: paint_core::Point,
+    color: Bgra,
+    tolerance: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let Some(rect) = operation_rect(document) else {
+        return Ok(None);
+    };
+    let width = i64::from(rect.width());
+    let start_x = i64::from(start.x);
+    let start_y = i64::from(start.y);
+    if start_x < rect.left()
+        || start_x >= rect.right()
+        || start_y < rect.top()
+        || start_y >= rect.bottom()
+    {
+        return Ok(None);
+    }
+    let before = layer.surface().read_region(rect)?;
+    let target = before[((start_y - rect.top()) * width + (start_x - rect.left())) as usize];
+    if target == color {
+        return Ok(None);
+    }
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let mut visited = vec![false; before.len()];
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back((start_x, start_y));
+    let tolerance = i16::from(tolerance);
+    let matches = |pixel: Bgra| {
+        (i16::from(pixel.b) - i16::from(target.b)).abs() <= tolerance
+            && (i16::from(pixel.g) - i16::from(target.g)).abs() <= tolerance
+            && (i16::from(pixel.r) - i16::from(target.r)).abs() <= tolerance
+            && (i16::from(pixel.a) - i16::from(target.a)).abs() <= tolerance
+    };
+    while let Some((x, y)) = queue.pop_front() {
+        if x < rect.left() || x >= rect.right() || y < rect.top() || y >= rect.bottom() {
+            continue;
+        }
+        let index = ((y - rect.top()) * width + (x - rect.left())) as usize;
+        if visited[index] || !matches(before[index]) {
+            continue;
+        }
+        visited[index] = true;
+        after[index] = color;
+        queue.push_back((x + 1, y));
+        if x > rect.left() {
+            queue.push_back((x - 1, y));
+        }
+        queue.push_back((x, y + 1));
+        if y > rect.top() {
+            queue.push_back((x, y - 1));
+        }
+    }
+    if before == after {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
