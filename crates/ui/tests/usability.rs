@@ -1245,3 +1245,43 @@ fn color_value_fields_keep_fixed_width_when_entering_long_values() {
     assert!((window_before.width() - window_after.width()).abs() < 0.5);
     assert!((window_before.height() - window_after.height()).abs() < 0.5);
 }
+
+#[test]
+fn color_controls_share_right_edge_and_more_less_keep_position() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+
+    let more = harness.get_by_role_and_label(Role::Button, "More").rect();
+    click(&mut harness, "More");
+    for _ in 0..4 {
+        harness.run();
+    }
+    let less = harness.get_by_role_and_label(Role::Button, "Less").rect();
+    assert!(
+        (more.min.x - less.min.x).abs() < 0.5 && (more.min.y - less.min.y).abs() < 0.5,
+        "More {more:?} and Less {less:?} are not at the same position"
+    );
+
+    let red = harness.get_by_label("Red value").rect();
+    let hue = harness.get_by_label("Hue value").rect();
+    let hex = harness.get_by_label("Hex color").rect();
+    assert!(
+        (red.right() - hue.right()).abs() < 2.0,
+        "Red {red:?} and Hue {hue:?} do not share a right edge"
+    );
+    assert!(
+        (red.right() - hex.right()).abs() < 2.0,
+        "value fields {red:?} and HEX {hex:?} do not share a right edge"
+    );
+    let bounds = harness
+        .state()
+        .colors_window_bounds()
+        .expect("Colors bounds");
+    assert!(
+        bounds.right() - red.right() < 30.0,
+        "controls end at {} with window at {}",
+        red.right(),
+        bounds.right()
+    );
+}

@@ -961,7 +961,7 @@ impl PaintApp {
         let mut active = self.active_color();
         let initial_color = active;
         ui.horizontal_top(|ui| {
-            let left_width = if self.colors_expanded { 192.0 } else { 216.0 };
+            let left_width = 192.0;
             ui.allocate_ui_with_layout(
                 egui::vec2(left_width, 0.0),
                 egui::Layout::top_down(egui::Align::Min),
@@ -1100,9 +1100,9 @@ impl PaintApp {
                         );
                         let response = ui
                             .add_sized(
-                                [150.0, 20.0],
+                                [138.0, 20.0],
                                 egui::TextEdit::singleline(&mut self.hex_input)
-                                    .desired_width(150.0),
+                                    .desired_width(138.0),
                             )
                             .accessible_name("Hex color");
                         if response.changed() {
@@ -1261,7 +1261,7 @@ impl PaintApp {
         if self.panels_floating && self.colors_visible {
             let mut open = self.colors_visible;
             let frame = floating_window_frame(&context, self.colors_window_rect);
-            let colors_width = if self.colors_expanded { 402.0 } else { 232.0 };
+            let colors_width = if self.colors_expanded { 402.0 } else { 216.0 };
             if let Some(inner) = egui::Window::new("Colors")
                 .open(&mut open)
                 .title_bar(false)
