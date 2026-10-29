@@ -821,12 +821,7 @@ impl PaintApp {
             ui.horizontal(|ui| {
                 ui.strong("Tools");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .add(egui::Button::new("×").min_size(egui::vec2(16.0, 16.0)))
-                        .on_hover_text("Close Tools window")
-                        .accessible_name("Close Tools window")
-                        .clicked()
-                    {
+                    if window_close_button(ui, "Close Tools window") {
                         self.tools_close_requested = true;
                     }
                 });
@@ -1116,12 +1111,7 @@ impl PaintApp {
             ui.horizontal(|ui| {
                 ui.strong("Layers");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .add(egui::Button::new("×").min_size(egui::vec2(16.0, 16.0)))
-                        .on_hover_text("Close Layers window")
-                        .accessible_name("Close Layers window")
-                        .clicked()
-                    {
+                    if window_close_button(ui, "Close Layers window") {
                         self.layers_close_requested = true;
                     }
                 });
@@ -1150,105 +1140,108 @@ impl PaintApp {
         let can_merge = active_index > 0;
         let can_up = active_index + 1 < count;
         let can_down = active_index > 0;
-        egui::Panel::bottom("paint-r-layer-buttons").show(ui, |ui| {
-            ui.separator();
-            ui.horizontal(|ui| {
-                let pad = ((ui.available_width() - 175.0) / 2.0).max(0.0);
-                ui.add_space(pad);
-                ui.spacing_mut().item_spacing.x = 0.0;
-                if tool_button(ui, &self.icons, Icon::AddLayer, "Add Layer", true, false).clicked()
-                {
-                    self.add_layer();
-                }
-                if tool_button(
-                    ui,
-                    &self.icons,
-                    Icon::LayerDelete,
-                    "Delete Layer",
-                    can_delete,
-                    false,
-                )
-                .clicked()
-                {
-                    pending = Some(Command::RemoveLayer {
-                        index: active_index,
-                    });
-                }
-                if tool_button(
-                    ui,
-                    &self.icons,
-                    Icon::LayerDuplicate,
-                    "Duplicate Layer",
-                    true,
-                    false,
-                )
-                .clicked()
-                {
-                    pending = Some(Command::DuplicateLayer {
-                        index: active_index,
-                    });
-                }
-                if tool_button(
-                    ui,
-                    &self.icons,
-                    Icon::LayerMerge,
-                    "Merge Layer Down",
-                    can_merge,
-                    false,
-                )
-                .clicked()
-                {
-                    pending = Some(Command::MergeLayerDown {
-                        index: active_index,
-                    });
-                }
-                if tool_button(
-                    ui,
-                    &self.icons,
-                    Icon::LayerUp,
-                    "Move Layer Up",
-                    can_up,
-                    false,
-                )
-                .clicked()
-                {
-                    pending = Some(Command::MoveLayer {
-                        index: active_index,
-                        offset: 1,
-                    });
-                }
-                if tool_button(
-                    ui,
-                    &self.icons,
-                    Icon::LayerDown,
-                    "Move Layer Down",
-                    can_down,
-                    false,
-                )
-                .clicked()
-                {
-                    pending = Some(Command::MoveLayer {
-                        index: active_index,
-                        offset: -1,
-                    });
-                }
-                if tool_button(
-                    ui,
-                    &self.icons,
-                    Icon::LayerSettings,
-                    "Layer Properties",
-                    true,
-                    false,
-                )
-                .clicked()
-                {
-                    self.layer_properties_open = true;
-                    self.layer_properties_index = active_index;
-                    self.layer_properties_opacity = active_opacity;
-                    self.layer_properties_visible = active_visible;
-                }
+        egui::Panel::bottom("paint-r-layer-buttons")
+            .frame(egui::Frame::NONE)
+            .show(ui, |ui| {
+                ui.separator();
+                ui.horizontal(|ui| {
+                    let pad = ((ui.available_width() - 175.0) / 2.0).max(0.0);
+                    ui.add_space(pad);
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    if tool_button(ui, &self.icons, Icon::AddLayer, "Add Layer", true, false)
+                        .clicked()
+                    {
+                        self.add_layer();
+                    }
+                    if tool_button(
+                        ui,
+                        &self.icons,
+                        Icon::LayerDelete,
+                        "Delete Layer",
+                        can_delete,
+                        false,
+                    )
+                    .clicked()
+                    {
+                        pending = Some(Command::RemoveLayer {
+                            index: active_index,
+                        });
+                    }
+                    if tool_button(
+                        ui,
+                        &self.icons,
+                        Icon::LayerDuplicate,
+                        "Duplicate Layer",
+                        true,
+                        false,
+                    )
+                    .clicked()
+                    {
+                        pending = Some(Command::DuplicateLayer {
+                            index: active_index,
+                        });
+                    }
+                    if tool_button(
+                        ui,
+                        &self.icons,
+                        Icon::LayerMerge,
+                        "Merge Layer Down",
+                        can_merge,
+                        false,
+                    )
+                    .clicked()
+                    {
+                        pending = Some(Command::MergeLayerDown {
+                            index: active_index,
+                        });
+                    }
+                    if tool_button(
+                        ui,
+                        &self.icons,
+                        Icon::LayerUp,
+                        "Move Layer Up",
+                        can_up,
+                        false,
+                    )
+                    .clicked()
+                    {
+                        pending = Some(Command::MoveLayer {
+                            index: active_index,
+                            offset: 1,
+                        });
+                    }
+                    if tool_button(
+                        ui,
+                        &self.icons,
+                        Icon::LayerDown,
+                        "Move Layer Down",
+                        can_down,
+                        false,
+                    )
+                    .clicked()
+                    {
+                        pending = Some(Command::MoveLayer {
+                            index: active_index,
+                            offset: -1,
+                        });
+                    }
+                    if tool_button(
+                        ui,
+                        &self.icons,
+                        Icon::LayerSettings,
+                        "Layer Properties",
+                        true,
+                        false,
+                    )
+                    .clicked()
+                    {
+                        self.layer_properties_open = true;
+                        self.layer_properties_index = active_index;
+                        self.layer_properties_opacity = active_opacity;
+                        self.layer_properties_visible = active_visible;
+                    }
+                });
             });
-        });
         egui::ScrollArea::vertical()
             .id_salt("paint-r-layer-list")
             .auto_shrink([false, false])
@@ -1343,11 +1336,7 @@ impl PaintApp {
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Colors").strong());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .button("X")
-                        .accessible_name("Close Colors window")
-                        .clicked()
-                    {
+                    if window_close_button(ui, "Close Colors window") {
                         self.colors_close_requested = true;
                     }
                 });
@@ -2987,6 +2976,17 @@ fn layer_opacity_slider(ui: &mut egui::Ui, value: &mut u8) -> egui::Response {
         }
     }
     response
+}
+
+fn window_close_button(ui: &mut egui::Ui, label: &'static str) -> bool {
+    ui.add(
+        egui::Button::new(egui::RichText::new("×").size(18.0))
+            .frame(false)
+            .min_size(egui::vec2(20.0, 20.0)),
+    )
+    .on_hover_text(label)
+    .accessible_name(label)
+    .clicked()
 }
 
 fn history_label(command: &Command) -> Option<String> {
