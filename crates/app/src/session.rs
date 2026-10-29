@@ -143,6 +143,9 @@ impl AppSession {
             Command::Invert => self.invert(),
             Command::FlipLayerHorizontal => self.flip_layer_horizontal(),
             Command::FlipLayerVertical => self.flip_layer_vertical(),
+            Command::FlipImageHorizontal => self.flip_image(true),
+            Command::FlipImageVertical => self.flip_image(false),
+            Command::FlattenImage => self.flatten_image(),
             Command::AddLayer {
                 name,
                 opacity,
@@ -401,6 +404,58 @@ impl AppSession {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
             None => Ok(false),
         }
+    }
+
+    pub fn flip_image(&mut self, horizontal: bool) -> Result<bool, SessionError> {
+        let before = self.document.clone();
+        let mut candidate = self.document.clone();
+        let ids: Vec<LayerId> = candidate.layers().iter().map(Layer::id).collect();
+        for id in ids {
+            let patch = if horizontal {
+                paint_raster::flip_horizontal(&candidate, id)?
+            } else {
+                paint_raster::flip_vertical(&candidate, id)?
+            };
+            if let Some(patch) = patch {
+                candidate.apply_patch(&patch)?;
+            }
+        }
+        let mutation = Mutation::DocumentSnapshot {
+            before: Box::new(before),
+            after: Box::new(candidate.clone()),
+        };
+        let Some(inverse) = mutation.apply(&mut candidate)? else {
+            return Ok(false);
+        };
+        self.commit_new(candidate, inverse);
+        Ok(true)
+    }
+
+    pub fn flatten_image(&mut self) -> Result<bool, SessionError> {
+        let before = self.document.clone();
+        let composed = paint_raster::compose(&self.document)?;
+        let mut candidate = Document::new(self.document.size())?;
+        let layer_id = candidate.active_layer_id();
+        let rect = candidate.canvas_rect();
+        let prior = candidate.active_layer().surface().read_region(rect)?;
+        let patch = PixelPatch::new(
+            layer_id,
+            candidate.active_layer().revision(),
+            rect,
+            prior,
+            composed.pixels().to_vec(),
+        )
+        .map_err(DocumentError::from)?;
+        candidate.apply_patch(&patch)?;
+        let mutation = Mutation::DocumentSnapshot {
+            before: Box::new(before),
+            after: Box::new(candidate.clone()),
+        };
+        let Some(inverse) = mutation.apply(&mut candidate)? else {
+            return Ok(false);
+        };
+        self.commit_new(candidate, inverse);
+        Ok(true)
     }
 
     pub fn add_layer(
@@ -693,6 +748,10 @@ enum Mutation {
         upper_index: usize,
         restore_active: LayerId,
     },
+    DocumentSnapshot {
+        before: Box<Document>,
+        after: Box<Document>,
+    },
 }
 
 impl Mutation {
@@ -825,6 +884,14 @@ impl Mutation {
                     upper_index: *upper_index,
                     restore_active: *restore_active,
                 }))
+            }
+            Self::DocumentSnapshot { before, after } => {
+                let inverse = Self::DocumentSnapshot {
+                    before: after.clone(),
+                    after: before.clone(),
+                };
+                *document = (**after).clone();
+                Ok(Some(inverse))
             }
             Self::SetVisibility { layer_id, value } => {
                 let layer = document

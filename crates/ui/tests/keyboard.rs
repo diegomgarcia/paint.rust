@@ -200,6 +200,12 @@ fn tab_enter_space_and_dirty_new_are_keyboard_usable() {
     press(&mut harness, Key::Tab);
     assert!(
         harness
+            .get_by_role_and_label(Role::Button, "Image")
+            .is_focused()
+    );
+    press(&mut harness, Key::Tab);
+    assert!(
+        harness
             .get_by_role_and_label(Role::Button, "Layers")
             .is_focused()
     );

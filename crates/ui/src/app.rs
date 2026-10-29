@@ -662,6 +662,30 @@ impl PaintApp {
                         ui.close();
                     }
                 });
+                ui.menu_button("Image", |ui| {
+                    let flip_h = ui.button("Flip Horizontal");
+                    focus_first_menu_item_on_keyboard_open(ui, &flip_h);
+                    if flip_h.clicked() {
+                        self.execute(
+                            Command::FlipImageHorizontal,
+                            "Flipped the image horizontally",
+                        );
+                        ui.close();
+                    }
+                    if ui.button("Flip Vertical").clicked() {
+                        self.execute(Command::FlipImageVertical, "Flipped the image vertically");
+                        ui.close();
+                    }
+                    if ui.button("Flatten Image").clicked() {
+                        self.execute(Command::FlattenImage, "Flattened the image");
+                        ui.close();
+                    }
+                    ui.separator();
+                    ui.add_enabled(false, egui::Button::new("Resize Image…"));
+                    ui.add_enabled(false, egui::Button::new("Canvas Size…"));
+                    ui.add_enabled(false, egui::Button::new("Rotate 90° Clockwise"));
+                    ui.add_enabled(false, egui::Button::new("Rotate 180°"));
+                });
                 ui.menu_button("Layers", |ui| {
                     let horizontal = ui.button("Flip Active Layer Horizontally");
                     focus_first_menu_item_on_keyboard_open(ui, &horizontal);
@@ -688,47 +712,17 @@ impl PaintApp {
                         ui.close();
                     }
                 });
-                ui.menu_button("Tools", |ui| {
-                    let select = ui.button("Rectangle Select");
-                    focus_first_menu_item_on_keyboard_open(ui, &select);
-                    if select.clicked() {
-                        self.finalize_floating_selection();
-                        self.active_tool = Tool::Select;
-                        self.picking_color = false;
+                ui.menu_button("Effects", |ui| {
+                    let invert = ui.button("Invert Colors");
+                    focus_first_menu_item_on_keyboard_open(ui, &invert);
+                    if invert.clicked() {
+                        self.execute(Command::Invert, "Inverted colors on the active layer");
                         ui.close();
                     }
-                    let tools = [
-                        ("Zoom", Tool::Zoom),
-                        ("Paint Bucket", Tool::Fill),
-                        ("Color Picker", Tool::Picker),
-                        ("Pencil", Tool::Pencil),
-                        ("Paintbrush", Tool::Brush),
-                        ("Eraser", Tool::Eraser),
-                        ("Line / Curve", Tool::Line),
-                        ("Shapes (Rectangle)", Tool::Shapes),
-                        ("Shapes (Ellipse)", Tool::Shapes),
-                        ("Gradient", Tool::Gradient),
-                        ("Recolor", Tool::Recolor),
-                        ("Move Selected Pixels", Tool::Move),
-                        ("Pan", Tool::Pan),
-                    ];
-                    for (label, tool) in tools {
-                        if ui.button(label).clicked() {
-                            if self.active_tool != tool {
-                                self.finalize_floating_selection();
-                            }
-                            self.active_tool = tool;
-                            if tool == Tool::Shapes {
-                                self.shape_mode = if label.contains("Ellipse") {
-                                    ShapeMode::Ellipse
-                                } else {
-                                    ShapeMode::Rectangle
-                                };
-                            }
-                            self.picking_color = tool == Tool::Picker;
-                            ui.close();
-                        }
-                    }
+                    ui.separator();
+                    ui.add_enabled(false, egui::Button::new("Grayscale"));
+                    ui.add_enabled(false, egui::Button::new("Sepia"));
+                    ui.add_enabled(false, egui::Button::new("Gaussian Blur"));
                 });
                 ui.menu_button("Window", |ui| {
                     ui.checkbox(&mut self.tools_visible, "Tools window");
@@ -803,6 +797,56 @@ impl PaintApp {
                 {
                     self.execute(Command::Redo, "Redid the next edit");
                 }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if tool_button(
+                        ui,
+                        &self.icons,
+                        Icon::PanelHistory,
+                        "History panel",
+                        true,
+                        self.history_visible,
+                    )
+                    .clicked()
+                    {
+                        self.history_visible = !self.history_visible;
+                    }
+                    if tool_button(
+                        ui,
+                        &self.icons,
+                        Icon::PanelLayers,
+                        "Layers panel",
+                        true,
+                        self.layers_visible,
+                    )
+                    .clicked()
+                    {
+                        self.layers_visible = !self.layers_visible;
+                    }
+                    if tool_button(
+                        ui,
+                        &self.icons,
+                        Icon::PanelColors,
+                        "Colors panel",
+                        true,
+                        self.colors_visible,
+                    )
+                    .clicked()
+                    {
+                        self.colors_visible = !self.colors_visible;
+                    }
+                    if tool_button(
+                        ui,
+                        &self.icons,
+                        Icon::PanelTools,
+                        "Tools panel",
+                        true,
+                        self.tools_visible,
+                    )
+                    .clicked()
+                    {
+                        self.tools_visible = !self.tools_visible;
+                    }
+                });
             });
             ui.add_space(2.0);
         });
@@ -1144,6 +1188,7 @@ impl PaintApp {
         let can_down = active_index > 0;
         egui::Panel::bottom("paint-r-layer-buttons")
             .frame(egui::Frame::NONE)
+            .show_separator_line(false)
             .show(ui, |ui| {
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -1260,15 +1305,23 @@ impl PaintApp {
                                     .corner_radius(3)
                                     .inner_margin(2)
                                     .show(ui, |ui| {
-                                        ui.add(
-                                            egui::Image::from_texture(&thumbnail.texture)
-                                                .maintain_aspect_ratio(true)
-                                                .fit_to_exact_size(egui::vec2(32.0, 26.0))
-                                                .alt_text(format!(
+                                        let (rect, response) = ui.allocate_exact_size(
+                                            egui::vec2(32.0, 26.0),
+                                            egui::Sense::hover(),
+                                        );
+                                        response.widget_info(|| {
+                                            egui::WidgetInfo::labeled(
+                                                egui::Role::Image,
+                                                true,
+                                                format!(
                                                     "Layer {index} thumbnail: {}",
                                                     layer.name()
-                                                )),
-                                        );
+                                                ),
+                                            )
+                                        });
+                                        paint_checkerboard(ui.painter(), rect);
+                                        egui::Image::from_texture(&thumbnail.texture)
+                                            .paint_at(ui, rect);
                                     });
                             }
                             ui.vertical(|ui| {
@@ -3015,6 +3068,9 @@ fn history_label(command: &Command) -> Option<String> {
         Command::Invert => Some("Invert Colors".to_owned()),
         Command::FlipLayerHorizontal => Some("Flip Layer Horizontal".to_owned()),
         Command::FlipLayerVertical => Some("Flip Layer Vertical".to_owned()),
+        Command::FlipImageHorizontal => Some("Flip Image Horizontal".to_owned()),
+        Command::FlipImageVertical => Some("Flip Image Vertical".to_owned()),
+        Command::FlattenImage => Some("Flatten Image".to_owned()),
         Command::AddLayer { name, .. } => Some(format!("Add Layer: {name}")),
         Command::RemoveLayer { .. } => Some("Delete Layer".to_owned()),
         Command::DuplicateLayer { .. } => Some("Duplicate Layer".to_owned()),

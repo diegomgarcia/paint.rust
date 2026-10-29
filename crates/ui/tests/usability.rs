@@ -1571,3 +1571,37 @@ fn floating_windows_use_the_same_close_button_labels() {
         harness.get_by_role_and_label(Role::Button, label);
     }
 }
+
+#[test]
+fn image_effects_menus_and_panel_toggles_are_available() {
+    let mut harness = app();
+    click(&mut harness, "Add Layer");
+    menu_item(&mut harness, "Image", "Flatten Image");
+    assert_eq!(harness.state().session().document().layers().len(), 1);
+    menu_item(&mut harness, "Effects", "Invert Colors");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()[0],
+        Bgra::BLACK
+    );
+}
+
+#[test]
+fn panel_toggle_buttons_hide_and_restore_floating_windows() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    harness.get_by_role_and_label(Role::Button, "Colors panel");
+    click(&mut harness, "Colors panel");
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Button, "Color wheel")
+            .is_none()
+    );
+    click(&mut harness, "Colors panel");
+    harness.get_by_role_and_label(Role::Button, "Color wheel");
+}

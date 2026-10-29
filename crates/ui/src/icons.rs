@@ -46,6 +46,10 @@ pub(crate) enum Icon {
     LayerSettings,
     Eye,
     EyeOff,
+    PanelTools,
+    PanelColors,
+    PanelLayers,
+    PanelHistory,
 }
 
 pub(crate) struct IconTextures {
@@ -92,6 +96,10 @@ impl IconTextures {
             Icon::LayerSettings,
             Icon::Eye,
             Icon::EyeOff,
+            Icon::PanelTools,
+            Icon::PanelColors,
+            Icon::PanelLayers,
+            Icon::PanelHistory,
         ];
         let mut textures = HashMap::with_capacity(icons.len());
         for icon in icons {
@@ -287,6 +295,10 @@ fn icon_png(icon: Icon) -> &'static [u8] {
         Icon::LayerSettings => include_bytes!("../assets/lucide/layer-settings.png"),
         Icon::Eye => include_bytes!("../assets/lucide/eye.png"),
         Icon::EyeOff => include_bytes!("../assets/lucide/eye-off.png"),
+        Icon::PanelTools => include_bytes!("../assets/lucide/panel-tools.png"),
+        Icon::PanelColors => include_bytes!("../assets/lucide/panel-colors.png"),
+        Icon::PanelLayers => include_bytes!("../assets/lucide/panel-layers.png"),
+        Icon::PanelHistory => include_bytes!("../assets/lucide/panel-history.png"),
     }
 }
 
@@ -329,5 +341,9 @@ fn icon_name(icon: Icon) -> &'static str {
         Icon::LayerSettings => "layer-settings",
         Icon::Eye => "eye",
         Icon::EyeOff => "eye-off",
+        Icon::PanelTools => "panel-tools",
+        Icon::PanelColors => "panel-colors",
+        Icon::PanelLayers => "panel-layers",
+        Icon::PanelHistory => "panel-history",
     }
 }

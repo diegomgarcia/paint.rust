@@ -58,6 +58,12 @@ pub enum Command {
     FlipLayerHorizontal,
     /// Flips the complete active layer top-to-bottom, ignoring the selection.
     FlipLayerVertical,
+    /// Flips every layer in the image left-to-right.
+    FlipImageHorizontal,
+    /// Flips every layer in the image top-to-bottom.
+    FlipImageVertical,
+    /// Composes all layers into one background layer.
+    FlattenImage,
     /// Adds a transparent layer at the top and makes it active.
     AddLayer {
         name: String,
