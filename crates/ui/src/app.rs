@@ -7,7 +7,7 @@ use paint_app::{AppSession, Command};
 use paint_core::{Bgra, Point, Rect, Size};
 use paint_document::{Document, LayerId, Revision};
 
-use crate::icons::{Icon, IconTextures, icon_button, tool_button};
+use crate::icons::{Icon, IconTextures, icon_button, small_icon_button, tool_button};
 
 const DEFAULT_WIDTH: u32 = 800;
 const DEFAULT_HEIGHT: u32 = 600;
@@ -949,20 +949,27 @@ impl PaintApp {
                 self.active_color_slot = slot;
             }
             ui.vertical(|ui| {
-                let swap = ui.button("Swap").accessible_name("Swap colors");
-                if swap.clicked() {
-                    self.swap_colors();
-                    active = self.active_color();
-                    self.hex_input = format_hex_color(active);
-                    self.hex_error = None;
-                }
-                let reset = ui
-                    .button("Reset")
-                    .accessible_name("Reset to black and white");
-                if reset.clicked() {
-                    self.reset_colors();
-                    active = self.active_color();
-                }
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    if small_icon_button(ui, &self.icons, Icon::SwapColors, "Swap colors").clicked()
+                    {
+                        self.swap_colors();
+                        active = self.active_color();
+                        self.hex_input = format_hex_color(active);
+                        self.hex_error = None;
+                    }
+                    if small_icon_button(
+                        ui,
+                        &self.icons,
+                        Icon::ResetColors,
+                        "Reset to black and white",
+                    )
+                    .clicked()
+                    {
+                        self.reset_colors();
+                        active = self.active_color();
+                    }
+                });
                 if ui
                     .button(if self.colors_expanded { "Less" } else { "More" })
                     .clicked()
@@ -1004,7 +1011,7 @@ impl PaintApp {
             active = color;
         }
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.spacing_mut().item_spacing.x = 1.0;
             for &(label, preset) in PRESET_COLORS {
                 let response = color_swatch(ui, label, preset, preset == active);
                 if response.clicked() {
@@ -2399,8 +2406,10 @@ fn hsv_from_color(color: Bgra) -> (f32, f32, f32) {
 
 fn color_wheel(ui: &mut egui::Ui, current: Bgra) -> Option<Bgra> {
     let diameter = ui.available_width().clamp(96.0, 150.0);
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(diameter, diameter), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(diameter, diameter),
+        egui::Sense::click_and_drag(),
+    );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Color wheel"));
     if ui.is_rect_visible(rect) {
         let center = rect.center();
@@ -2452,7 +2461,7 @@ fn color_wheel(ui: &mut egui::Ui, current: Bgra) -> Option<Bgra> {
             );
         }
     }
-    if response.clicked()
+    if (response.clicked() || response.dragged() || response.is_pointer_button_down_on())
         && let Some(position) = response.interact_pointer_pos()
     {
         let offset = position - rect.center();
@@ -2478,7 +2487,7 @@ fn color_swatch(
     color: Bgra,
     selected: bool,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();

@@ -27,6 +27,8 @@ pub(crate) enum Icon {
     Recolor,
     Move,
     Pan,
+    SwapColors,
+    ResetColors,
     EyeDropper,
     AddLayer,
 }
@@ -56,6 +58,8 @@ impl IconTextures {
             Icon::Recolor,
             Icon::Move,
             Icon::Pan,
+            Icon::SwapColors,
+            Icon::ResetColors,
             Icon::EyeDropper,
             Icon::AddLayer,
         ];
@@ -107,6 +111,20 @@ pub(crate) fn icon_button(
     response.on_hover_text(label)
 }
 
+pub(crate) fn small_icon_button(
+    ui: &mut Ui,
+    icons: &IconTextures,
+    icon: Icon,
+    label: &'static str,
+) -> Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::click());
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
+    if ui.is_rect_visible(rect) {
+        paint_button(ui, icons, rect, icon, true, false, &response);
+    }
+    response.on_hover_text(label)
+}
+
 pub(crate) fn tool_button(
     ui: &mut Ui,
     icons: &IconTextures,
@@ -137,7 +155,7 @@ fn paint_button(
     selected: bool,
     response: &Response,
 ) {
-    let icon_inset = 4.0;
+    let icon_inset = (rect.width() * 0.12).clamp(2.0, 4.0);
     let widgets = &ui.style().visuals.widgets;
     let (fill, stroke) = if !enabled {
         (Color32::TRANSPARENT, Stroke::NONE)
@@ -193,6 +211,8 @@ fn icon_png(icon: Icon) -> &'static [u8] {
         Icon::Recolor => include_bytes!("../assets/lucide/recolor.png"),
         Icon::Move => include_bytes!("../assets/lucide/move.png"),
         Icon::Pan => include_bytes!("../assets/lucide/pan.png"),
+        Icon::SwapColors => include_bytes!("../assets/lucide/swap.png"),
+        Icon::ResetColors => include_bytes!("../assets/lucide/reset.png"),
         Icon::EyeDropper => include_bytes!("../assets/lucide/picker.png"),
         Icon::AddLayer => include_bytes!("../assets/lucide/add-layer.png"),
     }
@@ -218,6 +238,8 @@ fn icon_name(icon: Icon) -> &'static str {
         Icon::Recolor => "recolor",
         Icon::Move => "move",
         Icon::Pan => "pan",
+        Icon::SwapColors => "swap",
+        Icon::ResetColors => "reset",
         Icon::EyeDropper => "picker",
         Icon::AddLayer => "add-layer",
     }

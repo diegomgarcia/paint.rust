@@ -141,3 +141,13 @@ windows instead of one large right dock. The compact Colors panel is 232 px wide
 150 px wheel and a single-row palette; the palette label and extra headings were removed.
 The docked test mode remains available through `PaintApp::new_docked` for canvas-focused
 tests.
+
+### Colors window behavior
+
+The real Colors window uses a 225 px compact layout: overlapping primary/secondary slots,
+two small icon buttons (swap and black/white reset), a More/Less button, a 149 px color
+wheel, and a one-row palette. Paint.R now uses `Icon::SwapColors` and `Icon::ResetColors`
+instead of text buttons, an 18 px one-row palette, a 150 px wheel, and a 232 px window.
+The wheel updates the active color continuously on pointer down and drag, not only on
+click release; this is covered by the UI acceptance test
+`color_wheel_updates_primary_color_continuously_while_dragging`.

@@ -1083,3 +1083,23 @@ fn default_shell_uses_floating_compact_side_windows() {
     harness.get_by_role_and_label(Role::Button, "Swap colors");
     harness.get_by_role_and_label(Role::Button, "New Layer");
 }
+
+#[test]
+fn color_wheel_updates_primary_color_continuously_while_dragging() {
+    let mut harness = app();
+    let wheel = harness.get_by_role_and_label(Role::Button, "Color wheel");
+    let rect = wheel.rect();
+    harness.drag_at(rect.center());
+    harness.run();
+    assert_eq!(harness.state().fill_color(), Bgra::WHITE);
+
+    harness.hover_at(rect.center() + egui::vec2(rect.width() * 0.3, 0.0));
+    harness.run();
+    let dragged = harness.state().fill_color();
+    assert_ne!(dragged, Bgra::WHITE);
+    assert!(dragged.r > dragged.g, "expected warm hue, got {dragged:?}");
+
+    harness.drop_at(rect.center() + egui::vec2(rect.width() * 0.3, 0.0));
+    harness.run();
+    assert_eq!(harness.state().fill_color(), dragged);
+}
