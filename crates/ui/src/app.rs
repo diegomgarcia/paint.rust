@@ -9,7 +9,7 @@ use paint_document::{Document, LayerId};
 
 use crate::colors::{
     ColorSlot, PRESET_COLORS, color_slots_widget, color_swatch, color_wheel, compact_color_slider,
-    format_hex_color, hsv_from_color, hsv_gradient_slider, mix_bgra,
+    format_hex_color, hsv_from_color, mix_bgra,
 };
 use crate::icons::{Icon, IconTextures, icon_button, icon_button_at, tool_button};
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
@@ -1018,9 +1018,13 @@ impl PaintApp {
                         self.hex_input = format_hex_color(active);
                         self.hex_error = None;
                     }
-                    if let Some(color) = color_wheel(ui, active) {
-                        active = color;
-                    }
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if let Some(color) = color_wheel(ui, active) {
+                                active = color;
+                            }
+                        });
+                    });
                     ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
                         for &(label, preset) in PRESET_COLORS {
@@ -1084,38 +1088,38 @@ impl PaintApp {
                     let mut hue_value = hue;
                     let mut saturation_value = saturation * 100.0;
                     let mut brightness_value = value * 100.0;
-                    let hue_base = hue_value;
-                    let saturation_base = saturation_value;
-                    let brightness_base = brightness_value;
-                    hsv_gradient_slider(ui, "Hue", "H", &mut hue_value, 0.0, 360.0, |t| {
-                        let bgra = crate::color_from_hsv(t * 360.0, 1.0, 1.0, 255);
-                        egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
+                    ui.horizontal(|ui| {
+                        let hue_label = ui.label("Hue");
+                        let _hue = ui
+                            .add(
+                                egui::DragValue::new(&mut hue_value)
+                                    .range(0.0..=360.0)
+                                    .speed(1.0)
+                                    .suffix("°"),
+                            )
+                            .labelled_by(hue_label.id);
                     });
-                    hsv_gradient_slider(
-                        ui,
-                        "Saturation",
-                        "S",
-                        &mut saturation_value,
-                        0.0,
-                        100.0,
-                        |t| {
-                            let bgra = crate::color_from_hsv(
-                                hue_base,
-                                t / 100.0,
-                                brightness_base / 100.0,
-                                255,
-                            );
-                            egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
-                        },
-                    );
-                    hsv_gradient_slider(ui, "Value", "V", &mut brightness_value, 0.0, 100.0, |t| {
-                        let bgra = crate::color_from_hsv(
-                            hue_base,
-                            saturation_base / 100.0,
-                            t / 100.0,
-                            255,
-                        );
-                        egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
+                    ui.horizontal(|ui| {
+                        let sat_label = ui.label("Sat");
+                        let _sat = ui
+                            .add(
+                                egui::DragValue::new(&mut saturation_value)
+                                    .range(0.0..=100.0)
+                                    .speed(1.0)
+                                    .suffix("%"),
+                            )
+                            .labelled_by(sat_label.id);
+                    });
+                    ui.horizontal(|ui| {
+                        let value_label = ui.label("Val");
+                        let _value = ui
+                            .add(
+                                egui::DragValue::new(&mut brightness_value)
+                                    .range(0.0..=100.0)
+                                    .speed(1.0)
+                                    .suffix("%"),
+                            )
+                            .labelled_by(value_label.id);
                     });
                     if (hue_value, saturation_value, brightness_value)
                         != (hue, saturation * 100.0, value * 100.0)
