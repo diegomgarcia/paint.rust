@@ -1081,7 +1081,13 @@ impl PaintApp {
                 },
             );
             if self.colors_expanded {
-                ui.add_space(12.0);
+                let content = ui.max_rect();
+                let right_rect = egui::Rect::from_min_size(
+                    egui::pos2(content.right() - 180.0, content.top()),
+                    egui::vec2(198.0, content.height()),
+                );
+                let mut right_ui = ui.new_child(egui::UiBuilder::new().max_rect(right_rect));
+                let ui = &mut right_ui;
                 ui.vertical(|ui| {
                     ui.set_width(198.0);
                     ui.strong("RGB");
@@ -1269,8 +1275,9 @@ impl PaintApp {
                 .default_pos(egui::pos2(20.0, 470.0))
                 .fixed_size(egui::vec2(
                     colors_width,
-                    if self.colors_expanded { 330.0 } else { 250.0 },
+                    if self.colors_expanded { 354.0 } else { 250.0 },
                 ))
+                .scroll(false)
                 .show(&context, |ui| self.colors_content(ui))
             {
                 self.colors_window_rect = Some(inner.response.rect);

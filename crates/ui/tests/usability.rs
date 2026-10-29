@@ -1279,6 +1279,14 @@ fn color_controls_share_right_edge_and_more_less_keep_position() {
         .state()
         .colors_window_bounds()
         .expect("Colors bounds");
+    let primary = harness
+        .get_by_role_and_label(Role::Button, "Primary color")
+        .rect();
+    eprintln!(
+        "GEOM bounds={bounds:?} primary={primary:?} red={red:?} hex={hex:?} left={} right={}",
+        primary.left() - bounds.left(),
+        bounds.right() - red.right()
+    );
     assert!(
         bounds.right() - red.right() < 30.0,
         "controls end at {} with window at {}",
