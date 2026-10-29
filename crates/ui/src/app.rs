@@ -494,6 +494,7 @@ impl PaintApp {
                         ("Gradient", Tool::Gradient),
                         ("Recolor", Tool::Recolor),
                         ("Move Selected Pixels", Tool::Move),
+                        ("Pan", Tool::Pan),
                     ];
                     for (label, tool) in tools {
                         if ui.button(label).clicked() {
@@ -589,17 +590,19 @@ impl PaintApp {
 
     fn tools_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::left("paint-r-tools")
-            .default_size(106.0)
-            .min_size(106.0)
-            .max_size(106.0)
+            .default_size(68.0)
+            .min_size(68.0)
+            .max_size(68.0)
             .resizable(false)
             .show(ui, |ui| self.tools_content(ui));
     }
 
     fn tools_content(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(4.0);
-        ui.strong("Tools");
-        ui.separator();
+        if !self.tools_floating {
+            ui.add_space(4.0);
+            ui.strong("Tools");
+            ui.separator();
+        }
         macro_rules! tool {
             ($ui:expr, $icon:expr, $label:expr, $tool:expr) => {
                 if tool_button(
@@ -619,27 +622,28 @@ impl PaintApp {
         }
         egui::Grid::new("paint-r-tool-grid")
             .num_columns(2)
-            .spacing([2.0, 2.0])
+            .spacing([1.0, 1.0])
             .show(ui, |ui| {
                 tool!(ui, Icon::SelectRectangle, "Rectangle Select", Tool::Select);
+                tool!(ui, Icon::Move, "Move Selected Pixels", Tool::Move);
+                ui.end_row();
                 tool!(ui, Icon::Zoom, "Zoom", Tool::Zoom);
-                ui.end_row();
                 tool!(ui, Icon::Fill, "Paint Bucket", Tool::Fill);
-                tool!(ui, Icon::EyeDropper, "Color Picker", Tool::Picker);
                 ui.end_row();
-                tool!(ui, Icon::Pencil, "Pencil", Tool::Pencil);
+                tool!(ui, Icon::Pan, "Pan", Tool::Pan);
+                tool!(ui, Icon::Gradient, "Gradient", Tool::Gradient);
+                ui.end_row();
+                tool!(ui, Icon::EyeDropper, "Color Picker", Tool::Picker);
                 tool!(ui, Icon::Brush, "Paintbrush", Tool::Brush);
                 ui.end_row();
                 tool!(ui, Icon::Eraser, "Eraser", Tool::Eraser);
+                tool!(ui, Icon::Pencil, "Pencil", Tool::Pencil);
+                ui.end_row();
+                tool!(ui, Icon::Recolor, "Recolor", Tool::Recolor);
                 tool!(ui, Icon::Line, "Line / Curve", Tool::Line);
                 ui.end_row();
                 tool!(ui, Icon::RectangleShape, "Rectangle", Tool::Rectangle);
                 tool!(ui, Icon::Ellipse, "Ellipse", Tool::Ellipse);
-                ui.end_row();
-                tool!(ui, Icon::Gradient, "Gradient", Tool::Gradient);
-                tool!(ui, Icon::Recolor, "Recolor", Tool::Recolor);
-                ui.end_row();
-                tool!(ui, Icon::Move, "Move Selected Pixels", Tool::Move);
                 ui.end_row();
             });
     }
@@ -797,6 +801,10 @@ impl PaintApp {
                         )
                         .labelled_by(tolerance_label.id);
                         ui.label("Drag over matching pixels to recolor");
+                    }
+                    Tool::Pan => {
+                        ui.label("Pan");
+                        ui.label("Drag to move the canvas view");
                     }
                     Tool::Move => {
                         ui.label("Move Selected Pixels");
@@ -1103,7 +1111,7 @@ impl PaintApp {
                 .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(20.0, 180.0))
-                .default_width(106.0)
+                .default_width(68.0)
                 .resizable(false)
                 .show(&context, |ui| self.tools_content(ui))
             {
@@ -1271,6 +1279,13 @@ impl PaintApp {
                         } else if self.active_tool == Tool::Zoom {
                             if response.clicked() {
                                 self.zoom = (self.zoom + 0.25).min(8.0);
+                            }
+                        } else if self.active_tool == Tool::Pan {
+                            if response.dragged() {
+                                ui.scroll_with_delta(-response.drag_delta());
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                            } else if response.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                             }
                         } else if self.active_tool == Tool::Fill {
                             if response.clicked()
@@ -1912,6 +1927,7 @@ enum Tool {
     Gradient,
     Recolor,
     Move,
+    Pan,
     Picker,
 }
 

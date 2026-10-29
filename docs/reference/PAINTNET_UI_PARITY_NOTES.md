@@ -91,3 +91,14 @@ Paint.R now aligns the Paint Bucket to Contiguous/Global plus percentage toleran
 defaults the brush to 45 px, keeps Pencil fixed at one pixel, and makes Recolor a brush
 stroke. Hardness, spacing, bicubic move sampling, and Finish-style transacted previews
 are recorded as remaining parity work.
+
+### Compact toolbox measurements
+
+- Real `ToolsForm` window bounds: approximately `67×292` px at the captured 100% DPI.
+- Real tool strip bounds: `51×253` px, two columns, about `25×27` px per tool cell.
+- Paint.R now uses a `68` px floating Tools window, `25×27` px tool cells, 1 px grid
+  spacing, a square 17 px icon box, and no duplicated inner `Tools` heading.
+- The tool order now follows the real sequence for the implemented subset:
+  Rectangle Select, Move, Zoom, Paint Bucket, Pan, Gradient, Color Picker, Paintbrush,
+  Eraser, Pencil, Recolor, Line, Rectangle, Ellipse.
+- Pan is implemented as a non-editing canvas scroll action.

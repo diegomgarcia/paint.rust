@@ -26,6 +26,7 @@ pub(crate) enum Icon {
     Gradient,
     Recolor,
     Move,
+    Pan,
     EyeDropper,
     AddLayer,
 }
@@ -54,6 +55,7 @@ impl IconTextures {
             Icon::Gradient,
             Icon::Recolor,
             Icon::Move,
+            Icon::Pan,
             Icon::EyeDropper,
             Icon::AddLayer,
         ];
@@ -94,7 +96,7 @@ pub(crate) fn icon_button(
 ) -> Response {
     let response = ui
         .add_enabled_ui(enabled, |ui| {
-            let (rect, response) = ui.allocate_exact_size(vec2(38.0, 32.0), Sense::click());
+            let (rect, response) = ui.allocate_exact_size(vec2(32.0, 28.0), Sense::click());
             response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
             if ui.is_rect_visible(rect) {
                 paint_button(ui, icons, rect, icon, enabled, false, &response);
@@ -115,7 +117,7 @@ pub(crate) fn tool_button(
 ) -> Response {
     let response = ui
         .add_enabled_ui(enabled, |ui| {
-            let (rect, response) = ui.allocate_exact_size(vec2(46.0, 42.0), Sense::click());
+            let (rect, response) = ui.allocate_exact_size(vec2(25.0, 27.0), Sense::click());
             response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, label));
             if ui.is_rect_visible(rect) {
                 paint_button(ui, icons, rect, icon, enabled, selected, &response);
@@ -135,7 +137,7 @@ fn paint_button(
     selected: bool,
     response: &Response,
 ) {
-    let icon_inset = if selected { 7.0 } else { 6.0 };
+    let icon_inset = 4.0;
     let widgets = &ui.style().visuals.widgets;
     let (fill, stroke) = if !enabled {
         (Color32::TRANSPARENT, Stroke::NONE)
@@ -152,18 +154,20 @@ fn paint_button(
         (Color32::TRANSPARENT, Stroke::NONE)
     };
     let painter = ui.painter();
-    painter.rect_filled(rect, 5, fill);
+    painter.rect_filled(rect, 4, fill);
     if stroke != Stroke::NONE {
-        painter.rect_stroke(rect, 5, stroke, StrokeKind::Inside);
+        painter.rect_stroke(rect, 4, stroke, StrokeKind::Inside);
     }
     let color = if enabled {
         Color32::from_gray(235)
     } else {
         ui.visuals().weak_text_color()
     };
+    let icon_size = (rect.width().min(rect.height()) - icon_inset * 2.0).max(1.0);
+    let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(icon_size, icon_size));
     painter.image(
         icons.get(icon).id(),
-        rect.shrink(icon_inset),
+        icon_rect,
         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
         color,
     );
@@ -188,6 +192,7 @@ fn icon_png(icon: Icon) -> &'static [u8] {
         Icon::Gradient => include_bytes!("../assets/lucide/gradient.png"),
         Icon::Recolor => include_bytes!("../assets/lucide/recolor.png"),
         Icon::Move => include_bytes!("../assets/lucide/move.png"),
+        Icon::Pan => include_bytes!("../assets/lucide/pan.png"),
         Icon::EyeDropper => include_bytes!("../assets/lucide/picker.png"),
         Icon::AddLayer => include_bytes!("../assets/lucide/add-layer.png"),
     }
@@ -212,6 +217,7 @@ fn icon_name(icon: Icon) -> &'static str {
         Icon::Gradient => "gradient",
         Icon::Recolor => "recolor",
         Icon::Move => "move",
+        Icon::Pan => "pan",
         Icon::EyeDropper => "picker",
         Icon::AddLayer => "add-layer",
     }

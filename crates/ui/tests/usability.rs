@@ -325,7 +325,6 @@ fn open_dialog_previews_a_valid_png_without_changing_the_session() {
 #[test]
 fn paint_net_style_layout_exposes_tools_options_colors_and_layers() {
     let harness = app();
-    harness.get_by_role_and_label(Role::Label, "Tools");
     harness.get_by_role_and_label(Role::Label, "Tool Options");
     harness.get_by_role_and_label(Role::Label, "Colors");
     harness.get_by_role_and_label(Role::Label, "Layers");
@@ -343,6 +342,7 @@ fn paint_net_style_layout_exposes_tools_options_colors_and_layers() {
         "Gradient",
         "Recolor",
         "Move Selected Pixels",
+        "Pan",
     ] {
         harness.get_by_role_and_label(Role::Button, label);
     }
@@ -488,7 +488,7 @@ fn window_menu_can_float_and_dock_the_color_and_layer_panels() {
     assert!(!harness.state().panels_floating());
     menu_item(&mut harness, "Window", "Float Panels");
     assert!(harness.state().panels_floating());
-    harness.get_by_role_and_label(Role::Label, "Tools");
+    harness.get_by_role_and_label(Role::Button, "Rectangle Select");
     harness.get_by_role_and_label(Role::Label, "Colors");
     harness.get_by_role_and_label(Role::Label, "Layers");
     menu_item(&mut harness, "Window", "Dock Panels");
@@ -1056,4 +1056,18 @@ fn paint_bucket_click_fills_the_contiguous_canvas_area() {
         Bgra::BLACK
     );
     assert!(session.can_undo());
+}
+
+#[test]
+fn pan_tool_drags_without_editing_the_document() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Pan");
+    drag_canvas(
+        &mut harness,
+        egui::vec2(300.0, 300.0),
+        egui::vec2(340.0, 320.0),
+    );
+    assert!(!harness.state().session().dirty());
+    assert!(!harness.state().session().can_undo());
 }
