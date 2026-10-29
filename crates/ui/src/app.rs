@@ -53,6 +53,7 @@ pub struct PaintApp {
     tools_window_rect: Option<egui::Rect>,
     history_window_rect: Option<egui::Rect>,
     colors_window_rect: Option<egui::Rect>,
+    colors_close_requested: bool,
     layers_window_rect: Option<egui::Rect>,
     drag_start: Option<Point>,
     drag_current: Option<Point>,
@@ -112,6 +113,7 @@ impl PaintApp {
             tools_window_rect: None,
             history_window_rect: None,
             colors_window_rect: None,
+            colors_close_requested: false,
             layers_window_rect: None,
             drag_start: None,
             drag_current: None,
@@ -154,6 +156,11 @@ impl PaintApp {
     #[doc(hidden)]
     pub const fn panels_floating(&self) -> bool {
         self.panels_floating
+    }
+
+    #[doc(hidden)]
+    pub const fn colors_window_bounds(&self) -> Option<egui::Rect> {
+        self.colors_window_rect
     }
 
     #[doc(hidden)]
@@ -933,95 +940,118 @@ impl PaintApp {
     }
 
     fn colors_content(&mut self, ui: &mut egui::Ui) {
-        if !self.panels_floating {
+        if self.panels_floating {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Colors").strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .button("X")
+                        .accessible_name("Close Colors window")
+                        .clicked()
+                    {
+                        self.colors_close_requested = true;
+                    }
+                });
+            });
+            ui.separator();
+        } else {
             ui.heading("Colors");
         }
         let initial_slot = self.active_color_slot;
         let mut active = self.active_color();
         let initial_color = active;
         ui.horizontal_top(|ui| {
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    if let Some(slot) = color_slots_widget(
-                        ui,
-                        self.fill_color,
-                        self.secondary_color,
-                        self.active_color_slot,
-                    ) {
-                        self.active_color_slot = slot;
-                    }
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 2.0;
-                            if small_icon_button(ui, &self.icons, Icon::SwapColors, "Swap colors")
+            let left_width = if self.colors_expanded { 210.0 } else { 216.0 };
+            ui.allocate_ui_with_layout(
+                egui::vec2(left_width, 0.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_width(left_width);
+                    ui.horizontal(|ui| {
+                        if let Some(slot) = color_slots_widget(
+                            ui,
+                            self.fill_color,
+                            self.secondary_color,
+                            self.active_color_slot,
+                        ) {
+                            self.active_color_slot = slot;
+                        }
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 2.0;
+                                if small_icon_button(
+                                    ui,
+                                    &self.icons,
+                                    Icon::SwapColors,
+                                    "Swap colors",
+                                )
+                                .clicked()
+                                {
+                                    self.swap_colors();
+                                    active = self.active_color();
+                                    self.hex_input = format_hex_color(active);
+                                    self.hex_error = None;
+                                }
+                                if small_icon_button(
+                                    ui,
+                                    &self.icons,
+                                    Icon::ResetColors,
+                                    "Reset to black and white",
+                                )
+                                .clicked()
+                                {
+                                    self.reset_colors();
+                                    active = self.active_color();
+                                }
+                            });
+                            if ui
+                                .button(if self.colors_expanded { "Less" } else { "More" })
                                 .clicked()
                             {
-                                self.swap_colors();
-                                active = self.active_color();
-                                self.hex_input = format_hex_color(active);
-                                self.hex_error = None;
-                            }
-                            if small_icon_button(
-                                ui,
-                                &self.icons,
-                                Icon::ResetColors,
-                                "Reset to black and white",
-                            )
-                            .clicked()
-                            {
-                                self.reset_colors();
-                                active = self.active_color();
+                                self.colors_expanded = !self.colors_expanded;
+                                ui.ctx().request_repaint();
                             }
                         });
-                        if ui
-                            .button(if self.colors_expanded { "Less" } else { "More" })
-                            .clicked()
-                        {
-                            self.colors_expanded = !self.colors_expanded;
-                            ui.ctx().request_repaint();
-                        }
                     });
-                });
-                if self.active_color_slot != initial_slot {
-                    active = self.active_color();
-                    self.hex_input = format_hex_color(active);
-                    self.hex_error = None;
-                }
-                if let Some(color) = color_wheel(ui, active) {
-                    active = color;
-                }
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing.x = 1.0;
-                    for &(label, preset) in PRESET_COLORS {
-                        let response = color_swatch(ui, label, preset, preset == active);
-                        if response.clicked() {
-                            active = preset;
-                        }
-                        if response.secondary_clicked() {
-                            match self.active_color_slot {
-                                ColorSlot::Primary => self.secondary_color = preset,
-                                ColorSlot::Secondary => self.fill_color = preset,
+                    if self.active_color_slot != initial_slot {
+                        active = self.active_color();
+                        self.hex_input = format_hex_color(active);
+                        self.hex_error = None;
+                    }
+                    if let Some(color) = color_wheel(ui, active) {
+                        active = color;
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing.x = 1.0;
+                        for &(label, preset) in PRESET_COLORS {
+                            let response = color_swatch(ui, label, preset, preset == active);
+                            if response.clicked() {
+                                active = preset;
+                            }
+                            if response.secondary_clicked() {
+                                match self.active_color_slot {
+                                    ColorSlot::Primary => self.secondary_color = preset,
+                                    ColorSlot::Secondary => self.fill_color = preset,
+                                }
                             }
                         }
-                    }
-                });
-            });
+                    });
+                },
+            );
             if self.colors_expanded {
                 ui.add_space(4.0);
                 ui.separator();
                 ui.vertical(|ui| {
                     ui.set_width(160.0);
                     ui.strong("RGB");
-                    color_slider(ui, "Red", &mut active.r);
-                    color_slider(ui, "Green", &mut active.g);
-                    color_slider(ui, "Blue", &mut active.b);
+                    compact_color_slider(ui, "Red", "R", &mut active.r);
+                    compact_color_slider(ui, "Green", "G", &mut active.g);
+                    compact_color_slider(ui, "Blue", "B", &mut active.b);
                     ui.strong("Hex");
-                    ui.horizontal(|ui| {
-                        let label = ui.label("Hex color");
-                        let _response = ui
-                            .text_edit_singleline(&mut self.hex_input)
-                            .labelled_by(label.id);
-                    });
+                    let hex_label = ui.label("Hex color");
+                    let _response = ui
+                        .add(egui::TextEdit::singleline(&mut self.hex_input).desired_width(145.0))
+                        .labelled_by(hex_label.id);
                     if ui.button("Apply color").clicked() {
                         match crate::color_from_hex(&self.hex_input) {
                             Ok(parsed) => {
@@ -1044,7 +1074,7 @@ impl PaintApp {
                     let mut saturation_value = saturation * 100.0;
                     let mut brightness_value = value * 100.0;
                     ui.horizontal(|ui| {
-                        let hue_label = ui.label("Hue");
+                        let hue_label = ui.label("H");
                         let _hue = ui
                             .add(
                                 egui::DragValue::new(&mut hue_value)
@@ -1053,7 +1083,9 @@ impl PaintApp {
                                     .suffix("°"),
                             )
                             .labelled_by(hue_label.id);
-                        let sat_label = ui.label("Sat");
+                    });
+                    ui.horizontal(|ui| {
+                        let sat_label = ui.label("S");
                         let _sat = ui
                             .add(
                                 egui::DragValue::new(&mut saturation_value)
@@ -1062,7 +1094,9 @@ impl PaintApp {
                                     .suffix("%"),
                             )
                             .labelled_by(sat_label.id);
-                        let value_label = ui.label("Val");
+                    });
+                    ui.horizontal(|ui| {
+                        let value_label = ui.label("V");
                         let _value = ui
                             .add(
                                 egui::DragValue::new(&mut brightness_value)
@@ -1083,7 +1117,7 @@ impl PaintApp {
                         );
                     }
                     ui.strong("Opacity");
-                    color_slider(ui, "Opacity", &mut active.a);
+                    compact_color_slider(ui, "Opacity", "A", &mut active.a);
                 });
             }
         });
@@ -1164,12 +1198,13 @@ impl PaintApp {
             let colors_width = if self.colors_expanded { 402.0 } else { 232.0 };
             if let Some(inner) = egui::Window::new("Colors")
                 .open(&mut open)
+                .title_bar(false)
                 .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(20.0, 470.0))
                 .fixed_size(egui::vec2(
                     colors_width,
-                    if self.colors_expanded { 390.0 } else { 300.0 },
+                    if self.colors_expanded { 420.0 } else { 330.0 },
                 ))
                 .show(&context, |ui| self.colors_content(ui))
             {
@@ -1177,6 +1212,10 @@ impl PaintApp {
                 if inner.response.rect.width() + 1.0 < colors_width {
                     context.request_repaint();
                 }
+            }
+            if self.colors_close_requested {
+                open = false;
+                self.colors_close_requested = false;
             }
             self.colors_visible = open;
         }
@@ -2565,8 +2604,19 @@ fn shortcut_pressed(context: &egui::Context, modifiers: egui::Modifiers, key: eg
     context.input_mut(|input| input.consume_key(modifiers, key))
 }
 
-fn color_slider(ui: &mut egui::Ui, label: &'static str, value: &mut u8) {
-    let _response = ui.add(egui::Slider::new(value, 0..=u8::MAX).text(label));
+fn compact_color_slider(
+    ui: &mut egui::Ui,
+    label: &'static str,
+    short: &'static str,
+    value: &mut u8,
+) {
+    ui.horizontal(|ui| {
+        let text = ui.label(short);
+        let _slider = ui
+            .add(egui::Slider::new(value, 0..=u8::MAX).show_value(false))
+            .labelled_by(text.id)
+            .accessible_name(label);
+    });
 }
 
 fn canvas_point_at(position: egui::Pos2, rect: egui::Rect, zoom: f32, size: Size) -> Option<Point> {

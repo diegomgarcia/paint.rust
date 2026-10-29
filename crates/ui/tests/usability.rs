@@ -1103,3 +1103,35 @@ fn color_wheel_updates_primary_color_continuously_while_dragging() {
     harness.run();
     assert_eq!(harness.state().fill_color(), dragged);
 }
+
+#[test]
+fn colors_more_click_expands_the_whole_window_chrome() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    assert!(harness.state().panels_floating());
+
+    click(&mut harness, "More");
+    for _ in 0..5 {
+        harness.run();
+    }
+
+    let bounds = harness
+        .state()
+        .colors_window_bounds()
+        .expect("Colors window bounds");
+    assert!(
+        bounds.width() >= 400.0,
+        "expanded width was {}",
+        bounds.width()
+    );
+    let close = harness
+        .get_by_role_and_label(Role::Button, "Close Colors window")
+        .rect();
+    assert!(
+        bounds.right() - close.right() < 24.0,
+        "Colors header close ends at {} but window ends at {}",
+        close.right(),
+        bounds.right()
+    );
+}
