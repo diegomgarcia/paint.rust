@@ -50,6 +50,7 @@ pub struct AppSession {
     limits: ResourceLimits,
     clean_fingerprint: [u8; 32],
     content_fingerprint: [u8; 32],
+    stroke_preview: Option<Document>,
 }
 
 impl AppSession {
@@ -73,6 +74,7 @@ impl AppSession {
             limits,
             clean_fingerprint: fingerprint,
             content_fingerprint: fingerprint,
+            stroke_preview: None,
         }
     }
 
@@ -189,6 +191,60 @@ impl AppSession {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
             None => Ok(false),
         }
+    }
+
+    /// Starts a live stroke preview; the document is rewound to this snapshot each frame.
+    pub fn begin_stroke_preview(&mut self) {
+        self.stroke_preview = Some(self.document.clone());
+    }
+
+    /// Recomputes the whole in-progress stroke against the preview snapshot.
+    pub fn preview_stroke(
+        &mut self,
+        points: &[Point],
+        size: u32,
+        color: Option<Bgra>,
+    ) -> Result<bool, SessionError> {
+        let Some(before) = self.stroke_preview.clone() else {
+            return Err(SessionError::DocumentInvariant(
+                "stroke preview was not started",
+            ));
+        };
+        self.document = before;
+        let patch = paint_raster::stroke(
+            &self.document,
+            self.document.active_layer_id(),
+            points,
+            size,
+            color,
+        )?;
+        let changed = if let Some(patch) = patch {
+            self.document.apply_patch(&patch)?;
+            true
+        } else {
+            false
+        };
+        self.refresh_content_fingerprint();
+        Ok(changed)
+    }
+
+    /// Commits the live stroke as one undoable document mutation.
+    pub fn finish_stroke_preview(&mut self) -> Result<bool, SessionError> {
+        let Some(before) = self.stroke_preview.take() else {
+            return Ok(false);
+        };
+        if before == self.document {
+            return Ok(false);
+        }
+        let after = self.document.clone();
+        let inverse = Mutation::DocumentSnapshot {
+            before: Box::new(after),
+            after: Box::new(before),
+        };
+        self.undo.push(inverse);
+        self.redo.clear();
+        self.refresh_content_fingerprint();
+        Ok(true)
     }
 
     pub fn stroke(

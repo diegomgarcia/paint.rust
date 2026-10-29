@@ -92,6 +92,8 @@ pub struct PaintApp {
     layer_properties_index: usize,
     layer_properties_opacity: u8,
     layer_properties_visible: bool,
+    document_title: String,
+    document_thumbnail: Option<egui::TextureHandle>,
     next_layer_number: usize,
     status: String,
     path_dialog: Option<PathDialog>,
@@ -168,6 +170,8 @@ impl PaintApp {
             layer_properties_index: 0,
             layer_properties_opacity: u8::MAX,
             layer_properties_visible: true,
+            document_title: "New Image".to_owned(),
+            document_thumbnail: None,
             next_layer_number: 1,
             status: "New 800×600 opaque-white document".to_owned(),
             path_dialog: None,
@@ -267,6 +271,8 @@ impl PaintApp {
         self.layer_thumbnails.clear();
         self.history_entries = vec!["New Image".to_owned()];
         self.redo_entries.clear();
+        self.document_title = "New Image".to_owned();
+        self.document_thumbnail = None;
         self.status = "New 800×600 opaque-white document".to_owned();
     }
 
@@ -313,6 +319,12 @@ impl PaintApp {
         match AppSession::open_png(&path_buffer) {
             Ok(session) => {
                 self.session = session;
+                self.document_title = path_buffer
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("Untitled")
+                    .to_owned();
+                self.document_thumbnail = None;
                 self.next_layer_number = 1;
                 self.texture_dirty = true;
                 self.zoom = 1.0;
@@ -361,6 +373,38 @@ impl PaintApp {
                 false
             }
         }
+    }
+
+    fn preview_live_stroke(&mut self) {
+        let color = (self.active_tool != Tool::Eraser).then_some(self.fill_color);
+        let size = if self.active_tool == Tool::Pencil {
+            1
+        } else {
+            self.brush_size.max(1)
+        };
+        match self.session.preview_stroke(&self.paint_points, size, color) {
+            Ok(_) => self.texture_dirty = true,
+            Err(error) => self.status = format!("Stroke preview failed: {error}"),
+        }
+    }
+
+    fn finish_live_stroke(&mut self) {
+        match self.session.finish_stroke_preview() {
+            Ok(true) => {
+                let (label, message) = match self.active_tool {
+                    Tool::Pencil => ("Pencil", "Painted with the pencil"),
+                    Tool::Brush => ("Paintbrush", "Painted with the paintbrush"),
+                    _ => ("Eraser", "Erased pixels"),
+                };
+                self.history_entries.push(label.to_owned());
+                self.redo_entries.clear();
+                self.texture_dirty = true;
+                self.status = message.to_owned();
+            }
+            Ok(false) => {}
+            Err(error) => self.status = format!("Could not finish the stroke: {error}"),
+        }
+        self.paint_points.clear();
     }
 
     fn add_layer(&mut self) {
@@ -474,6 +518,13 @@ impl PaintApp {
             [surface.width() as usize, surface.height() as usize],
             &rgba,
         );
+        self.document_thumbnail = Some(surface_thumbnail_texture(
+            context,
+            "paint-r-document-tab",
+            &surface,
+            44.0,
+            32.0,
+        ));
         if let Some(texture) = &mut self.texture
             && texture.size() == image.size
         {
@@ -586,6 +637,39 @@ impl PaintApp {
         if let Some(menu) = self.native_menu.as_ref() {
             menu.sync(state);
         }
+    }
+
+    fn document_tabs_content(&mut self, ui: &mut egui::Ui) {
+        if !self.panels_floating {
+            return;
+        }
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            egui::Frame::new()
+                .fill(egui::Color32::from_rgb(45, 45, 45))
+                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(70, 70, 70)))
+                .corner_radius(4)
+                .inner_margin(egui::Margin::symmetric(6, 3))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let (rect, response) =
+                            ui.allocate_exact_size(egui::vec2(44.0, 32.0), egui::Sense::hover());
+                        response.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::Role::Image,
+                                true,
+                                "Document tab preview",
+                            )
+                        });
+                        paint_checkerboard(ui.painter(), rect);
+                        if let Some(thumbnail) = &self.document_thumbnail {
+                            egui::Image::from_texture(thumbnail).paint_at(ui, rect);
+                        }
+                        ui.label(egui::RichText::new(&self.document_title).strong());
+                    });
+                });
+        });
+        ui.add_space(2.0);
     }
 
     fn menu_panel(&mut self, ui: &mut egui::Ui) {
@@ -771,7 +855,7 @@ impl PaintApp {
 
     fn toolbar_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::top("paint-r-toolbar").show(ui, |ui| {
-            ui.add_space(3.0);
+            self.document_tabs_content(ui);
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 3.0;
                 if icon_button(ui, &self.icons, Icon::NewDocument, "New document", true).clicked() {
@@ -1971,8 +2055,10 @@ impl PaintApp {
                                 egui::Rect::from_min_max(min, max),
                                 phase,
                             );
-                            ui.ctx()
-                                .request_repaint_after(std::time::Duration::from_millis(80));
+                            if ui.style().animation_time > 0.0 {
+                                ui.ctx()
+                                    .request_repaint_after(std::time::Duration::from_millis(80));
+                            }
                         }
                         let pointer = response.interact_pointer_pos();
                         self.cursor_point = pointer
@@ -2025,8 +2111,9 @@ impl PaintApp {
                             };
                             let is_paint = matches!(
                                 self.active_tool,
-                                Tool::Pencil | Tool::Brush | Tool::Eraser | Tool::Recolor
+                                Tool::Pencil | Tool::Brush | Tool::Eraser
                             );
+                            let collects_points = is_paint || self.active_tool == Tool::Recolor;
                             if self.drag_start.is_none()
                                 && response.is_pointer_button_down_on()
                                 && let Some(point) = point()
@@ -2034,8 +2121,12 @@ impl PaintApp {
                                 self.drag_start = Some(point);
                                 self.drag_current = Some(point);
                                 self.paint_points.clear();
-                                if is_paint {
+                                if collects_points {
                                     self.paint_points.push(point);
+                                }
+                                if is_paint {
+                                    self.session.begin_stroke_preview();
+                                    self.preview_live_stroke();
                                 }
                                 if self.active_tool == Tool::Move
                                     && self.session.document().selection().is_some()
@@ -2060,8 +2151,11 @@ impl PaintApp {
                                     floating.offset_y =
                                         floating.base_y + i64::from(point.y) - i64::from(start.y);
                                 }
-                                if is_paint && self.paint_points.last() != Some(&point) {
+                                if collects_points && self.paint_points.last() != Some(&point) {
                                     self.paint_points.push(point);
+                                    if is_paint {
+                                        self.preview_live_stroke();
+                                    }
                                 }
                             }
                             if response.drag_stopped()
@@ -2179,31 +2273,12 @@ impl PaintApp {
                                         }
                                     }
                                     Tool::Pencil | Tool::Brush | Tool::Eraser => {
-                                        let points = if self.paint_points.is_empty() {
-                                            vec![start, end]
-                                        } else {
-                                            std::mem::take(&mut self.paint_points)
-                                        };
-                                        let (label, color, message) = match self.active_tool {
-                                            Tool::Pencil => {
-                                                ("Pencil", Some(color), "Painted with the pencil")
-                                            }
-                                            Tool::Brush => (
-                                                "Paintbrush",
-                                                Some(color),
-                                                "Painted with the paintbrush",
-                                            ),
-                                            _ => ("Eraser", None, "Erased pixels"),
-                                        };
-                                        Some((
-                                            Command::Stroke {
-                                                label,
-                                                points,
-                                                size,
-                                                color,
-                                            },
-                                            message.to_owned(),
-                                        ))
+                                        if self.paint_points.is_empty() {
+                                            self.paint_points.push(start);
+                                        }
+                                        self.preview_live_stroke();
+                                        self.finish_live_stroke();
+                                        None
                                     }
                                     _ => None,
                                 };

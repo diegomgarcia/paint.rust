@@ -1605,3 +1605,48 @@ fn panel_toggle_buttons_hide_and_restore_floating_windows() {
     click(&mut harness, "Colors panel");
     harness.get_by_role_and_label(Role::Button, "Color wheel");
 }
+
+#[test]
+fn paintbrush_updates_the_document_while_dragging_before_release() {
+    let mut harness = app();
+    click(&mut harness, "Paintbrush");
+    let rect = harness
+        .get_by_role_and_label(Role::Image, "Composed document canvas")
+        .rect();
+    harness.drag_at(rect.min + egui::vec2(10.0, 10.0));
+    harness.run();
+    harness.hover_at(rect.min + egui::vec2(30.0, 10.0));
+    harness.run();
+    let session = harness.state().session();
+    let pixel = *session
+        .document()
+        .active_layer()
+        .surface()
+        .pixel(Point::new(30, 10))
+        .expect("live stroke pixel");
+    assert_eq!(pixel, Bgra::BLACK, "canvas did not update during the drag");
+    assert_eq!(
+        harness.state().history_entries().len(),
+        1,
+        "live preview must not create history before release"
+    );
+    harness.drop_at(rect.min + egui::vec2(30.0, 10.0));
+    harness.run();
+    assert_eq!(harness.state().history_entries().len(), 2);
+}
+
+#[test]
+fn document_tab_shows_a_preview_and_the_opened_filename() {
+    let temporary = TempDir::new().expect("temporary directory");
+    let path = temporary.path().join("tab-document.png");
+    write_input_png(&path);
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    harness.get_by_role_and_label(Role::Image, "Document tab preview");
+    menu_item(&mut harness, "File", "Open PNG…");
+    enter_path(&mut harness, &path);
+    click(&mut harness, "Open PNG");
+    harness.get_by_label("tab-document.png");
+    harness.get_by_role_and_label(Role::Image, "Document tab preview");
+}

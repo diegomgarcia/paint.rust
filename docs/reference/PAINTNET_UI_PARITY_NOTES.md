@@ -190,3 +190,15 @@ Delete is disabled for the last layer, Merge Down for the bottom layer, and Move
 the respective edge. Layer Properties opens a dialog for opacity, visibility, and the
 Normal blend label. Per-layer opacity sliders were removed from the list, matching
 Paint.NET's properties-dialog placement.
+
+
+### Live stroke preview and document tab
+
+Brush, pencil, and eraser strokes are previewed directly in the composed canvas while
+the pointer is down, using a session-level stroke snapshot that is committed as one
+undoable mutation on release. The document tab strip (floating layout) shows the
+current filename and a checkerboard-backed mini preview of the composed document.
+
+The layer thumbnails also render over a transparency checkerboard. Image menu now
+exposes functional Flip Horizontal/Vertical and Flatten Image; unsupported image
+operations remain disabled rather than simulated.
