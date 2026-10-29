@@ -293,6 +293,72 @@ enum GradientChannel {
     Alpha,
 }
 
+pub(crate) fn hsv_gradient_slider(
+    ui: &mut egui::Ui,
+    label: &'static str,
+    short: &'static str,
+    value: &mut f32,
+    minimum: f32,
+    maximum: f32,
+    color_at: impl Fn(f32) -> egui::Color32,
+) {
+    ui.horizontal(|ui| {
+        ui.label(short);
+        let width = 96.0;
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, label));
+        let painter = ui.painter();
+        let track = egui::Rect::from_min_size(rect.min, egui::vec2(width, 8.0));
+        let columns = width.round() as usize;
+        for index in 0..columns {
+            let t = if columns > 1 {
+                index as f32 / (columns as f32 - 1.0)
+            } else {
+                0.0
+            };
+            painter.rect_filled(
+                egui::Rect::from_min_size(
+                    egui::pos2(track.left() + index as f32, track.top()),
+                    egui::vec2(1.0, track.height()),
+                ),
+                0,
+                color_at(t),
+            );
+        }
+        painter.rect_stroke(
+            track,
+            0,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(70)),
+            egui::StrokeKind::Inside,
+        );
+        let t = ((*value - minimum) / (maximum - minimum)).clamp(0.0, 1.0);
+        let arrow_x = rect.left() + t * width;
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                egui::pos2(arrow_x, rect.top() + 9.0),
+                egui::pos2(arrow_x - 4.0, rect.top() + 17.0),
+                egui::pos2(arrow_x + 4.0, rect.top() + 17.0),
+            ],
+            egui::Color32::WHITE,
+            egui::Stroke::NONE,
+        ));
+        if (response.dragged() || response.clicked() || response.is_pointer_button_down_on())
+            && let Some(position) = response.interact_pointer_pos()
+        {
+            let fraction = ((position.x - rect.left()) / width).clamp(0.0, 1.0);
+            *value = minimum + fraction * (maximum - minimum);
+        }
+        let _value = ui
+            .add(
+                egui::DragValue::new(value)
+                    .range(minimum..=maximum)
+                    .speed(1.0),
+            )
+            .accessible_name(format!("{label} value"));
+    });
+}
+
 fn gradient_slider(
     ui: &mut egui::Ui,
     label: &'static str,
