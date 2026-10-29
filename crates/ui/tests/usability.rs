@@ -1390,3 +1390,28 @@ fn toolbox_has_twenty_aligned_two_column_cells() {
     );
     assert!(bounds.height() < 310.0, "toolbox is too tall: {bounds:?}");
 }
+
+#[test]
+fn move_selection_drag_translates_the_selection_bounds() {
+    let mut harness = app();
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(6.0, 6.0), egui::vec2(26.0, 18.0));
+    let before = harness
+        .state()
+        .session()
+        .document()
+        .selection()
+        .expect("rectangle selection");
+    click(&mut harness, "Move Selection");
+    drag_canvas(&mut harness, egui::vec2(10.0, 10.0), egui::vec2(15.0, 13.0));
+    let after = harness
+        .state()
+        .session()
+        .document()
+        .selection()
+        .expect("moved selection");
+    assert_eq!(after.left(), before.left() + 5);
+    assert_eq!(after.top(), before.top() + 3);
+    assert_eq!(after.right(), before.right() + 5);
+    assert_eq!(after.bottom(), before.bottom() + 3);
+}

@@ -10,6 +10,7 @@ mod layers;
 #[cfg(target_os = "macos")]
 mod menu;
 pub mod native;
+mod selection;
 
 pub use app::PaintApp;
 

@@ -15,6 +15,7 @@ use crate::icons::{Icon, IconTextures, icon_button, icon_button_at, tool_button}
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
 #[cfg(target_os = "macos")]
 use crate::menu::{NativeCommand, NativeMenu, NativeMenuState};
+use crate::selection::paint_selection_outline;
 
 const DEFAULT_WIDTH: u32 = 800;
 const DEFAULT_HEIGHT: u32 = 600;
@@ -1587,14 +1588,35 @@ impl PaintApp {
                         if ui.is_rect_visible(rect) {
                             egui::Image::from_texture(&texture).paint_at(ui, rect);
                         }
+                        let phase = ui.input(|input| input.time) as f32;
+                        if let Some(selection) = self
+                            .session
+                            .document()
+                            .selection()
+                            .and_then(|selection| selection.clip_to(size))
+                        {
+                            let min = rect.min
+                                + egui::vec2(
+                                    selection.left() as f32 * zoom,
+                                    selection.top() as f32 * zoom,
+                                );
+                            let max = rect.min
+                                + egui::vec2(
+                                    selection.right() as f32 * zoom,
+                                    selection.bottom() as f32 * zoom,
+                                );
+                            paint_selection_outline(
+                                ui.painter(),
+                                egui::Rect::from_min_max(min, max),
+                                phase,
+                            );
+                            ui.ctx()
+                                .request_repaint_after(std::time::Duration::from_millis(80));
+                        }
                         let pointer = response.interact_pointer_pos();
                         self.cursor_point = pointer
                             .and_then(|position| canvas_point_at(position, rect, zoom, size));
                         if picking {
-                            eprintln!(
-                                "PICKER_FRAME pointer={pointer:?} clicked={}",
-                                response.clicked()
-                            );
                             if response.clicked()
                                 && let Some(point) = pointer.and_then(|position| {
                                     canvas_point_at(position, rect, zoom, size)
@@ -1803,7 +1825,36 @@ impl PaintApp {
                                         (end.y + 1) as f32 * zoom,
                                     );
                                 let marquee = egui::Rect::from_min_max(start_pos, end_pos);
-                                if matches!(self.active_tool, Tool::Select | Tool::Shapes) {
+                                if self.active_tool == Tool::Select {
+                                    ui.painter().rect_filled(
+                                        marquee,
+                                        0,
+                                        egui::Color32::from_white_alpha(24),
+                                    );
+                                    paint_selection_outline(ui.painter(), marquee, phase);
+                                } else if self.active_tool == Tool::MoveSelection {
+                                    if let Some(selection) = self.session.document().selection() {
+                                        let dx = i64::from(end.x) - i64::from(start.x);
+                                        let dy = i64::from(end.y) - i64::from(start.y);
+                                        let min = rect.min
+                                            + egui::vec2(
+                                                (selection.left() + dx) as f32 * zoom,
+                                                (selection.top() + dy) as f32 * zoom,
+                                            );
+                                        let max = rect.min
+                                            + egui::vec2(
+                                                (selection.right() + dx) as f32 * zoom,
+                                                (selection.bottom() + dy) as f32 * zoom,
+                                            );
+                                        let preview = egui::Rect::from_min_max(min, max);
+                                        ui.painter().rect_filled(
+                                            preview,
+                                            0,
+                                            egui::Color32::from_white_alpha(20),
+                                        );
+                                        paint_selection_outline(ui.painter(), preview, phase);
+                                    }
+                                } else if self.active_tool == Tool::Shapes {
                                     ui.painter().rect_filled(
                                         marquee,
                                         0,
