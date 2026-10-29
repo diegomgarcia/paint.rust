@@ -330,19 +330,25 @@ fn paint_net_style_layout_exposes_tools_options_colors_and_layers() {
     harness.get_by_role_and_label(Role::Label, "Layers");
     for label in [
         "Rectangle Select",
+        "Move Selected Pixels",
+        "Lasso Select",
+        "Move Selection",
+        "Ellipse Select",
         "Zoom",
+        "Magic Wand",
+        "Pan",
         "Paint Bucket",
-        "Color Picker",
-        "Pencil",
+        "Gradient",
         "Paintbrush",
         "Eraser",
-        "Line / Curve",
-        "Rectangle",
-        "Ellipse",
-        "Gradient",
+        "Pencil",
+        "Color Picker",
+        "Clone Stamp",
         "Recolor",
-        "Move Selected Pixels",
-        "Pan",
+        "Text",
+        "Line / Curve",
+        "Shapes",
+        "Shapes (Freeform)",
     ] {
         harness.get_by_role_and_label(Role::Button, label);
     }
@@ -389,7 +395,7 @@ fn canvas_drag_creates_a_half_open_rectangle_selection_without_history() {
 fn rectangle_shape_tool_drag_fills_and_remains_undoable() {
     let mut harness = app();
     dock_tools(&mut harness);
-    click(&mut harness, "Rectangle");
+    click(&mut harness, "Shapes");
     let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
     let rect = canvas.rect();
     harness.drag_at(rect.min + egui::vec2(5.0, 6.0));
@@ -949,6 +955,7 @@ fn line_and_ellipse_shapes_fill_pixels_without_setting_a_selection() {
     }
     click(&mut harness, "Undo");
 
+    click(&mut harness, "Shapes");
     click(&mut harness, "Ellipse");
     drag_canvas(&mut harness, egui::vec2(10.0, 10.0), egui::vec2(30.0, 30.0));
     let session = harness.state().session();
@@ -1334,4 +1341,52 @@ fn expanded_colors_controls_stay_inside_the_window() {
         "lowest control ends at {lowest} with window bottom {}",
         bounds.bottom()
     );
+}
+
+#[test]
+fn toolbox_has_twenty_aligned_two_column_cells() {
+    let harness = app();
+    let labels = [
+        "Rectangle Select",
+        "Move Selected Pixels",
+        "Lasso Select",
+        "Move Selection",
+        "Ellipse Select",
+        "Zoom",
+        "Magic Wand",
+        "Pan",
+        "Paint Bucket",
+        "Gradient",
+        "Paintbrush",
+        "Eraser",
+        "Pencil",
+        "Color Picker",
+        "Clone Stamp",
+        "Recolor",
+        "Text",
+        "Line / Curve",
+        "Shapes",
+        "Shapes (Freeform)",
+    ];
+    let mut rects = Vec::new();
+    for label in labels {
+        rects.push(harness.get_by_role_and_label(Role::Button, label).rect());
+    }
+    for pair in rects.chunks_exact(2) {
+        assert!((pair[0].min.y - pair[1].min.y).abs() < 0.5);
+        assert!((pair[1].min.x - pair[0].min.x - 26.0).abs() < 0.5);
+    }
+    for rows in rects.chunks_exact(4) {
+        assert!((rows[2].min.y - rows[0].min.y - 25.0).abs() < 0.5);
+    }
+    assert!((rects[0].width() - 25.0).abs() < 0.5);
+    assert!((rects[0].height() - 25.0).abs() < 0.5);
+    let bounds = harness.state().tools_window_bounds().expect("Tools bounds");
+    let left_margin = rects[0].left() - bounds.left();
+    let right_margin = bounds.right() - rects[1].right();
+    assert!(
+        (left_margin - right_margin).abs() < 4.0,
+        "toolbox margins {left_margin} vs {right_margin} bounds={bounds:?}"
+    );
+    assert!(bounds.height() < 310.0, "toolbox is too tall: {bounds:?}");
 }

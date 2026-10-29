@@ -160,3 +160,22 @@ darker variants). The RGB/HSV/Opacity controls are gradient bars with a triangle
 below the bar, not standard sliders. The swap icon sits at the top of the color slots, the
 black/white reset icon sits below the slots, and More/Less is right-aligned on the top row.
 Paint.R now follows all of these.
+
+
+### Toolbox parity update
+
+Paint.R now renders all **20** Paint.NET toolbox cells in the measured two-column
+order, in rows of two with 25×25 px cells and 0 px vertical gap. The floating Tools
+window uses a custom 68 px-wide titlebar so the native titlebar cannot force it to
+96 px, and the grid is centered inside that width. The toolbox height is bounded
+below 310 px, close to the measured real `67×292` window.
+
+Implemented cells: Rectangle Select, Move Selected Pixels, Move Selection, Zoom,
+Pan, Paint Bucket, Gradient, Paintbrush, Eraser, Pencil, Color Picker, Recolor,
+Line / Curve, Shapes (Rectangle/Ellipse modes).
+
+Visible but disabled pending larger features: Lasso Select, Ellipse Select,
+Magic Wand, Clone Stamp, Text, and Shapes (Freeform). Ellipse/Lasso/Magic Wand
+need a non-rectangular selection mask; Clone Stamp needs source sampling; Text
+needs glyph rasterization; Freeform needs polygon fill. The slots are shown so the
+layout is complete, but they are explicitly disabled rather than faking behavior.

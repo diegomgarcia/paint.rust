@@ -15,7 +15,14 @@ pub(crate) enum Icon {
     Undo,
     Redo,
     SelectRectangle,
+    LassoSelect,
     Zoom,
+    MagicWand,
+    MoveSelection,
+    CloneStamp,
+    Text,
+    Shapes,
+    Freeform,
     Fill,
     RectangleShape,
     Pencil,
@@ -46,7 +53,14 @@ impl IconTextures {
             Icon::Undo,
             Icon::Redo,
             Icon::SelectRectangle,
+            Icon::LassoSelect,
             Icon::Zoom,
+            Icon::MagicWand,
+            Icon::MoveSelection,
+            Icon::CloneStamp,
+            Icon::Text,
+            Icon::Shapes,
+            Icon::Freeform,
             Icon::Fill,
             Icon::RectangleShape,
             Icon::Pencil,
@@ -140,7 +154,7 @@ pub(crate) fn tool_button(
 ) -> Response {
     let response = ui
         .add_enabled_ui(enabled, |ui| {
-            let (rect, response) = ui.allocate_exact_size(vec2(25.0, 27.0), Sense::click());
+            let (rect, response) = ui.allocate_exact_size(vec2(25.0, 25.0), Sense::click());
             response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, label));
             if ui.is_rect_visible(rect) {
                 paint_button(ui, icons, rect, icon, enabled, selected, &response);
@@ -204,7 +218,14 @@ fn icon_png(icon: Icon) -> &'static [u8] {
         Icon::Undo => include_bytes!("../assets/lucide/undo.png"),
         Icon::Redo => include_bytes!("../assets/lucide/redo.png"),
         Icon::SelectRectangle => include_bytes!("../assets/lucide/select.png"),
+        Icon::LassoSelect => include_bytes!("../assets/lucide/lasso-select.png"),
         Icon::Zoom => include_bytes!("../assets/lucide/zoom.png"),
+        Icon::MagicWand => include_bytes!("../assets/lucide/wand.png"),
+        Icon::MoveSelection => include_bytes!("../assets/lucide/move-selection.png"),
+        Icon::CloneStamp => include_bytes!("../assets/lucide/clone-stamp.png"),
+        Icon::Text => include_bytes!("../assets/lucide/text.png"),
+        Icon::Shapes => include_bytes!("../assets/lucide/shapes.png"),
+        Icon::Freeform => include_bytes!("../assets/lucide/freeform.png"),
         Icon::Fill => include_bytes!("../assets/lucide/fill.png"),
         Icon::RectangleShape => include_bytes!("../assets/lucide/rectangle-shape.png"),
         Icon::Pencil => include_bytes!("../assets/lucide/pencil.png"),
@@ -231,7 +252,14 @@ fn icon_name(icon: Icon) -> &'static str {
         Icon::Undo => "undo",
         Icon::Redo => "redo",
         Icon::SelectRectangle => "select",
+        Icon::LassoSelect => "lasso-select",
         Icon::Zoom => "zoom",
+        Icon::MagicWand => "wand",
+        Icon::MoveSelection => "move-selection",
+        Icon::CloneStamp => "clone-stamp",
+        Icon::Text => "text",
+        Icon::Shapes => "shapes",
+        Icon::Freeform => "freeform",
         Icon::Fill => "fill",
         Icon::RectangleShape => "rectangle-shape",
         Icon::Pencil => "pencil",

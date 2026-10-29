@@ -1,21 +1,39 @@
-# First-party icon provenance
+# Icon provenance
 
-The toolbar icons are original geometry defined in
-`crates/ui/src/icons.rs`. They are drawn at runtime from lines, rectangles, polygons, and
-circles; there are no copied Paint.NET bitmaps, icon fonts, SVG files, or third-party icon
-assets in this set.
+The toolbar and window icons embedded under `crates/ui/assets/lucide/` are
+high-resolution PNG renders of Lucide SVG geometry, tinted at runtime by Paint.R.
+They are not copied Paint.NET bitmaps, icon fonts, or application artwork. No
+Paint.NET trademark, logo, or application icon is reproduced.
 
-The glyphs use familiar editing conventions so the controls read similarly to Paint.NET, but
-they are deliberately simplified and separately authored. No Paint.NET trademark, logo, or
-application icon is reproduced.
+Lucide is ISC-licensed. The complete notice is in
+`docs/licenses/LUCIDE-ISC.txt`.
 
-These marks are first-party project source covered by the repository MIT license. They
-introduce no identified third-party notice or attribution obligation. This file remains
-provenance evidence, not a legal review of non-icon assets.
+## Lucide source names
 
-## Lucide reference geometry
+- `square-dashed` — Rectangle Select
+- `lasso-select` — Lasso Select
+- `wand-sparkles` — Magic Wand
+- `box-select` — Move Selection
+- `move` — Move Selected Pixels
+- `zoom-in` — Zoom
+- `paint-bucket` — Paint Bucket
+- `gradient` — Gradient
+- `paintbrush` — Paintbrush
+- `eraser` — Eraser
+- `pencil` — Pencil
+- `pipette` — Color Picker
+- `stamp` — Clone Stamp
+- `type` — Text
+- `line` — Line / Curve
+- `shapes` — Shapes
+- `spline` — Shapes (Freeform)
+- `rectangle-horizontal` — Rectangle shape slot
+- `circle` — Ellipse shape slot
+- `plus` — Add Layer
+- `undo` / `redo` — history actions
+- `file-plus` / `folder-open` / `file-down` — document actions
+- `swap` / `rotate-ccw` — color slot actions
+- `menu` — window controls
 
-Tool silhouettes are based on Lucide v0.468.0 (`square-dashed`, `zoom-in`,
-`paint-bucket`, `pipette`, `rectangle-horizontal`). Lucide is ISC-licensed; the full
-notice is in `docs/licenses/LUCIDE-ISC.txt`. Geometry is redrawn on the same 24-unit
-round-stroke grid and tinted by Paint.R, not copied as raster assets.
+The PNGs are rendered from the corresponding Lucide SVG paths; the repository
+keeps no third-party SVG source copied into the build.

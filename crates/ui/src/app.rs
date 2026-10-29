@@ -42,6 +42,7 @@ pub struct PaintApp {
     panels_floating: bool,
     picking_color: bool,
     active_tool: Tool,
+    shape_mode: ShapeMode,
     brush_size: u32,
     recolor_tolerance: u8,
     fill_tolerance: u8,
@@ -51,6 +52,7 @@ pub struct PaintApp {
     #[cfg(target_os = "macos")]
     native_menu: Option<NativeMenu>,
     tools_window_rect: Option<egui::Rect>,
+    tools_close_requested: bool,
     history_window_rect: Option<egui::Rect>,
     colors_window_rect: Option<egui::Rect>,
     colors_close_requested: bool,
@@ -108,6 +110,7 @@ impl PaintApp {
             panels_floating,
             picking_color: false,
             active_tool: Tool::Select,
+            shape_mode: ShapeMode::Rectangle,
             brush_size: 45,
             recolor_tolerance: 50,
             fill_tolerance: 50,
@@ -117,6 +120,7 @@ impl PaintApp {
             #[cfg(target_os = "macos")]
             native_menu: NativeMenu::install(creation_context.egui_ctx.clone()),
             tools_window_rect: None,
+            tools_close_requested: false,
             history_window_rect: None,
             colors_window_rect: None,
             colors_close_requested: false,
@@ -167,6 +171,11 @@ impl PaintApp {
     #[doc(hidden)]
     pub const fn colors_window_bounds(&self) -> Option<egui::Rect> {
         self.colors_window_rect
+    }
+
+    #[doc(hidden)]
+    pub const fn tools_window_bounds(&self) -> Option<egui::Rect> {
+        self.tools_window_rect
     }
 
     #[doc(hidden)]
@@ -596,8 +605,8 @@ impl PaintApp {
                         ("Paintbrush", Tool::Brush),
                         ("Eraser", Tool::Eraser),
                         ("Line / Curve", Tool::Line),
-                        ("Rectangle", Tool::Rectangle),
-                        ("Ellipse", Tool::Ellipse),
+                        ("Shapes (Rectangle)", Tool::Shapes),
+                        ("Shapes (Ellipse)", Tool::Shapes),
                         ("Gradient", Tool::Gradient),
                         ("Recolor", Tool::Recolor),
                         ("Move Selected Pixels", Tool::Move),
@@ -606,6 +615,13 @@ impl PaintApp {
                     for (label, tool) in tools {
                         if ui.button(label).clicked() {
                             self.active_tool = tool;
+                            if tool == Tool::Shapes {
+                                self.shape_mode = if label.contains("Ellipse") {
+                                    ShapeMode::Ellipse
+                                } else {
+                                    ShapeMode::Rectangle
+                                };
+                            }
                             self.picking_color = tool == Tool::Picker;
                             ui.close();
                         }
@@ -705,10 +721,30 @@ impl PaintApp {
     }
 
     fn tools_content(&mut self, ui: &mut egui::Ui) {
-        if !self.tools_floating {
+        if self.tools_floating {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.strong("Tools");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(egui::Button::new("×").min_size(egui::vec2(16.0, 16.0)))
+                        .on_hover_text("Close Tools window")
+                        .clicked()
+                    {
+                        self.tools_close_requested = true;
+                    }
+                });
+            });
+            ui.separator();
+        } else {
             ui.add_space(4.0);
             ui.strong("Tools");
             ui.separator();
+        }
+        macro_rules! tool_slot {
+            ($ui:expr, $icon:expr, $label:expr, $enabled:expr) => {
+                let _ = tool_button($ui, &self.icons, $icon, $label, $enabled, false);
+            };
         }
         macro_rules! tool {
             ($ui:expr, $icon:expr, $label:expr, $tool:expr) => {
@@ -727,32 +763,60 @@ impl PaintApp {
                 }
             };
         }
-        egui::Grid::new("paint-r-tool-grid")
-            .num_columns(2)
-            .spacing([1.0, 1.0])
-            .show(ui, |ui| {
+        ui.vertical_centered(|ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            let row = |ui: &mut egui::Ui, draw: &mut dyn FnMut(&mut egui::Ui)| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 1.0;
+                    draw(ui);
+                });
+            };
+            row(ui, &mut |ui| {
                 tool!(ui, Icon::SelectRectangle, "Rectangle Select", Tool::Select);
                 tool!(ui, Icon::Move, "Move Selected Pixels", Tool::Move);
-                ui.end_row();
+            });
+            row(ui, &mut |ui| {
+                tool_slot!(ui, Icon::LassoSelect, "Lasso Select", false);
+                tool!(
+                    ui,
+                    Icon::MoveSelection,
+                    "Move Selection",
+                    Tool::MoveSelection
+                );
+            });
+            row(ui, &mut |ui| {
+                tool_slot!(ui, Icon::Ellipse, "Ellipse Select", false);
                 tool!(ui, Icon::Zoom, "Zoom", Tool::Zoom);
+            });
+            row(ui, &mut |ui| {
+                tool_slot!(ui, Icon::MagicWand, "Magic Wand", false);
                 tool!(ui, Icon::Pan, "Pan", Tool::Pan);
-                ui.end_row();
+            });
+            row(ui, &mut |ui| {
                 tool!(ui, Icon::Fill, "Paint Bucket", Tool::Fill);
                 tool!(ui, Icon::Gradient, "Gradient", Tool::Gradient);
-                ui.end_row();
+            });
+            row(ui, &mut |ui| {
                 tool!(ui, Icon::Brush, "Paintbrush", Tool::Brush);
                 tool!(ui, Icon::Eraser, "Eraser", Tool::Eraser);
-                ui.end_row();
+            });
+            row(ui, &mut |ui| {
                 tool!(ui, Icon::Pencil, "Pencil", Tool::Pencil);
                 tool!(ui, Icon::EyeDropper, "Color Picker", Tool::Picker);
-                ui.end_row();
-                tool!(ui, Icon::Recolor, "Recolor", Tool::Recolor);
-                tool!(ui, Icon::Line, "Line / Curve", Tool::Line);
-                ui.end_row();
-                tool!(ui, Icon::RectangleShape, "Rectangle", Tool::Rectangle);
-                tool!(ui, Icon::Ellipse, "Ellipse", Tool::Ellipse);
-                ui.end_row();
             });
+            row(ui, &mut |ui| {
+                tool_slot!(ui, Icon::CloneStamp, "Clone Stamp", false);
+                tool!(ui, Icon::Recolor, "Recolor", Tool::Recolor);
+            });
+            row(ui, &mut |ui| {
+                tool_slot!(ui, Icon::Text, "Text", false);
+                tool!(ui, Icon::Line, "Line / Curve", Tool::Line);
+            });
+            row(ui, &mut |ui| {
+                tool!(ui, Icon::Shapes, "Shapes", Tool::Shapes);
+                tool_slot!(ui, Icon::Freeform, "Shapes (Freeform)", false);
+            });
+        });
     }
 
     fn tool_options_panel(&mut self, ui: &mut egui::Ui) {
@@ -782,6 +846,21 @@ impl PaintApp {
                         } else {
                             ui.label("No selection");
                         }
+                    }
+                    Tool::MoveSelection => {
+                        ui.label("Move Selection");
+                        if let Some(selection) = self.session.document().selection() {
+                            ui.label(format!(
+                                "({}, {})..({}, {})",
+                                selection.left(),
+                                selection.top(),
+                                selection.right(),
+                                selection.bottom()
+                            ));
+                        } else {
+                            ui.label("No selection");
+                        }
+                        ui.label("Drag the selection on the canvas to move it");
                     }
                     Tool::Zoom => {
                         ui.label("Zoom");
@@ -854,13 +933,18 @@ impl PaintApp {
                         }
                         ui.label("Drag on the canvas to paint");
                     }
-                    Tool::Rectangle => {
-                        ui.label("Rectangle Shape");
-                        ui.label("Drag on the canvas to fill with the primary color");
-                    }
-                    Tool::Ellipse => {
-                        ui.label("Ellipse Shape");
-                        ui.label("Drag on the canvas to fill with the primary color");
+                    Tool::Shapes => {
+                        ui.label("Shapes");
+                        ui.selectable_value(
+                            &mut self.shape_mode,
+                            ShapeMode::Rectangle,
+                            "Rectangle",
+                        );
+                        ui.selectable_value(&mut self.shape_mode, ShapeMode::Ellipse, "Ellipse");
+                        ui.label(match self.shape_mode {
+                            ShapeMode::Rectangle => "Drag to fill a rectangle",
+                            ShapeMode::Ellipse => "Drag to fill an ellipse",
+                        });
                     }
                     Tool::Gradient => {
                         ui.label("Gradient");
@@ -1336,14 +1420,20 @@ impl PaintApp {
             let frame = floating_window_frame(&context, self.tools_window_rect);
             if let Some(inner) = egui::Window::new("Tools")
                 .open(&mut open)
+                .title_bar(false)
                 .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(20.0, 180.0))
-                .default_width(68.0)
+                .min_width(68.0)
+                .max_width(68.0)
                 .resizable(false)
                 .show(&context, |ui| self.tools_content(ui))
             {
                 self.tools_window_rect = Some(inner.response.rect);
+            }
+            if self.tools_close_requested {
+                open = false;
+                self.tools_close_requested = false;
             }
             self.tools_visible = open;
         }
@@ -1584,24 +1674,46 @@ impl PaintApp {
                                     _ => self.brush_size.max(1),
                                 };
                                 pending_paint = match self.active_tool {
+                                    Tool::MoveSelection => {
+                                        if let Some(selection) = self.session.document().selection()
+                                        {
+                                            let dx = i64::from(end.x) - i64::from(start.x);
+                                            let dy = i64::from(end.y) - i64::from(start.y);
+                                            if (dx != 0 || dy != 0)
+                                                && let Ok(rect) = Rect::new(
+                                                    selection.left() + dx,
+                                                    selection.top() + dy,
+                                                    selection.right() + dx,
+                                                    selection.bottom() + dy,
+                                                )
+                                            {
+                                                pending_selection = Some(rect);
+                                            }
+                                        }
+                                        None
+                                    }
                                     Tool::Select => {
                                         pending_selection = Some(bounds);
                                         None
                                     }
-                                    Tool::Rectangle => Some((
-                                        Command::FillRect {
-                                            rect: bounds,
-                                            color,
-                                        },
-                                        "Filled rectangle shape".to_owned(),
-                                    )),
-                                    Tool::Ellipse => Some((
-                                        Command::FillEllipse {
-                                            rect: bounds,
-                                            color,
-                                        },
-                                        "Filled ellipse shape".to_owned(),
-                                    )),
+                                    Tool::Shapes if self.shape_mode == ShapeMode::Rectangle => {
+                                        Some((
+                                            Command::FillRect {
+                                                rect: bounds,
+                                                color,
+                                            },
+                                            "Filled rectangle shape".to_owned(),
+                                        ))
+                                    }
+                                    Tool::Shapes if self.shape_mode == ShapeMode::Ellipse => {
+                                        Some((
+                                            Command::FillEllipse {
+                                                rect: bounds,
+                                                color,
+                                            },
+                                            "Filled ellipse shape".to_owned(),
+                                        ))
+                                    }
                                     Tool::Line => Some((
                                         Command::Stroke {
                                             label: "Line / Curve",
@@ -1691,10 +1803,7 @@ impl PaintApp {
                                         (end.y + 1) as f32 * zoom,
                                     );
                                 let marquee = egui::Rect::from_min_max(start_pos, end_pos);
-                                if matches!(
-                                    self.active_tool,
-                                    Tool::Select | Tool::Rectangle | Tool::Ellipse
-                                ) {
+                                if matches!(self.active_tool, Tool::Select | Tool::Shapes) {
                                     ui.painter().rect_filled(
                                         marquee,
                                         0,
@@ -2153,17 +2262,23 @@ impl eframe::App for PaintApp {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ShapeMode {
+    Rectangle,
+    Ellipse,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tool {
     Select,
+    MoveSelection,
     Zoom,
     Fill,
-    Rectangle,
+    Shapes,
     Pencil,
     Brush,
     Eraser,
     Line,
-    Ellipse,
     Gradient,
     Recolor,
     Move,
