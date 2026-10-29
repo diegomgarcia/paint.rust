@@ -824,6 +824,7 @@ impl PaintApp {
                     if ui
                         .add(egui::Button::new("×").min_size(egui::vec2(16.0, 16.0)))
                         .on_hover_text("Close Tools window")
+                        .accessible_name("Close Tools window")
                         .clicked()
                     {
                         self.tools_close_requested = true;
@@ -1118,6 +1119,7 @@ impl PaintApp {
                     if ui
                         .add(egui::Button::new("×").min_size(egui::vec2(16.0, 16.0)))
                         .on_hover_text("Close Layers window")
+                        .accessible_name("Close Layers window")
                         .clicked()
                     {
                         self.layers_close_requested = true;
