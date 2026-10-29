@@ -28,6 +28,24 @@ const PREVIEW_WIDTH: f32 = 180.0;
 const PREVIEW_HEIGHT: f32 = 140.0;
 const MAX_BROWSER_ENTRIES: usize = 200;
 
+struct DocumentTabState {
+    session: AppSession,
+    title: String,
+    texture: Option<egui::TextureHandle>,
+    thumbnail: Option<egui::TextureHandle>,
+    zoom: f32,
+    fit_canvas_requested: bool,
+    history_entries: Vec<String>,
+    redo_entries: Vec<String>,
+    layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
+    selection_input: SelectionInput,
+    drag_start: Option<Point>,
+    drag_current: Option<Point>,
+    paint_points: Vec<Point>,
+    floating_selection: Option<FloatingSelectionState>,
+    next_layer_number: usize,
+}
+
 struct FloatingSelectionState {
     floating: paint_app::FloatingSelection,
     texture: egui::TextureHandle,
@@ -94,6 +112,8 @@ pub struct PaintApp {
     layer_properties_visible: bool,
     document_title: String,
     document_thumbnail: Option<egui::TextureHandle>,
+    tabs: Vec<Option<DocumentTabState>>,
+    active_tab: usize,
     next_layer_number: usize,
     status: String,
     path_dialog: Option<PathDialog>,
@@ -172,6 +192,8 @@ impl PaintApp {
             layer_properties_visible: true,
             document_title: "New Image".to_owned(),
             document_thumbnail: None,
+            tabs: vec![None],
+            active_tab: 0,
             next_layer_number: 1,
             status: "New 800×600 opaque-white document".to_owned(),
             path_dialog: None,
@@ -222,6 +244,31 @@ impl PaintApp {
     }
 
     #[doc(hidden)]
+    pub const fn document_tab_count(&self) -> usize {
+        self.tabs.len()
+    }
+
+    #[doc(hidden)]
+    pub const fn active_document_index(&self) -> usize {
+        self.active_tab
+    }
+
+    #[doc(hidden)]
+    pub fn document_titles(&self) -> Vec<String> {
+        (0..self.tabs.len())
+            .map(|index| {
+                if index == self.active_tab {
+                    self.document_title.clone()
+                } else {
+                    self.tabs[index]
+                        .as_ref()
+                        .map_or_else(|| "Untitled".to_owned(), |tab| tab.title.clone())
+                }
+            })
+            .collect()
+    }
+
+    #[doc(hidden)]
     pub fn history_entries(&self) -> &[String] {
         &self.history_entries
     }
@@ -261,6 +308,76 @@ impl PaintApp {
         self.close_approved
     }
 
+    fn take_active_tab(&mut self) -> DocumentTabState {
+        DocumentTabState {
+            session: std::mem::replace(&mut self.session, default_session()),
+            title: std::mem::take(&mut self.document_title),
+            texture: self.texture.take(),
+            thumbnail: self.document_thumbnail.take(),
+            zoom: self.zoom,
+            fit_canvas_requested: self.fit_canvas_requested,
+            history_entries: std::mem::take(&mut self.history_entries),
+            redo_entries: std::mem::take(&mut self.redo_entries),
+            layer_thumbnails: std::mem::take(&mut self.layer_thumbnails),
+            selection_input: self.selection_input,
+            drag_start: self.drag_start.take(),
+            drag_current: self.drag_current.take(),
+            paint_points: std::mem::take(&mut self.paint_points),
+            floating_selection: self.floating_selection.take(),
+            next_layer_number: self.next_layer_number,
+        }
+    }
+
+    fn load_active_tab(&mut self, state: DocumentTabState) {
+        self.session = state.session;
+        self.document_title = state.title;
+        self.texture = state.texture;
+        self.texture_dirty = true;
+        self.document_thumbnail = state.thumbnail;
+        self.zoom = state.zoom;
+        self.fit_canvas_requested = state.fit_canvas_requested;
+        self.history_entries = state.history_entries;
+        self.redo_entries = state.redo_entries;
+        self.layer_thumbnails = state.layer_thumbnails;
+        self.selection_input = state.selection_input;
+        self.drag_start = state.drag_start;
+        self.drag_current = state.drag_current;
+        self.paint_points = state.paint_points;
+        self.floating_selection = state.floating_selection;
+        self.next_layer_number = state.next_layer_number;
+    }
+
+    fn store_active_tab(&mut self) {
+        let state = self.take_active_tab();
+        self.tabs[self.active_tab] = Some(state);
+    }
+
+    fn switch_to_tab(&mut self, index: usize) {
+        if index == self.active_tab || index >= self.tabs.len() {
+            return;
+        }
+        self.store_active_tab();
+        let Some(state) = self.tabs[index].take() else {
+            return;
+        };
+        self.load_active_tab(state);
+        self.active_tab = index;
+        self.layer_properties_open = false;
+        self.status = format!("Switched to {}", self.document_title);
+    }
+
+    fn new_tab(&mut self) {
+        self.store_active_tab();
+        self.tabs.push(None);
+        self.active_tab = self.tabs.len() - 1;
+        self.new_document();
+        self.document_title = format!("New Image {}", self.active_tab + 1);
+    }
+
+    fn has_dirty_documents(&self) -> bool {
+        self.session.dirty() || self.tabs.iter().flatten().any(|tab| tab.session.dirty())
+    }
+
     fn new_document(&mut self) {
         self.session = default_session();
         self.selection_input = SelectionInput::default();
@@ -294,15 +411,11 @@ impl PaintApp {
 
     fn request_new(&mut self) {
         self.finalize_floating_selection();
-        if self.session.dirty() {
-            self.request_discard(DiscardAction::NewDocument);
-        } else {
-            self.new_document();
-        }
+        self.new_tab();
     }
 
     fn request_quit(&mut self, context: &egui::Context) {
-        if self.session.dirty() {
+        if self.has_dirty_documents() {
             self.request_discard(DiscardAction::CloseViewport);
         } else {
             self.close_approved = true;
@@ -311,18 +424,18 @@ impl PaintApp {
     }
 
     fn request_open(&mut self, path: String) {
-        if self.session.dirty() {
-            self.request_discard(DiscardAction::OpenPng(path));
-        } else {
-            self.path_dialog = None;
-            self.open_png(path);
-        }
+        self.path_dialog = None;
+        self.open_png(path);
     }
 
     fn open_png(&mut self, path: String) {
         let path_buffer = PathBuf::from(&path);
         match AppSession::open_png(&path_buffer) {
             Ok(session) => {
+                self.finalize_floating_selection();
+                self.store_active_tab();
+                self.tabs.push(None);
+                self.active_tab = self.tabs.len() - 1;
                 self.session = session;
                 self.document_title = path_buffer
                     .file_name()
@@ -826,7 +939,7 @@ impl PaintApp {
     }
 
     fn compact_toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
+        ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
             if icon_button(ui, &self.icons, Icon::NewDocument, "New document", true).clicked() {
                 self.request_new();
@@ -847,30 +960,64 @@ impl PaintApp {
                 self.execute(Command::Redo, "Redid the next edit");
             }
             if self.panels_floating {
-                ui.add_space(6.0);
-                egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(48, 48, 48))
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(84, 84, 84)))
-                    .corner_radius(4)
-                    .inner_margin(egui::Margin::symmetric(5, 2))
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            let (rect, response) = ui
-                                .allocate_exact_size(egui::vec2(40.0, 28.0), egui::Sense::hover());
-                            response.widget_info(|| {
-                                egui::WidgetInfo::labeled(
-                                    egui::Role::Image,
-                                    true,
-                                    "Document tab preview",
-                                )
+                for index in 0..self.tabs.len() {
+                    let active = index == self.active_tab;
+                    let (title, thumbnail) = if active {
+                        (self.document_title.clone(), self.document_thumbnail.clone())
+                    } else {
+                        self.tabs[index].as_ref().map_or_else(
+                            || ("Untitled".to_owned(), None),
+                            |tab| (tab.title.clone(), tab.thumbnail.clone()),
+                        )
+                    };
+                    ui.add_space(4.0);
+                    let response = egui::Frame::new()
+                        .fill(if active {
+                            egui::Color32::from_rgb(31, 78, 116)
+                        } else {
+                            egui::Color32::from_rgb(48, 48, 48)
+                        })
+                        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(84, 84, 84)))
+                        .corner_radius(4)
+                        .inner_margin(egui::Margin::symmetric(5, 0))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let (rect, response) = ui.allocate_exact_size(
+                                    egui::vec2(40.0, 28.0),
+                                    egui::Sense::hover(),
+                                );
+                                response.widget_info(|| {
+                                    egui::WidgetInfo::labeled(
+                                        egui::Role::Image,
+                                        true,
+                                        if active {
+                                            "Document tab preview".to_owned()
+                                        } else {
+                                            format!("Document tab preview {index}")
+                                        },
+                                    )
+                                });
+                                paint_checkerboard(ui.painter(), rect);
+                                if let Some(thumbnail) = &thumbnail {
+                                    egui::Image::from_texture(thumbnail).paint_at(ui, rect);
+                                }
+                                ui.label(egui::RichText::new(&title).strong());
                             });
-                            paint_checkerboard(ui.painter(), rect);
-                            if let Some(thumbnail) = &self.document_thumbnail {
-                                egui::Image::from_texture(thumbnail).paint_at(ui, rect);
-                            }
-                            ui.label(egui::RichText::new(&self.document_title).strong());
-                        });
+                        })
+                        .response
+                        .interact(egui::Sense::click());
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::Role::Button,
+                            true,
+                            active,
+                            format!("Document tab: {title}"),
+                        )
                     });
+                    if response.clicked() && !active {
+                        self.switch_to_tab(index);
+                    }
+                }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if tool_button(
@@ -2646,19 +2793,11 @@ impl PaintApp {
 
     fn cancel_discard(&mut self) {
         self.focus_discard_buttons = false;
-        if let Some(DiscardAction::OpenPng(path)) = self.pending_discard.take() {
-            self.path_dialog = Some(PathDialog::with_path(PathDialogKind::Open, path));
-        }
+        self.pending_discard = None;
     }
 
     fn discard_confirmation(&mut self, ui: &mut egui::Ui) {
         let explanation = match self.pending_discard.as_ref() {
-            Some(DiscardAction::NewDocument) => {
-                "Creating a new document will discard the modified document and its undo history."
-            }
-            Some(DiscardAction::OpenPng(_)) => {
-                "Opening a PNG will replace the modified document and its undo history with one flattened layer."
-            }
             Some(DiscardAction::CloseViewport) => {
                 "Closing Paint.R will discard the modified document and its undo history."
             }
@@ -2698,8 +2837,6 @@ impl PaintApp {
             return;
         }
         match self.pending_discard.take() {
-            Some(DiscardAction::NewDocument) => self.new_document(),
-            Some(DiscardAction::OpenPng(path)) => self.open_png(path),
             Some(DiscardAction::CloseViewport) => {
                 // egui-winit delivers this command as a fresh ViewportEvent::Close.
                 self.close_approved = true;
@@ -2863,8 +3000,6 @@ impl Default for SelectionInput {
 }
 
 enum DiscardAction {
-    NewDocument,
-    OpenPng(String),
     CloseViewport,
 }
 

@@ -178,7 +178,9 @@ fn command_w_respects_the_dirty_guard() {
 
 #[test]
 fn tab_enter_space_and_dirty_new_are_keyboard_usable() {
-    let mut harness = app();
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
     press(&mut harness, Key::Tab);
     assert!(
         harness
@@ -233,46 +235,25 @@ fn tab_enter_space_and_dirty_new_are_keyboard_usable() {
     let before = harness.state().session().snapshot().expect("snapshot");
 
     press_command(&mut harness, Key::N);
-    assert_eq!(harness.state().session().document(), &before_document);
-    assert_eq!(
-        harness.state().session().snapshot().expect("snapshot"),
-        before
-    );
-    assert!(
-        harness
-            .get_by_role_and_label(Role::Button, "Cancel")
-            .is_focused()
-    );
-    press(&mut harness, Key::Enter);
-    assert_eq!(harness.state().session().document(), &before_document);
-    assert_eq!(
-        harness.state().session().snapshot().expect("snapshot"),
-        before
-    );
-    assert!(
-        harness
-            .query_by_role_and_label(Role::Button, "Discard")
-            .is_none()
-    );
-
-    press_command(&mut harness, Key::N);
-    assert!(
-        harness
-            .get_by_role_and_label(Role::Button, "Cancel")
-            .is_focused()
-    );
-    press(&mut harness, Key::Tab);
-    assert!(
-        harness
-            .get_by_role_and_label(Role::Button, "Discard")
-            .is_focused()
-    );
-    press(&mut harness, Key::Space);
-    assert_composed(&harness, Bgra::WHITE);
+    assert_eq!(harness.state().document_tab_count(), 2);
+    assert_eq!(harness.state().active_document_index(), 1);
     assert!(!harness.state().session().dirty());
-    assert!(!harness.state().session().can_undo());
-    assert!(!harness.state().session().can_redo());
-    assert_eq!(harness.state().session().document().layers().len(), 1);
+    assert_composed(&harness, Bgra::WHITE);
+
+    harness
+        .get_by_role_and_label(Role::Button, "Document tab: New Image")
+        .click();
+    harness.run();
+    assert_eq!(harness.state().session().document(), &before_document);
+    assert_eq!(
+        harness.state().session().snapshot().expect("snapshot"),
+        before
+    );
+    harness
+        .get_by_role_and_label(Role::Button, "Document tab: New Image 2")
+        .click();
+    harness.run();
+    assert!(!harness.state().session().dirty());
 
     focus(&mut harness, Role::Button, "Help");
     press(&mut harness, Key::Enter);
@@ -441,20 +422,15 @@ fn keyboard_open_and_failed_open_recovery_preserve_then_replace_session() {
     let valid = temporary.path().join("valid.png");
     fs::write(&invalid, b"not a PNG").expect("write malformed PNG");
     let source = write_input_png(&valid);
-    let mut harness = app();
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
     press_command(&mut harness, Key::I);
     let before_document = harness.state().session().document().clone();
     let before = harness.state().session().snapshot().expect("snapshot");
 
     press_command(&mut harness, Key::O);
     type_path(&mut harness, &invalid);
-    press(&mut harness, Key::Enter);
-    press(&mut harness, Key::Tab);
-    assert!(
-        harness
-            .get_by_role_and_label(Role::Button, "Discard")
-            .is_focused()
-    );
     press(&mut harness, Key::Enter);
     assert_eq!(harness.state().session().document(), &before_document);
     assert_eq!(
@@ -466,9 +442,9 @@ fn keyboard_open_and_failed_open_recovery_preserve_then_replace_session() {
 
     replace_path(&mut harness, &valid);
     press(&mut harness, Key::Enter);
-    press(&mut harness, Key::Tab);
-    press(&mut harness, Key::Space);
     let session = harness.state().session();
+    assert_eq!(harness.state().document_tab_count(), 2);
+    assert_eq!(harness.state().active_document_index(), 1);
     assert_eq!(session.document().size(), source.size());
     assert_eq!(session.document().layers().len(), 1);
     assert_eq!(session.document().active_layer().surface(), &source);

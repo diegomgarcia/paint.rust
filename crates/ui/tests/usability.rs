@@ -159,7 +159,6 @@ fn new_invert_undo_and_redo_operate_on_the_real_session() {
     assert!(!harness.state().session().can_redo());
 
     menu_item(&mut harness, "File", "New");
-    click(&mut harness, "Discard");
     let session = harness.state().session();
     assert_eq!(
         session.document().size(),
@@ -182,47 +181,25 @@ fn new_invert_undo_and_redo_operate_on_the_real_session() {
 }
 
 #[test]
-fn dirty_new_cancel_preserves_document_and_history_and_discard_replaces_it() {
-    let mut harness = app();
+fn dirty_new_opens_a_new_tab_and_preserves_the_old_document() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
     menu_item(&mut harness, "Adjustments", "Invert Colors");
     let before_document = harness.state().session().document().clone();
     let before = harness.state().session().snapshot().expect("snapshot");
     assert!(before.dirty && before.can_undo && !before.can_redo);
 
     menu_item(&mut harness, "File", "New");
-    assert_eq!(harness.state().session().document(), &before_document);
-    assert_eq!(
-        harness.state().session().snapshot().expect("snapshot"),
-        before
-    );
-    harness.get_by_role_and_label(Role::Button, "Discard");
-    click(&mut harness, "Cancel");
-    assert_eq!(harness.state().session().document(), &before_document);
-    assert_eq!(
-        harness.state().session().snapshot().expect("snapshot"),
-        before
-    );
-
-    click(&mut harness, "Undo");
-    assert!(!harness.state().session().dirty());
-    assert!(harness.state().session().can_redo());
-    click(&mut harness, "Redo");
-    assert_eq!(
-        harness.state().session().snapshot().expect("snapshot"),
-        before,
-        "redo must restore pixels and semantic history state, not monotonic revision numbers"
-    );
-
-    menu_item(&mut harness, "File", "New");
-    click(&mut harness, "Discard");
-    assert!(!harness.state().session().dirty());
-    assert!(!harness.state().session().can_undo());
-    assert!(!harness.state().session().can_redo());
-    assert_eq!(harness.state().session().document().layers().len(), 1);
+    assert_eq!(harness.state().document_tab_count(), 2);
+    assert_eq!(harness.state().active_document_index(), 1);
+    let session = harness.state().session();
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+    assert!(!session.can_redo());
+    assert_eq!(session.document().layers().len(), 1);
     assert!(
-        harness
-            .state()
-            .session()
+        session
             .compose()
             .expect("composite")
             .pixels()
@@ -230,13 +207,16 @@ fn dirty_new_cancel_preserves_document_and_history_and_discard_replaces_it() {
             .all(|pixel| *pixel == Bgra::WHITE)
     );
 
-    menu_item(&mut harness, "File", "New");
-    assert!(
-        harness
-            .query_by_role_and_label(Role::Button, "Discard")
-            .is_none(),
-        "clean New must proceed without a discard confirmation"
+    click(&mut harness, "Document tab: New Image");
+    assert_eq!(harness.state().active_document_index(), 0);
+    assert_eq!(harness.state().session().document(), &before_document);
+    assert_eq!(
+        harness.state().session().snapshot().expect("snapshot"),
+        before
     );
+    click(&mut harness, "Document tab: New Image 2");
+    assert_eq!(harness.state().active_document_index(), 1);
+    assert!(!harness.state().session().dirty());
 }
 
 #[test]
@@ -674,11 +654,13 @@ fn layer_add_opacity_active_selection_and_visibility_change_composition() {
 }
 
 #[test]
-fn dirty_open_cancel_preserves_session_and_only_discard_replaces_it() {
+fn dirty_open_adds_a_new_tab_and_preserves_the_old_session() {
     let temporary = TempDir::new().expect("temporary directory");
     let input = temporary.path().join("replacement.png");
     let source = write_input_png(&input);
-    let mut harness = app();
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
     menu_item(&mut harness, "Adjustments", "Invert Colors");
     let before_document = harness.state().session().document().clone();
     let before = harness.state().session().snapshot().expect("snapshot");
@@ -686,33 +668,30 @@ fn dirty_open_cancel_preserves_session_and_only_discard_replaces_it() {
     menu_item(&mut harness, "File", "Open PNG…");
     enter_path(&mut harness, &input);
     click(&mut harness, "Open PNG");
-    assert_eq!(harness.state().session().document(), &before_document);
-    assert_eq!(
-        harness.state().session().snapshot().expect("snapshot"),
-        before
-    );
-    harness.get_by_role_and_label(Role::Button, "Discard");
-
-    click(&mut harness, "Cancel");
-    assert_eq!(harness.state().session().document(), &before_document);
-    assert_eq!(
-        harness.state().session().snapshot().expect("snapshot"),
-        before
-    );
-    harness.get_by_label("PNG file path");
-
-    click(&mut harness, "Open PNG");
-    harness.get_by_role_and_label(Role::Button, "Discard");
-    assert_eq!(harness.state().session().document(), &before_document);
-    click(&mut harness, "Discard");
-
+    assert_eq!(harness.state().document_tab_count(), 2);
+    assert_eq!(harness.state().active_document_index(), 1);
     let session = harness.state().session();
     assert_eq!(session.document().size(), source.size());
     assert_eq!(session.document().layers().len(), 1);
     assert_eq!(session.document().active_layer().surface(), &source);
     assert!(!session.dirty());
-    assert!(!session.can_undo());
-    assert!(!session.can_redo());
+
+    click(&mut harness, "Document tab: New Image");
+    assert_eq!(harness.state().session().document(), &before_document);
+    assert_eq!(
+        harness.state().session().snapshot().expect("snapshot"),
+        before
+    );
+    click(&mut harness, "Document tab: replacement.png");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface(),
+        &source
+    );
 }
 
 #[test]
@@ -792,7 +771,6 @@ fn failed_open_preserves_the_current_session() {
     menu_item(&mut harness, "File", "Open PNG…");
     enter_path(&mut harness, &input);
     click(&mut harness, "Open PNG");
-    click(&mut harness, "Discard");
 
     assert_eq!(
         harness.state().session().snapshot().expect("snapshot"),
@@ -1700,4 +1678,72 @@ fn document_tab_strip_keeps_the_file_actions_in_a_fixed_tab() {
             harness.get_by_role_and_label(Role::Button, label);
         }
     }
+}
+
+#[test]
+fn new_documents_create_switchable_independent_tabs() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    click(&mut harness, "Add Layer");
+    assert_eq!(harness.state().document_tab_count(), 1);
+    assert_eq!(harness.state().session().document().layers().len(), 2);
+
+    click(&mut harness, "New document");
+    assert_eq!(harness.state().document_tab_count(), 2);
+    assert_eq!(harness.state().active_document_index(), 1);
+    assert_eq!(harness.state().session().document().layers().len(), 1);
+    assert_eq!(harness.state().history_entries(), ["New Image"]);
+    assert_eq!(
+        harness.state().document_titles(),
+        ["New Image", "New Image 2"]
+    );
+
+    click(&mut harness, "Document tab: New Image");
+    assert_eq!(harness.state().active_document_index(), 0);
+    assert_eq!(harness.state().session().document().layers().len(), 2);
+    assert_eq!(harness.state().history_entries().len(), 2);
+
+    click(&mut harness, "Document tab: New Image 2");
+    assert_eq!(harness.state().active_document_index(), 1);
+    assert_eq!(harness.state().session().document().layers().len(), 1);
+}
+
+#[test]
+fn toolbar_icons_are_vertically_centered_with_the_document_tab() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    let mut centers = Vec::new();
+    for label in [
+        "New document",
+        "Open PNG file",
+        "Export PNG file",
+        "Undo",
+        "Redo",
+    ] {
+        centers.push(
+            harness
+                .get_by_role_and_label(Role::Button, label)
+                .rect()
+                .center()
+                .y,
+        );
+    }
+    let preview = harness
+        .get_by_role_and_label(Role::Image, "Document tab preview")
+        .rect()
+        .center()
+        .y;
+    let icon_min = centers.iter().copied().fold(f32::INFINITY, f32::min);
+    let icon_max = centers.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    assert!(
+        icon_max - icon_min < 1.0,
+        "toolbar icons are not vertically centered: {centers:?}"
+    );
+    assert!(
+        (preview - centers[0]).abs() < 6.0,
+        "document tab preview is far from the icon center: {preview} vs {}",
+        centers[0]
+    );
 }

@@ -202,3 +202,13 @@ current filename and a checkerboard-backed mini preview of the composed document
 The layer thumbnails also render over a transparency checkerboard. Image menu now
 exposes functional Flip Horizontal/Vertical and Flatten Image; unsupported image
 operations remain disabled rather than simulated.
+
+
+### Multiple document tabs
+
+Paint.R keeps one complete document state per tab: session/undo history, zoom, composed
+texture, document thumbnail, layer thumbnails, selection, drag state, floating selection,
+and layer numbering. New and Open create a new tab instead of discarding the current
+document. The compact toolbar shows every document as a checkerboard-backed chip at the
+end of the file-action icons; clicking a chip switches documents. Unsaved inactive tabs
+are preserved and the quit guard checks all tabs.
