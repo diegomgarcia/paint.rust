@@ -1294,3 +1294,44 @@ fn color_controls_share_right_edge_and_more_less_keep_position() {
         bounds.right()
     );
 }
+
+#[test]
+fn expanded_colors_controls_stay_inside_the_window() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    click(&mut harness, "More");
+    for _ in 0..4 {
+        harness.run();
+    }
+    let bounds = harness
+        .state()
+        .colors_window_bounds()
+        .expect("Colors bounds");
+    let labels = [
+        "Red value",
+        "Green value",
+        "Blue value",
+        "Hex color",
+        "Hue value",
+        "Saturation value",
+        "Value value",
+        "Opacity value",
+    ];
+    let mut lowest = bounds.top();
+    for label in labels {
+        let rect = harness.get_by_label(label).rect();
+        assert!(
+            rect.bottom() <= bounds.bottom() - 2.0,
+            "{label} ends at {} outside window bottom {}",
+            rect.bottom(),
+            bounds.bottom()
+        );
+        lowest = lowest.max(rect.bottom());
+    }
+    assert!(
+        bounds.bottom() - lowest >= 2.0,
+        "lowest control ends at {lowest} with window bottom {}",
+        bounds.bottom()
+    );
+}

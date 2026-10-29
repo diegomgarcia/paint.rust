@@ -1087,109 +1087,124 @@ impl PaintApp {
                     egui::vec2(198.0, content.height()),
                 );
                 let mut right_ui = ui.new_child(egui::UiBuilder::new().max_rect(right_rect));
-                let ui = &mut right_ui;
-                ui.vertical(|ui| {
-                    ui.set_width(198.0);
-                    ui.strong("RGB");
-                    compact_color_slider(ui, "Red", "R", &mut active.r);
-                    compact_color_slider(ui, "Green", "G", &mut active.g);
-                    compact_color_slider(ui, "Blue", "B", &mut active.b);
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(26.0, 20.0),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                ui.label("HEX");
+                let right_bottom = {
+                    let ui = &mut right_ui;
+                    ui.vertical(|ui| {
+                        ui.set_width(198.0);
+                        ui.strong("RGB");
+                        compact_color_slider(ui, "Red", "R", &mut active.r);
+                        compact_color_slider(ui, "Green", "G", &mut active.g);
+                        compact_color_slider(ui, "Blue", "B", &mut active.b);
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(26.0, 20.0),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.label("HEX");
+                                },
+                            );
+                            let response = ui
+                                .add_sized(
+                                    [152.0, 20.0],
+                                    egui::TextEdit::singleline(&mut self.hex_input)
+                                        .desired_width(152.0),
+                                )
+                                .accessible_name("Hex color");
+                            if response.changed() {
+                                match crate::color_from_hex(&self.hex_input) {
+                                    Ok(parsed) => {
+                                        active = parsed;
+                                        self.hex_error = None;
+                                    }
+                                    Err(error) => self.hex_error = Some(error),
+                                }
+                            }
+                        });
+                        if let Some(error) = &self.hex_error {
+                            ui.colored_label(
+                                egui::Color32::LIGHT_RED,
+                                format!("Invalid hex color: {error}"),
+                            );
+                        }
+                        ui.strong("HSV");
+                        if self.hsv_base_color != active {
+                            let (hue, saturation, value) = hsv_from_color(active);
+                            self.hsv_hue = hue;
+                            self.hsv_saturation = saturation;
+                            self.hsv_value = value;
+                            self.hsv_base_color = active;
+                        }
+                        let hue = self.hsv_hue;
+                        let saturation = self.hsv_saturation;
+                        let value = self.hsv_value;
+                        let mut hue_value = hue;
+                        let mut saturation_value = saturation * 100.0;
+                        let mut brightness_value = value * 100.0;
+                        let hue_base = hue_value;
+                        let saturation_base = saturation_value;
+                        let brightness_base = brightness_value;
+                        hsv_gradient_slider(ui, "Hue", "H", &mut hue_value, 0.0, 360.0, |t| {
+                            let bgra = crate::color_from_hsv(t * 360.0, 1.0, 1.0, 255);
+                            egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
+                        });
+                        hsv_gradient_slider(
+                            ui,
+                            "Saturation",
+                            "S",
+                            &mut saturation_value,
+                            0.0,
+                            100.0,
+                            |t| {
+                                let bgra = crate::color_from_hsv(
+                                    hue_base,
+                                    t / 100.0,
+                                    brightness_base / 100.0,
+                                    255,
+                                );
+                                egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
                             },
                         );
-                        let response = ui
-                            .add_sized(
-                                [152.0, 20.0],
-                                egui::TextEdit::singleline(&mut self.hex_input)
-                                    .desired_width(152.0),
-                            )
-                            .accessible_name("Hex color");
-                        if response.changed() {
-                            match crate::color_from_hex(&self.hex_input) {
-                                Ok(parsed) => {
-                                    active = parsed;
-                                    self.hex_error = None;
-                                }
-                                Err(error) => self.hex_error = Some(error),
-                            }
-                        }
-                    });
-                    if let Some(error) = &self.hex_error {
-                        ui.colored_label(
-                            egui::Color32::LIGHT_RED,
-                            format!("Invalid hex color: {error}"),
+                        hsv_gradient_slider(
+                            ui,
+                            "Value",
+                            "V",
+                            &mut brightness_value,
+                            0.0,
+                            100.0,
+                            |t| {
+                                let bgra = crate::color_from_hsv(
+                                    hue_base,
+                                    saturation_base / 100.0,
+                                    t / 100.0,
+                                    255,
+                                );
+                                egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
+                            },
                         );
-                    }
-                    ui.strong("HSV");
-                    if self.hsv_base_color != active {
-                        let (hue, saturation, value) = hsv_from_color(active);
-                        self.hsv_hue = hue;
-                        self.hsv_saturation = saturation;
-                        self.hsv_value = value;
-                        self.hsv_base_color = active;
-                    }
-                    let hue = self.hsv_hue;
-                    let saturation = self.hsv_saturation;
-                    let value = self.hsv_value;
-                    let mut hue_value = hue;
-                    let mut saturation_value = saturation * 100.0;
-                    let mut brightness_value = value * 100.0;
-                    let hue_base = hue_value;
-                    let saturation_base = saturation_value;
-                    let brightness_base = brightness_value;
-                    hsv_gradient_slider(ui, "Hue", "H", &mut hue_value, 0.0, 360.0, |t| {
-                        let bgra = crate::color_from_hsv(t * 360.0, 1.0, 1.0, 255);
-                        egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
-                    });
-                    hsv_gradient_slider(
-                        ui,
-                        "Saturation",
-                        "S",
-                        &mut saturation_value,
-                        0.0,
-                        100.0,
-                        |t| {
-                            let bgra = crate::color_from_hsv(
-                                hue_base,
-                                t / 100.0,
-                                brightness_base / 100.0,
-                                255,
+                        if (hue_value, saturation_value, brightness_value)
+                            != (hue, saturation * 100.0, value * 100.0)
+                        {
+                            self.hsv_hue = hue_value;
+                            self.hsv_saturation = saturation_value / 100.0;
+                            self.hsv_value = brightness_value / 100.0;
+                            active = crate::color_from_hsv(
+                                self.hsv_hue,
+                                self.hsv_saturation,
+                                self.hsv_value,
+                                active.a,
                             );
-                            egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
-                        },
-                    );
-                    hsv_gradient_slider(ui, "Value", "V", &mut brightness_value, 0.0, 100.0, |t| {
-                        let bgra = crate::color_from_hsv(
-                            hue_base,
-                            saturation_base / 100.0,
-                            t / 100.0,
-                            255,
-                        );
-                        egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
+                            self.hsv_base_color = active;
+                        }
+                        ui.strong("Opacity");
+                        compact_color_slider(ui, "Opacity", "A", &mut active.a);
                     });
-                    if (hue_value, saturation_value, brightness_value)
-                        != (hue, saturation * 100.0, value * 100.0)
-                    {
-                        self.hsv_hue = hue_value;
-                        self.hsv_saturation = saturation_value / 100.0;
-                        self.hsv_value = brightness_value / 100.0;
-                        active = crate::color_from_hsv(
-                            self.hsv_hue,
-                            self.hsv_saturation,
-                            self.hsv_value,
-                            active.a,
-                        );
-                        self.hsv_base_color = active;
-                    }
-                    ui.strong("Opacity");
-                    compact_color_slider(ui, "Opacity", "A", &mut active.a);
-                });
+                    right_ui.min_rect().bottom()
+                };
+                ui.expand_to_include_rect(egui::Rect::from_min_max(
+                    egui::pos2(content.right(), content.top()),
+                    egui::pos2(content.right(), right_bottom),
+                ));
             }
         });
         self.set_active_color(active);
