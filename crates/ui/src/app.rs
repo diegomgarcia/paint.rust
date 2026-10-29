@@ -11,7 +11,7 @@ use crate::colors::{
     ColorSlot, PRESET_COLORS, color_slots_widget, color_swatch, color_wheel, compact_color_slider,
     format_hex_color, hsv_from_color, hsv_gradient_slider, mix_bgra,
 };
-use crate::icons::{Icon, IconTextures, icon_button, small_icon_button, tool_button};
+use crate::icons::{Icon, IconTextures, icon_button, icon_button_at, tool_button};
 
 const DEFAULT_WIDTH: u32 = 800;
 const DEFAULT_HEIGHT: u32 = 600;
@@ -959,32 +959,49 @@ impl PaintApp {
                 |ui| {
                     ui.set_width(left_width);
                     ui.horizontal(|ui| {
-                        if let Some(slot) = color_slots_widget(
+                        let (slot, bounds) = color_slots_widget(
                             ui,
                             self.fill_color,
                             self.secondary_color,
                             self.active_color_slot,
-                        ) {
+                        );
+                        if let Some(slot) = slot {
                             self.active_color_slot = slot;
                         }
-                        ui.vertical(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 2.0;
-                                if small_icon_button(
-                                    ui,
-                                    &self.icons,
-                                    Icon::SwapColors,
-                                    "Swap colors",
-                                )
-                                .clicked()
-                                {
-                                    self.swap_colors();
-                                    active = self.active_color();
-                                    self.hex_input = format_hex_color(active);
-                                    self.hex_error = None;
-                                }
-                            });
-                        });
+                        let swap_rect = egui::Rect::from_min_size(
+                            bounds.min + egui::vec2(40.0, 0.0),
+                            egui::vec2(16.0, 16.0),
+                        );
+                        if icon_button_at(
+                            ui,
+                            &self.icons,
+                            swap_rect,
+                            Icon::SwapColors,
+                            "Swap colors",
+                        )
+                        .clicked()
+                        {
+                            self.swap_colors();
+                            active = self.active_color();
+                            self.hex_input = format_hex_color(active);
+                            self.hex_error = None;
+                        }
+                        let reset_rect = egui::Rect::from_min_size(
+                            bounds.min + egui::vec2(0.0, 38.0),
+                            egui::vec2(16.0, 16.0),
+                        );
+                        if icon_button_at(
+                            ui,
+                            &self.icons,
+                            reset_rect,
+                            Icon::ResetColors,
+                            "Reset to black and white",
+                        )
+                        .clicked()
+                        {
+                            self.reset_colors();
+                            active = self.active_color();
+                        }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
                                 .button(if self.colors_expanded { "Less" } else { "More" })
@@ -994,19 +1011,6 @@ impl PaintApp {
                                 ui.ctx().request_repaint();
                             }
                         });
-                    });
-                    ui.horizontal(|ui| {
-                        if small_icon_button(
-                            ui,
-                            &self.icons,
-                            Icon::ResetColors,
-                            "Reset to black and white",
-                        )
-                        .clicked()
-                        {
-                            self.reset_colors();
-                            active = self.active_color();
-                        }
                     });
                     if self.active_color_slot != initial_slot {
                         active = self.active_color();

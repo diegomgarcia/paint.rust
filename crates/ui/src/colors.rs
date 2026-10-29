@@ -51,7 +51,7 @@ pub(crate) fn color_slots_widget(
     primary: Bgra,
     secondary: Bgra,
     active: ColorSlot,
-) -> Option<ColorSlot> {
+) -> (Option<ColorSlot>, egui::Rect) {
     let (bounds, _) = ui.allocate_exact_size(egui::vec2(64.0, 54.0), egui::Sense::hover());
     let primary_rect = egui::Rect::from_min_size(bounds.min, egui::vec2(34.0, 34.0));
     let secondary_rect =
@@ -85,13 +85,14 @@ pub(crate) fn color_slots_widget(
         );
         paint_color_slot(ui, primary_rect, primary, active == ColorSlot::Primary);
     }
-    if primary_response.clicked() {
+    let slot = if primary_response.clicked() {
         Some(ColorSlot::Primary)
     } else if secondary_response.clicked() {
         Some(ColorSlot::Secondary)
     } else {
         None
-    }
+    };
+    (slot, bounds)
 }
 
 fn paint_color_slot(ui: &egui::Ui, rect: egui::Rect, color: Bgra, active: bool) {
@@ -303,13 +304,13 @@ pub(crate) fn hsv_gradient_slider(
 ) {
     ui.horizontal(|ui| {
         ui.label(short);
-        let width = ui.available_width().max(40.0);
+        let total = ui.available_width();
+        let width = (total - 48.0).max(40.0);
         let (rect, response) =
             ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
         response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, label));
         let painter = ui.painter();
-        let track =
-            egui::Rect::from_min_size(rect.min + egui::vec2(0.0, 9.0), egui::vec2(width, 8.0));
+        let track = egui::Rect::from_min_size(rect.min, egui::vec2(width, 8.0));
         let columns = width.round() as usize;
         for index in 0..columns {
             let t = if columns > 1 {
@@ -349,6 +350,9 @@ pub(crate) fn hsv_gradient_slider(
             let fraction = ((position.x - rect.left()) / width).clamp(0.0, 1.0);
             *value = minimum + fraction * (maximum - minimum);
         }
+        let _value = ui
+            .add(egui::DragValue::new(value).range(minimum..=maximum))
+            .accessible_name(format!("{label} value"));
     });
 }
 
@@ -358,12 +362,13 @@ fn gradient_slider(
     value: &mut u8,
     channel: GradientChannel,
 ) {
-    let width = ui.available_width().max(40.0);
+    let total = ui.available_width();
+    let width = (total - 48.0).max(40.0);
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, label));
     let painter = ui.painter();
-    let track = egui::Rect::from_min_size(rect.min + egui::vec2(0.0, 9.0), egui::vec2(width, 8.0));
+    let track = egui::Rect::from_min_size(rect.min, egui::vec2(width, 8.0));
     if matches!(channel, GradientChannel::Alpha) {
         let cell: f32 = 4.0;
         let mut row = 0;
@@ -422,9 +427,9 @@ fn gradient_slider(
     let arrow_x = rect.left() + t * width;
     painter.add(egui::Shape::convex_polygon(
         vec![
-            egui::pos2(arrow_x, rect.top()),
-            egui::pos2(arrow_x - 4.0, rect.top() + 8.0),
-            egui::pos2(arrow_x + 4.0, rect.top() + 8.0),
+            egui::pos2(arrow_x, rect.top() + 9.0),
+            egui::pos2(arrow_x - 4.0, rect.top() + 17.0),
+            egui::pos2(arrow_x + 4.0, rect.top() + 17.0),
         ],
         egui::Color32::WHITE,
         egui::Stroke::NONE,
@@ -435,4 +440,7 @@ fn gradient_slider(
         let fraction = ((position.x - rect.left()) / width).clamp(0.0, 1.0);
         *value = (fraction * 255.0).round() as u8;
     }
+    let _value = ui
+        .add(egui::DragValue::new(value).range(0..=u8::MAX))
+        .accessible_name(format!("{label} value"));
 }

@@ -111,13 +111,18 @@ pub(crate) fn icon_button(
     response.on_hover_text(label)
 }
 
-pub(crate) fn small_icon_button(
+pub(crate) fn icon_button_at(
     ui: &mut Ui,
     icons: &IconTextures,
+    rect: egui::Rect,
     icon: Icon,
     label: &'static str,
 ) -> Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::click());
+    let response = ui.interact(
+        rect,
+        ui.scope_id().with(("paint-r-icon", label)),
+        Sense::click(),
+    );
     response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
     if ui.is_rect_visible(rect) {
         paint_button(ui, icons, rect, icon, true, false, &response);
