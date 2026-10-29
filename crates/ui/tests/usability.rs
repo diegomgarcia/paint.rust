@@ -1680,3 +1680,24 @@ fn history_scrollbar_sits_at_the_window_edge_and_footer_is_flush() {
         "History footer is not flush: {undo:?} within {bounds:?}"
     );
 }
+
+#[test]
+fn document_tab_strip_keeps_the_file_actions_in_a_fixed_tab() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    for label in [
+        "New document",
+        "Open PNG file",
+        "Export PNG file",
+        "Undo",
+        "Redo",
+        "Document tab preview",
+    ] {
+        if label == "Document tab preview" {
+            harness.get_by_role_and_label(Role::Image, label);
+        } else {
+            harness.get_by_role_and_label(Role::Button, label);
+        }
+    }
+}

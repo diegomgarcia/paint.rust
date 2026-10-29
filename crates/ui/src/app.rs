@@ -644,39 +644,6 @@ impl PaintApp {
         }
     }
 
-    fn document_tabs_content(&mut self, ui: &mut egui::Ui) {
-        if !self.panels_floating {
-            return;
-        }
-        ui.add_space(2.0);
-        ui.horizontal(|ui| {
-            egui::Frame::new()
-                .fill(egui::Color32::from_rgb(45, 45, 45))
-                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(70, 70, 70)))
-                .corner_radius(4)
-                .inner_margin(egui::Margin::symmetric(6, 3))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        let (rect, response) =
-                            ui.allocate_exact_size(egui::vec2(44.0, 32.0), egui::Sense::hover());
-                        response.widget_info(|| {
-                            egui::WidgetInfo::labeled(
-                                egui::Role::Image,
-                                true,
-                                "Document tab preview",
-                            )
-                        });
-                        paint_checkerboard(ui.painter(), rect);
-                        if let Some(thumbnail) = &self.document_thumbnail {
-                            egui::Image::from_texture(thumbnail).paint_at(ui, rect);
-                        }
-                        ui.label(egui::RichText::new(&self.document_title).strong());
-                    });
-                });
-        });
-        ui.add_space(2.0);
-    }
-
     fn menu_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::top("paint-r-menu").show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
@@ -858,33 +825,168 @@ impl PaintApp {
         });
     }
 
+    fn compact_toolbar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 3.0;
+            if icon_button(ui, &self.icons, Icon::NewDocument, "New document", true).clicked() {
+                self.request_new();
+            }
+            if icon_button(ui, &self.icons, Icon::OpenFile, "Open PNG file", true).clicked() {
+                self.show_path_dialog(PathDialogKind::Open);
+            }
+            if icon_button(ui, &self.icons, Icon::ExportFile, "Export PNG file", true).clicked() {
+                self.show_path_dialog(PathDialogKind::Export);
+            }
+            ui.add_space(5.0);
+            ui.separator();
+            ui.add_space(5.0);
+            if icon_button(ui, &self.icons, Icon::Undo, "Undo", self.session.can_undo()).clicked() {
+                self.execute(Command::Undo, "Undid the last edit");
+            }
+            if icon_button(ui, &self.icons, Icon::Redo, "Redo", self.session.can_redo()).clicked() {
+                self.execute(Command::Redo, "Redid the next edit");
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if tool_button(
+                    ui,
+                    &self.icons,
+                    Icon::PanelHistory,
+                    "History panel",
+                    true,
+                    self.history_visible,
+                )
+                .clicked()
+                {
+                    self.history_visible = !self.history_visible;
+                }
+                if tool_button(
+                    ui,
+                    &self.icons,
+                    Icon::PanelLayers,
+                    "Layers panel",
+                    true,
+                    self.layers_visible,
+                )
+                .clicked()
+                {
+                    self.layers_visible = !self.layers_visible;
+                }
+                if tool_button(
+                    ui,
+                    &self.icons,
+                    Icon::PanelColors,
+                    "Colors panel",
+                    true,
+                    self.colors_visible,
+                )
+                .clicked()
+                {
+                    self.colors_visible = !self.colors_visible;
+                }
+                if tool_button(
+                    ui,
+                    &self.icons,
+                    Icon::PanelTools,
+                    "Tools panel",
+                    true,
+                    self.tools_visible,
+                )
+                .clicked()
+                {
+                    self.tools_visible = !self.tools_visible;
+                }
+            });
+        });
+    }
+
     fn toolbar_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::top("paint-r-toolbar").show(ui, |ui| {
-            self.document_tabs_content(ui);
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 3.0;
-                if icon_button(ui, &self.icons, Icon::NewDocument, "New document", true).clicked() {
-                    self.request_new();
-                }
-                if icon_button(ui, &self.icons, Icon::OpenFile, "Open PNG file", true).clicked() {
-                    self.show_path_dialog(PathDialogKind::Open);
-                }
-                if icon_button(ui, &self.icons, Icon::ExportFile, "Export PNG file", true).clicked()
-                {
-                    self.show_path_dialog(PathDialogKind::Export);
-                }
-                ui.add_space(5.0);
-                ui.separator();
-                ui.add_space(5.0);
-                if icon_button(ui, &self.icons, Icon::Undo, "Undo", self.session.can_undo())
-                    .clicked()
-                {
-                    self.execute(Command::Undo, "Undid the last edit");
-                }
-                if icon_button(ui, &self.icons, Icon::Redo, "Redo", self.session.can_redo())
-                    .clicked()
-                {
-                    self.execute(Command::Redo, "Redid the next edit");
+            ui.add_space(2.0);
+            if !self.panels_floating {
+                self.compact_toolbar(ui);
+                ui.add_space(2.0);
+                return;
+            }
+            ui.horizontal(|ui| {
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(36, 36, 36))
+                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(70, 70, 70)))
+                    .corner_radius(4)
+                    .inner_margin(egui::Margin::symmetric(4, 2))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 1.0;
+                            if icon_button(ui, &self.icons, Icon::NewDocument, "New document", true)
+                                .clicked()
+                            {
+                                self.request_new();
+                            }
+                            if icon_button(ui, &self.icons, Icon::OpenFile, "Open PNG file", true)
+                                .clicked()
+                            {
+                                self.show_path_dialog(PathDialogKind::Open);
+                            }
+                            if icon_button(
+                                ui,
+                                &self.icons,
+                                Icon::ExportFile,
+                                "Export PNG file",
+                                true,
+                            )
+                            .clicked()
+                            {
+                                self.show_path_dialog(PathDialogKind::Export);
+                            }
+                            if icon_button(
+                                ui,
+                                &self.icons,
+                                Icon::Undo,
+                                "Undo",
+                                self.session.can_undo(),
+                            )
+                            .clicked()
+                            {
+                                self.execute(Command::Undo, "Undid the last edit");
+                            }
+                            if icon_button(
+                                ui,
+                                &self.icons,
+                                Icon::Redo,
+                                "Redo",
+                                self.session.can_redo(),
+                            )
+                            .clicked()
+                            {
+                                self.execute(Command::Redo, "Redid the next edit");
+                            }
+                        });
+                    });
+                if self.panels_floating {
+                    egui::Frame::new()
+                        .fill(egui::Color32::from_rgb(48, 48, 48))
+                        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(84, 84, 84)))
+                        .corner_radius(4)
+                        .inner_margin(egui::Margin::symmetric(6, 2))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let (rect, response) = ui.allocate_exact_size(
+                                    egui::vec2(44.0, 32.0),
+                                    egui::Sense::hover(),
+                                );
+                                response.widget_info(|| {
+                                    egui::WidgetInfo::labeled(
+                                        egui::Role::Image,
+                                        true,
+                                        "Document tab preview",
+                                    )
+                                });
+                                paint_checkerboard(ui.painter(), rect);
+                                if let Some(thumbnail) = &self.document_thumbnail {
+                                    egui::Image::from_texture(thumbnail).paint_at(ui, rect);
+                                }
+                                ui.label(egui::RichText::new(&self.document_title).strong());
+                            });
+                        });
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if tool_button(
