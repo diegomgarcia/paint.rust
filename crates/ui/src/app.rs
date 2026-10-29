@@ -217,6 +217,11 @@ impl PaintApp {
     }
 
     #[doc(hidden)]
+    pub const fn history_window_bounds(&self) -> Option<egui::Rect> {
+        self.history_window_rect
+    }
+
+    #[doc(hidden)]
     pub fn history_entries(&self) -> &[String] {
         &self.history_entries
     }
@@ -1455,9 +1460,31 @@ impl PaintApp {
             ui.heading("History");
             ui.separator();
         }
+        egui::Panel::bottom("paint-r-history-buttons")
+            .frame(egui::Frame::NONE)
+            .show_separator_line(false)
+            .show(ui, |ui| {
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(self.session.can_undo(), egui::Button::new("Undo History"))
+                        .clicked()
+                    {
+                        self.execute(Command::Undo, "Undid the last edit");
+                    }
+                    if ui
+                        .add_enabled(self.session.can_redo(), egui::Button::new("Redo History"))
+                        .clicked()
+                    {
+                        self.execute(Command::Redo, "Redid the next edit");
+                    }
+                });
+            });
         egui::ScrollArea::vertical()
             .id_salt("paint-r-history-list")
+            .auto_shrink([false, false])
             .show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
                 for entry in &self.history_entries {
                     ui.label(entry);
                 }
@@ -1465,21 +1492,6 @@ impl PaintApp {
                     ui.add_enabled(false, egui::Label::new(entry).selectable(false));
                 }
             });
-        ui.separator();
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(self.session.can_undo(), egui::Button::new("Undo History"))
-                .clicked()
-            {
-                self.execute(Command::Undo, "Undid the last edit");
-            }
-            if ui
-                .add_enabled(self.session.can_redo(), egui::Button::new("Redo History"))
-                .clicked()
-            {
-                self.execute(Command::Redo, "Redid the next edit");
-            }
-        });
     }
 
     fn colors_content(&mut self, ui: &mut egui::Ui) {

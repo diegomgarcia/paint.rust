@@ -1650,3 +1650,33 @@ fn document_tab_shows_a_preview_and_the_opened_filename() {
     harness.get_by_label("tab-document.png");
     harness.get_by_role_and_label(Role::Image, "Document tab preview");
 }
+
+#[test]
+fn history_scrollbar_sits_at_the_window_edge_and_footer_is_flush() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    for _ in 0..14 {
+        click(&mut harness, "Add Layer");
+    }
+    let bounds = harness
+        .state()
+        .history_window_bounds()
+        .expect("History bounds");
+    let scrollbar = harness
+        .get_all_by_role(Role::ScrollBar)
+        .map(|node| node.rect())
+        .find(|rect| bounds.contains(rect.center()))
+        .expect("History scrollbar");
+    assert!(
+        bounds.right() - scrollbar.right() < 10.0,
+        "History scrollbar is not at the right edge: {scrollbar:?} within {bounds:?}"
+    );
+    let undo = harness
+        .get_by_role_and_label(Role::Button, "Undo History")
+        .rect();
+    assert!(
+        bounds.bottom() - undo.bottom() < 10.0,
+        "History footer is not flush: {undo:?} within {bounds:?}"
+    );
+}
