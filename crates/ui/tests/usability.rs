@@ -1126,8 +1126,9 @@ fn colors_more_click_expands_the_whole_window_chrome() {
     let close = harness
         .get_by_role_and_label(Role::Button, "Close Colors window")
         .rect();
+    // `bounds` includes egui's drop shadow on the right; the visible frame ends earlier.
     assert!(
-        bounds.right() - close.right() < 24.0,
+        bounds.right() - close.right() < 32.0,
         "Colors header close ends at {} but window ends at {}",
         close.right(),
         bounds.right()

@@ -1081,10 +1081,9 @@ impl PaintApp {
                 },
             );
             if self.colors_expanded {
-                ui.add_space(4.0);
-                ui.separator();
+                ui.add_space(12.0);
                 ui.vertical(|ui| {
-                    ui.set_width(184.0);
+                    ui.set_width(198.0);
                     ui.strong("RGB");
                     compact_color_slider(ui, "Red", "R", &mut active.r);
                     compact_color_slider(ui, "Green", "G", &mut active.g);
@@ -1100,9 +1099,9 @@ impl PaintApp {
                         );
                         let response = ui
                             .add_sized(
-                                [138.0, 20.0],
+                                [152.0, 20.0],
                                 egui::TextEdit::singleline(&mut self.hex_input)
-                                    .desired_width(138.0),
+                                    .desired_width(152.0),
                             )
                             .accessible_name("Hex color");
                         if response.changed() {
@@ -1261,7 +1260,7 @@ impl PaintApp {
         if self.panels_floating && self.colors_visible {
             let mut open = self.colors_visible;
             let frame = floating_window_frame(&context, self.colors_window_rect);
-            let colors_width = if self.colors_expanded { 402.0 } else { 216.0 };
+            let colors_width = if self.colors_expanded { 402.0 } else { 206.0 };
             if let Some(inner) = egui::Window::new("Colors")
                 .open(&mut open)
                 .title_bar(false)
@@ -1270,7 +1269,7 @@ impl PaintApp {
                 .default_pos(egui::pos2(20.0, 470.0))
                 .fixed_size(egui::vec2(
                     colors_width,
-                    if self.colors_expanded { 420.0 } else { 330.0 },
+                    if self.colors_expanded { 330.0 } else { 250.0 },
                 ))
                 .show(&context, |ui| self.colors_content(ui))
             {
