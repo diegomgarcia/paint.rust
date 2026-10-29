@@ -3,6 +3,7 @@
 use paint_core::Bgra;
 
 mod app;
+mod checkerboard;
 mod colors;
 pub mod headless;
 mod icons;

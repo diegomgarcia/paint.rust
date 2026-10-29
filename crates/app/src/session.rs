@@ -1,8 +1,15 @@
-use paint_core::{Bgra, Point, Rect, Surface};
+use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, DocumentError, Layer, LayerId, PatchError, PixelPatch, Revision};
 use sha2::{Digest, Sha256};
 
 use crate::{Command, ResourceLimitError, SemanticSnapshot, SessionError, snapshot};
+
+/// Bounds applied to externally supplied traces and session operations.
+/// Selected pixels detached from the layer while they are being moved.
+pub struct FloatingSelection {
+    pub surface: Surface,
+    pub bounds: Rect,
+}
 
 /// Bounds applied to externally supplied traces and session operations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -298,6 +305,61 @@ impl AppSession {
             self.document.set_selection(Some(rect))?;
         }
         Ok(moved)
+    }
+
+    /// Lifts the selected pixels into a floating surface and clears their source area.
+    pub fn lift_selection(&mut self) -> Result<Option<FloatingSelection>, SessionError> {
+        let Some(bounds) = self
+            .document
+            .selection()
+            .and_then(|selection| selection.clip_to(self.document.size()))
+        else {
+            return Ok(None);
+        };
+        let layer = self.document.active_layer();
+        let size = Size::new(bounds.width(), bounds.height())
+            .map_err(|_| SessionError::DocumentInvariant("invalid floating selection size"))?;
+        let mut surface = Surface::new(size)?;
+        for y in 0..bounds.height() {
+            for x in 0..bounds.width() {
+                let point = Point::new(
+                    (bounds.left() as u32).saturating_add(x),
+                    (bounds.top() as u32).saturating_add(y),
+                );
+                let pixel = *layer.surface().pixel(point)?;
+                let target = Point::new(x, y);
+                surface.set_pixel(target, pixel)?;
+            }
+        }
+        let patch = paint_raster::fill(
+            &self.document,
+            self.document.active_layer_id(),
+            Bgra::TRANSPARENT,
+        )?;
+        if let Some(patch) = patch {
+            self.apply_new_mutation(Mutation::Pixels(patch))?;
+        }
+        Ok(Some(FloatingSelection { surface, bounds }))
+    }
+
+    /// Composites a floating surface at the given canvas destination.
+    pub fn stamp_floating(
+        &mut self,
+        surface: &Surface,
+        dest_x: i64,
+        dest_y: i64,
+    ) -> Result<bool, SessionError> {
+        let patch = paint_raster::stamp(
+            &self.document,
+            self.document.active_layer_id(),
+            surface,
+            dest_x,
+            dest_y,
+        )?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
     }
 
     pub fn fill_ellipse(&mut self, rect: Rect, color: Bgra) -> Result<bool, SessionError> {

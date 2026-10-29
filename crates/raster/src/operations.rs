@@ -729,3 +729,66 @@ pub fn recolor_stroke(
         after,
     )?))
 }
+
+/// Composites a detached floating surface onto a layer at `dest`, clipped to the canvas.
+pub fn stamp(
+    document: &Document,
+    layer_id: LayerId,
+    surface: &paint_core::Surface,
+    dest_x: i64,
+    dest_y: i64,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let requested = Rect::new(
+        dest_x,
+        dest_y,
+        dest_x + i64::from(surface.width()),
+        dest_y + i64::from(surface.height()),
+    )?;
+    let Some(rect) = requested.clip_to(document.size()) else {
+        return Ok(None);
+    };
+    let before = layer.surface().read_region(rect)?;
+    let width = i64::from(rect.width());
+    let mut after = before.clone();
+    for y in 0..i64::from(rect.height()) {
+        for x in 0..width {
+            let source_x = rect.left() + x - dest_x;
+            let source_y = rect.top() + y - dest_y;
+            let source =
+                surface.pixels()[(source_y * i64::from(surface.width()) + source_x) as usize];
+            if source.a == 0 {
+                continue;
+            }
+            let index = (y * width + x) as usize;
+            let target = after[index];
+            let source_a = u16::from(source.a);
+            let target_a = u16::from(target.a);
+            let inverse = 255 - source_a;
+            let out_a = source_a + target_a * inverse / 255;
+            if out_a == 0 {
+                after[index] = Bgra::TRANSPARENT;
+                continue;
+            }
+            let blend = |s: u8, t: u8| {
+                ((u16::from(s) * source_a + u16::from(t) * target_a * inverse / 255) / out_a) as u8
+            };
+            after[index] = Bgra::new(
+                blend(source.r, target.r),
+                blend(source.g, target.g),
+                blend(source.b, target.b),
+                out_a as u8,
+            );
+        }
+    }
+    if after == before {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}

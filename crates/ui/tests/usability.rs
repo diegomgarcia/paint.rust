@@ -1440,3 +1440,28 @@ fn moving_selected_pixels_also_moves_the_selection_outline() {
     assert_eq!(after.right(), before.right() + 5);
     assert_eq!(after.bottom(), before.bottom() + 3);
 }
+
+#[test]
+fn moving_pixels_lifts_once_and_reuses_the_floating_selection() {
+    let mut harness = app();
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(6.0, 6.0), egui::vec2(26.0, 18.0));
+    click(&mut harness, "Move Selected Pixels");
+    let before = harness.state().history_entries().len();
+    drag_canvas(&mut harness, egui::vec2(10.0, 10.0), egui::vec2(15.0, 13.0));
+    let after_first = harness.state().history_entries().len();
+    assert_eq!(after_first, before + 1, "first move should lift once");
+    drag_canvas(&mut harness, egui::vec2(15.0, 13.0), egui::vec2(20.0, 16.0));
+    let after_second = harness.state().history_entries().len();
+    assert_eq!(
+        after_second, after_first,
+        "second move must reuse the floating pixels instead of cutting again"
+    );
+    click(&mut harness, "Paintbrush");
+    let after_tool = harness.state().history_entries().len();
+    assert_eq!(
+        after_tool,
+        after_second + 1,
+        "tool change should place pixels"
+    );
+}

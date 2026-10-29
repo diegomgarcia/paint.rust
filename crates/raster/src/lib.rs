@@ -10,7 +10,7 @@ use thiserror::Error;
 pub use compose::{compose, normal_over};
 pub use operations::{
     fill, fill_active, fill_ellipse, fill_rect, flip_horizontal, flip_vertical, flood_fill,
-    global_fill, invert, invert_active, linear_gradient, recolor, recolor_stroke, stroke,
+    global_fill, invert, invert_active, linear_gradient, recolor, recolor_stroke, stamp, stroke,
     translate,
 };
 

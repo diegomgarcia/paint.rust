@@ -7,6 +7,7 @@ use paint_app::{AppSession, Command};
 use paint_core::{Bgra, Point, Rect, Size};
 use paint_document::{Document, LayerId};
 
+use crate::checkerboard::paint_checkerboard;
 use crate::colors::{
     ColorSlot, PRESET_COLORS, color_slots_widget, color_swatch, color_wheel, compact_color_slider,
     format_hex_color, hsv_from_color, hsv_gradient_slider, mix_bgra,
@@ -24,6 +25,15 @@ const MAX_PREVIEW_DECODED_BYTES: usize = 64 * 1024 * 1024;
 const PREVIEW_WIDTH: f32 = 180.0;
 const PREVIEW_HEIGHT: f32 = 140.0;
 const MAX_BROWSER_ENTRIES: usize = 200;
+
+struct FloatingSelectionState {
+    floating: paint_app::FloatingSelection,
+    texture: egui::TextureHandle,
+    offset_x: i64,
+    offset_y: i64,
+    base_x: i64,
+    base_y: i64,
+}
 
 /// Original development-preview shell. `AppSession` remains the only document writer.
 pub struct PaintApp {
@@ -72,6 +82,8 @@ pub struct PaintApp {
     zoom: f32,
     fit_canvas_requested: bool,
     layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
+    floating_selection: Option<FloatingSelectionState>,
+    floating_generation: u64,
     next_layer_number: usize,
     status: String,
     path_dialog: Option<PathDialog>,
@@ -140,6 +152,8 @@ impl PaintApp {
             zoom: 1.0,
             fit_canvas_requested: false,
             layer_thumbnails: HashMap::new(),
+            floating_selection: None,
+            floating_generation: 0,
             next_layer_number: 1,
             status: "New 800×600 opaque-white document".to_owned(),
             path_dialog: None,
@@ -238,6 +252,7 @@ impl PaintApp {
     }
 
     fn show_path_dialog(&mut self, kind: PathDialogKind) {
+        self.finalize_floating_selection();
         self.path_dialog = Some(PathDialog::new(kind));
     }
 
@@ -248,6 +263,7 @@ impl PaintApp {
     }
 
     fn request_new(&mut self) {
+        self.finalize_floating_selection();
         if self.session.dirty() {
             self.request_discard(DiscardAction::NewDocument);
         } else {
@@ -293,6 +309,9 @@ impl PaintApp {
     }
 
     fn execute(&mut self, command: Command, success: impl Into<String>) -> bool {
+        if !matches!(command, Command::SelectRect(_)) {
+            self.finalize_floating_selection();
+        }
         let history_label = history_label(&command);
         let is_undo = matches!(command, Command::Undo);
         let is_redo = matches!(command, Command::Redo);
@@ -350,6 +369,66 @@ impl PaintApp {
             Err(error) => {
                 self.status = format!("Selection failed: {error}");
             }
+        }
+    }
+
+    fn lift_floating_selection(&mut self, context: &egui::Context) -> bool {
+        if self.floating_selection.is_some() {
+            return true;
+        }
+        match self.session.lift_selection() {
+            Ok(Some(floating)) => {
+                self.floating_generation += 1;
+                let texture = surface_thumbnail_texture(
+                    context,
+                    format!("paint-r-floating-{}", self.floating_generation),
+                    &floating.surface,
+                    floating.surface.width() as f32,
+                    floating.surface.height() as f32,
+                );
+                self.floating_selection = Some(FloatingSelectionState {
+                    floating,
+                    texture,
+                    offset_x: 0,
+                    offset_y: 0,
+                    base_x: 0,
+                    base_y: 0,
+                });
+                self.history_entries
+                    .push("Lifted selected pixels".to_owned());
+                self.redo_entries.clear();
+                self.texture_dirty = true;
+                self.status = "Lifted selected pixels; drag to place them".to_owned();
+                true
+            }
+            Ok(None) => false,
+            Err(error) => {
+                self.status = format!("Could not lift the selection: {error}");
+                false
+            }
+        }
+    }
+
+    fn finalize_floating_selection(&mut self) {
+        let Some(floating) = self.floating_selection.take() else {
+            return;
+        };
+        let dest_x = floating.floating.bounds.left() + floating.offset_x;
+        let dest_y = floating.floating.bounds.top() + floating.offset_y;
+        match self
+            .session
+            .stamp_floating(&floating.floating.surface, dest_x, dest_y)
+        {
+            Ok(changed) => {
+                if changed {
+                    self.history_entries
+                        .push("Moved selected pixels".to_owned());
+                    self.redo_entries.clear();
+                }
+                self.texture_dirty = true;
+                self.status = "Placed the moved pixels".to_owned();
+            }
+            Err(error) => self.status = format!("Could not place the moved pixels: {error}"),
         }
     }
 
@@ -594,6 +673,7 @@ impl PaintApp {
                     let select = ui.button("Rectangle Select");
                     focus_first_menu_item_on_keyboard_open(ui, &select);
                     if select.clicked() {
+                        self.finalize_floating_selection();
                         self.active_tool = Tool::Select;
                         self.picking_color = false;
                         ui.close();
@@ -615,6 +695,9 @@ impl PaintApp {
                     ];
                     for (label, tool) in tools {
                         if ui.button(label).clicked() {
+                            if self.active_tool != tool {
+                                self.finalize_floating_selection();
+                            }
                             self.active_tool = tool;
                             if tool == Tool::Shapes {
                                 self.shape_mode = if label.contains("Ellipse") {
@@ -759,6 +842,9 @@ impl PaintApp {
                 )
                 .clicked()
                 {
+                    if self.active_tool != $tool {
+                        self.finalize_floating_selection();
+                    }
                     self.active_tool = $tool;
                     self.picking_color = $tool == Tool::Picker;
                 }
@@ -1586,7 +1672,23 @@ impl PaintApp {
                         });
                         let response = response.on_hover_cursor(egui::CursorIcon::Crosshair);
                         if ui.is_rect_visible(rect) {
+                            paint_checkerboard(ui.painter(), rect);
                             egui::Image::from_texture(&texture).paint_at(ui, rect);
+                        }
+                        if let Some(floating) = &self.floating_selection {
+                            let min = rect.min
+                                + egui::vec2(
+                                    (floating.floating.bounds.left() + floating.offset_x) as f32
+                                        * zoom,
+                                    (floating.floating.bounds.top() + floating.offset_y) as f32
+                                        * zoom,
+                                );
+                            let size = egui::vec2(
+                                floating.floating.bounds.width() as f32 * zoom,
+                                floating.floating.bounds.height() as f32 * zoom,
+                            );
+                            egui::Image::from_texture(&floating.texture)
+                                .paint_at(ui, egui::Rect::from_min_size(min, size));
                         }
                         let phase = ui.input(|input| input.time) as f32;
                         let dragging_selection = matches!(
@@ -1682,11 +1784,29 @@ impl PaintApp {
                                 if is_paint {
                                     self.paint_points.push(point);
                                 }
+                                if self.active_tool == Tool::Move
+                                    && self.session.document().selection().is_some()
+                                {
+                                    self.lift_floating_selection(ui.ctx());
+                                    if let Some(floating) = self.floating_selection.as_mut() {
+                                        floating.base_x = floating.offset_x;
+                                        floating.base_y = floating.offset_y;
+                                    }
+                                }
                             }
                             if response.dragged()
                                 && let Some(point) = point()
                             {
                                 self.drag_current = Some(point);
+                                if self.active_tool == Tool::Move
+                                    && let (Some(start), Some(floating)) =
+                                        (self.drag_start.as_ref(), self.floating_selection.as_mut())
+                                {
+                                    floating.offset_x =
+                                        floating.base_x + i64::from(point.x) - i64::from(start.x);
+                                    floating.offset_y =
+                                        floating.base_y + i64::from(point.y) - i64::from(start.y);
+                                }
                                 if is_paint && self.paint_points.last() != Some(&point) {
                                     self.paint_points.push(point);
                                 }
@@ -1780,17 +1900,30 @@ impl PaintApp {
                                         ))
                                     }
                                     Tool::Move => {
-                                        let dx = i64::from(end.x) - i64::from(start.x);
-                                        let dy = i64::from(end.y) - i64::from(start.y);
-                                        (dx != 0 || dy != 0).then(|| {
-                                            (
-                                                Command::Move {
-                                                    dx: dx as i32,
-                                                    dy: dy as i32,
-                                                },
-                                                "Moved selected pixels".to_owned(),
-                                            )
-                                        })
+                                        if let Some(floating) = &self.floating_selection {
+                                            let bounds = floating.floating.bounds;
+                                            if let Ok(rect) = Rect::new(
+                                                bounds.left() + floating.offset_x,
+                                                bounds.top() + floating.offset_y,
+                                                bounds.right() + floating.offset_x,
+                                                bounds.bottom() + floating.offset_y,
+                                            ) {
+                                                pending_selection = Some(rect);
+                                            }
+                                            None
+                                        } else {
+                                            let dx = i64::from(end.x) - i64::from(start.x);
+                                            let dy = i64::from(end.y) - i64::from(start.y);
+                                            (dx != 0 || dy != 0).then(|| {
+                                                (
+                                                    Command::Move {
+                                                        dx: dx as i32,
+                                                        dy: dy as i32,
+                                                    },
+                                                    "Moved selected pixels".to_owned(),
+                                                )
+                                            })
+                                        }
                                     }
                                     Tool::Pencil | Tool::Brush | Tool::Eraser => {
                                         let points = if self.paint_points.is_empty() {
@@ -1842,7 +1975,38 @@ impl PaintApp {
                                     self.active_tool,
                                     Tool::Move | Tool::MoveSelection
                                 ) {
-                                    if let Some(selection) = self.session.document().selection() {
+                                    if let Some(floating) = &self.floating_selection {
+                                        let min = rect.min
+                                            + egui::vec2(
+                                                (floating.floating.bounds.left()
+                                                    + floating.offset_x)
+                                                    as f32
+                                                    * zoom,
+                                                (floating.floating.bounds.top() + floating.offset_y)
+                                                    as f32
+                                                    * zoom,
+                                            );
+                                        let max = rect.min
+                                            + egui::vec2(
+                                                (floating.floating.bounds.right()
+                                                    + floating.offset_x)
+                                                    as f32
+                                                    * zoom,
+                                                (floating.floating.bounds.bottom()
+                                                    + floating.offset_y)
+                                                    as f32
+                                                    * zoom,
+                                            );
+                                        let preview = egui::Rect::from_min_max(min, max);
+                                        ui.painter().rect_filled(
+                                            preview,
+                                            0,
+                                            egui::Color32::from_white_alpha(20),
+                                        );
+                                        paint_selection_outline(ui.painter(), preview, phase);
+                                    } else if let Some(selection) =
+                                        self.session.document().selection()
+                                    {
                                         let dx = i64::from(end.x) - i64::from(start.x);
                                         let dy = i64::from(end.y) - i64::from(start.y);
                                         let min = rect.min

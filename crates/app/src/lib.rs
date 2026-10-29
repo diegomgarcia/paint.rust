@@ -9,7 +9,7 @@ mod trace;
 
 pub use command::Command;
 pub use error::{ExpectationError, ExpectationField, ResourceLimitError, SessionError, TraceError};
-pub use session::{AppSession, ResourceLimits};
+pub use session::{AppSession, FloatingSelection, ResourceLimits};
 pub use snapshot::{
     LayerSnapshot, SNAPSHOT_FORMAT, SNAPSHOT_VERSION, SelectionSnapshot, SemanticSnapshot,
 };
