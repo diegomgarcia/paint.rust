@@ -394,7 +394,7 @@ pub(crate) fn hsv_gradient_slider(
                 ui.label(short);
             },
         );
-        let width = 94.0;
+        let width = 102.0;
         let (rect, response) =
             ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
         response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, label));
@@ -464,7 +464,7 @@ fn gradient_slider(
     value: &mut u8,
     channel: GradientChannel,
 ) {
-    let width = 94.0;
+    let width = 102.0;
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, label));

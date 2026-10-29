@@ -967,73 +967,92 @@ impl PaintApp {
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
                     ui.set_width(left_width);
-                    ui.horizontal(|ui| {
-                        let (slot, bounds) = color_slots_widget(
-                            ui,
-                            self.fill_color,
-                            self.secondary_color,
-                            self.active_color_slot,
-                        );
-                        if let Some(slot) = slot {
-                            self.active_color_slot = slot;
-                        }
-                        let swap_rect = egui::Rect::from_min_size(
-                            bounds.min + egui::vec2(40.0, 0.0),
-                            egui::vec2(16.0, 16.0),
-                        );
-                        if icon_button_at(
-                            ui,
-                            &self.icons,
-                            swap_rect,
-                            Icon::SwapColors,
-                            "Swap colors",
+                    let palette_height = if self.colors_expanded { 72.0 } else { 24.0 };
+                    let area_height = 178.0 + palette_height;
+                    let (area, _) = ui.allocate_exact_size(
+                        egui::vec2(left_width, area_height),
+                        egui::Sense::hover(),
+                    );
+
+                    let slots_rect = egui::Rect::from_min_size(area.min, egui::vec2(64.0, 54.0));
+                    let mut slots_ui = ui.new_child(egui::UiBuilder::new().max_rect(slots_rect));
+                    let (slot, bounds) = color_slots_widget(
+                        &mut slots_ui,
+                        self.fill_color,
+                        self.secondary_color,
+                        self.active_color_slot,
+                    );
+                    if let Some(slot) = slot {
+                        self.active_color_slot = slot;
+                    }
+                    let swap_rect = egui::Rect::from_min_size(
+                        bounds.min + egui::vec2(40.0, 0.0),
+                        egui::vec2(16.0, 16.0),
+                    );
+                    if icon_button_at(ui, &self.icons, swap_rect, Icon::SwapColors, "Swap colors")
+                        .clicked()
+                    {
+                        self.swap_colors();
+                        active = self.active_color();
+                        self.hex_input = format_hex_color(active);
+                        self.hex_error = None;
+                    }
+                    let reset_rect = egui::Rect::from_min_size(
+                        bounds.min + egui::vec2(0.0, 38.0),
+                        egui::vec2(16.0, 16.0),
+                    );
+                    if icon_button_at(
+                        ui,
+                        &self.icons,
+                        reset_rect,
+                        Icon::ResetColors,
+                        "Reset to black and white",
+                    )
+                    .clicked()
+                    {
+                        self.reset_colors();
+                        active = self.active_color();
+                    }
+
+                    let more_rect = egui::Rect::from_min_size(
+                        area.min + egui::vec2(left_width - 60.0, 0.0),
+                        egui::vec2(60.0, 22.0),
+                    );
+                    let mut more_ui = ui.new_child(egui::UiBuilder::new().max_rect(more_rect));
+                    if more_ui
+                        .add_sized(
+                            [60.0, 22.0],
+                            egui::Button::new(if self.colors_expanded { "Less" } else { "More" }),
                         )
                         .clicked()
-                        {
-                            self.swap_colors();
-                            active = self.active_color();
-                            self.hex_input = format_hex_color(active);
-                            self.hex_error = None;
-                        }
-                        let reset_rect = egui::Rect::from_min_size(
-                            bounds.min + egui::vec2(0.0, 38.0),
-                            egui::vec2(16.0, 16.0),
-                        );
-                        if icon_button_at(
-                            ui,
-                            &self.icons,
-                            reset_rect,
-                            Icon::ResetColors,
-                            "Reset to black and white",
-                        )
-                        .clicked()
-                        {
-                            self.reset_colors();
-                            active = self.active_color();
-                        }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui
-                                .button(if self.colors_expanded { "Less" } else { "More" })
-                                .clicked()
-                            {
-                                self.colors_expanded = !self.colors_expanded;
-                                ui.ctx().request_repaint();
-                            }
-                        });
-                    });
+                    {
+                        self.colors_expanded = !self.colors_expanded;
+                        more_ui.ctx().request_repaint();
+                    }
+
                     if self.active_color_slot != initial_slot {
                         active = self.active_color();
                         self.hex_input = format_hex_color(active);
                         self.hex_error = None;
                     }
-                    ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if let Some(color) = color_wheel(ui, active) {
-                                active = color;
-                            }
-                        });
-                    });
-                    ui.horizontal_wrapped(|ui| {
+
+                    let wheel_rect = egui::Rect::from_min_size(
+                        area.min + egui::vec2(42.0, 24.0),
+                        egui::vec2(150.0, 150.0),
+                    );
+                    let mut wheel_ui = ui.new_child(egui::UiBuilder::new().max_rect(wheel_rect));
+                    if let Some(color) = color_wheel(&mut wheel_ui, active) {
+                        active = color;
+                    }
+
+                    let palette_rect = egui::Rect::from_min_size(
+                        area.min + egui::vec2(0.0, 178.0),
+                        egui::vec2(192.0, palette_height),
+                    );
+                    let mut palette_ui =
+                        ui.new_child(egui::UiBuilder::new().max_rect(palette_rect));
+                    palette_ui.set_width(192.0);
+                    palette_ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
                         for &(label, preset) in PRESET_COLORS {
                             let mut select = |color: Bgra, label: &str| {
@@ -1065,7 +1084,7 @@ impl PaintApp {
                 ui.add_space(4.0);
                 ui.separator();
                 ui.vertical(|ui| {
-                    ui.set_width(176.0);
+                    ui.set_width(184.0);
                     ui.strong("RGB");
                     compact_color_slider(ui, "Red", "R", &mut active.r);
                     compact_color_slider(ui, "Green", "G", &mut active.g);
@@ -1081,9 +1100,9 @@ impl PaintApp {
                         );
                         let response = ui
                             .add_sized(
-                                [142.0, 20.0],
+                                [150.0, 20.0],
                                 egui::TextEdit::singleline(&mut self.hex_input)
-                                    .desired_width(142.0),
+                                    .desired_width(150.0),
                             )
                             .accessible_name("Hex color");
                         if response.changed() {
