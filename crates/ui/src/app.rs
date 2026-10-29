@@ -78,6 +78,17 @@ pub struct PaintApp {
 
 impl PaintApp {
     pub fn new(creation_context: &eframe::CreationContext<'_>) -> Self {
+        Self::new_with_panels(creation_context, true)
+    }
+
+    pub fn new_docked(creation_context: &eframe::CreationContext<'_>) -> Self {
+        Self::new_with_panels(creation_context, false)
+    }
+
+    fn new_with_panels(
+        creation_context: &eframe::CreationContext<'_>,
+        panels_floating: bool,
+    ) -> Self {
         let icons = IconTextures::load(&creation_context.egui_ctx);
         let mut app = Self {
             session: default_session(),
@@ -89,7 +100,7 @@ impl PaintApp {
             tools_floating: true,
             colors_visible: true,
             layers_visible: true,
-            panels_floating: false,
+            panels_floating,
             picking_color: false,
             active_tool: Tool::Select,
             brush_size: 45,
@@ -628,16 +639,16 @@ impl PaintApp {
                 tool!(ui, Icon::Move, "Move Selected Pixels", Tool::Move);
                 ui.end_row();
                 tool!(ui, Icon::Zoom, "Zoom", Tool::Zoom);
-                tool!(ui, Icon::Fill, "Paint Bucket", Tool::Fill);
-                ui.end_row();
                 tool!(ui, Icon::Pan, "Pan", Tool::Pan);
+                ui.end_row();
+                tool!(ui, Icon::Fill, "Paint Bucket", Tool::Fill);
                 tool!(ui, Icon::Gradient, "Gradient", Tool::Gradient);
                 ui.end_row();
-                tool!(ui, Icon::EyeDropper, "Color Picker", Tool::Picker);
                 tool!(ui, Icon::Brush, "Paintbrush", Tool::Brush);
-                ui.end_row();
                 tool!(ui, Icon::Eraser, "Eraser", Tool::Eraser);
+                ui.end_row();
                 tool!(ui, Icon::Pencil, "Pencil", Tool::Pencil);
+                tool!(ui, Icon::EyeDropper, "Color Picker", Tool::Picker);
                 ui.end_row();
                 tool!(ui, Icon::Recolor, "Recolor", Tool::Recolor);
                 tool!(ui, Icon::Line, "Line / Curve", Tool::Line);
@@ -823,14 +834,15 @@ impl PaintApp {
     fn layers_content(&mut self, ui: &mut egui::Ui) {
         let mut pending = None;
         ui.horizontal(|ui| {
-            ui.heading("Layers");
+            if !self.panels_floating {
+                ui.heading("Layers");
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if icon_button(ui, &self.icons, Icon::AddLayer, "New Layer", true).clicked() {
                     self.add_layer();
                 }
             });
         });
-        ui.label("Ordered bottom to top; displayed topmost first.");
         ui.separator();
         egui::ScrollArea::vertical()
             .id_salt("paint-r-layer-list")
@@ -850,7 +862,7 @@ impl PaintApp {
                                         ui.add(
                                             egui::Image::from_texture(&thumbnail.texture)
                                                 .maintain_aspect_ratio(true)
-                                                .fit_to_exact_size(egui::vec2(48.0, 38.0))
+                                                .fit_to_exact_size(egui::vec2(32.0, 26.0))
                                                 .alt_text(format!(
                                                     "Layer {index} thumbnail: {}",
                                                     layer.name()
@@ -859,32 +871,27 @@ impl PaintApp {
                                     });
                             }
                             ui.vertical(|ui| {
-                                if ui
-                                    .selectable_label(
-                                        active,
+                                let active_label =
+                                    ui.selectable_label(active, layer.name()).accessible_name(
                                         format!("Active layer {index}: {}", layer.name()),
-                                    )
-                                    .clicked()
-                                {
+                                    );
+                                if active_label.clicked() {
                                     pending = Some(Command::SetActiveLayer { index });
                                 }
                                 let mut visible = layer.is_visible();
-                                if ui
-                                    .checkbox(&mut visible, format!("Layer {index} visible"))
-                                    .changed()
-                                {
+                                let visible_response = ui
+                                    .checkbox(&mut visible, "Visible")
+                                    .accessible_name(format!("Layer {index} visible"));
+                                if visible_response.changed() {
                                     pending = Some(Command::SetLayerVisibility { index, visible });
                                 }
                             });
                         });
                         let mut opacity = layer.opacity();
-                        if ui
-                            .add(
-                                egui::Slider::new(&mut opacity, 0..=u8::MAX)
-                                    .text(format!("Layer {index} opacity")),
-                            )
-                            .changed()
-                        {
+                        let opacity_response = ui
+                            .add(egui::Slider::new(&mut opacity, 0..=u8::MAX).text("Opacity"))
+                            .accessible_name(format!("Layer {index} opacity"));
+                        if opacity_response.changed() {
                             pending = Some(Command::SetLayerOpacity { index, opacity });
                         }
                     });
@@ -926,7 +933,9 @@ impl PaintApp {
     }
 
     fn colors_content(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Colors");
+        if !self.panels_floating {
+            ui.heading("Colors");
+        }
         let initial_slot = self.active_color_slot;
         let mut active = self.active_color();
         let initial_color = active;
@@ -940,15 +949,25 @@ impl PaintApp {
                 self.active_color_slot = slot;
             }
             ui.vertical(|ui| {
-                if ui.button("Swap colors").clicked() {
+                let swap = ui.button("Swap").accessible_name("Swap colors");
+                if swap.clicked() {
                     self.swap_colors();
                     active = self.active_color();
                     self.hex_input = format_hex_color(active);
                     self.hex_error = None;
                 }
-                if ui.button("Reset to black and white").clicked() {
+                let reset = ui
+                    .button("Reset")
+                    .accessible_name("Reset to black and white");
+                if reset.clicked() {
                     self.reset_colors();
                     active = self.active_color();
+                }
+                if ui
+                    .button(if self.colors_expanded { "Less" } else { "More" })
+                    .clicked()
+                {
+                    self.colors_expanded = !self.colors_expanded;
                 }
             });
         });
@@ -957,16 +976,13 @@ impl PaintApp {
             self.hex_input = format_hex_color(active);
             self.hex_error = None;
         }
-        let slot_name = match self.active_color_slot {
-            ColorSlot::Primary => "Primary",
-            ColorSlot::Secondary => "Secondary",
-        };
-        ui.label(format!("Active color: {slot_name}"));
-        ui.horizontal(|ui| {
-            let label = ui.label("Hex color");
-            let _response = ui
-                .text_edit_singleline(&mut self.hex_input)
-                .labelled_by(label.id);
+        if self.colors_expanded {
+            ui.horizontal(|ui| {
+                let label = ui.label("Hex color");
+                let _response = ui
+                    .text_edit_singleline(&mut self.hex_input)
+                    .labelled_by(label.id);
+            });
             if ui.button("Apply color").clicked() {
                 match crate::color_from_hex(&self.hex_input) {
                     Ok(parsed) => {
@@ -977,25 +993,18 @@ impl PaintApp {
                     Err(error) => self.hex_error = Some(error),
                 }
             }
-            if ui
-                .button(if self.colors_expanded { "Less" } else { "More" })
-                .clicked()
-            {
-                self.colors_expanded = !self.colors_expanded;
-            }
-        });
+        }
         if let Some(error) = &self.hex_error {
             ui.colored_label(
                 egui::Color32::LIGHT_RED,
                 format!("Invalid hex color: {error}"),
             );
         }
-        ui.label("Color wheel");
         if let Some(color) = color_wheel(ui, active) {
             active = color;
         }
-        ui.label("Palette");
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
             for &(label, preset) in PRESET_COLORS {
                 let response = color_swatch(ui, label, preset, preset == active);
                 if response.clicked() {
@@ -1064,24 +1073,23 @@ impl PaintApp {
             self.hex_input = format_hex_color(active);
             self.hex_error = None;
         }
-        ui.colored_label(
-            egui::Color32::from_rgba_unmultiplied(active.r, active.g, active.b, active.a),
-            format!(
-                "BGRA {}, {}, {}, {}",
-                active.b, active.g, active.r, active.a
-            ),
-        );
+        if self.colors_expanded {
+            ui.colored_label(
+                egui::Color32::from_rgba_unmultiplied(active.r, active.g, active.b, active.a),
+                format!(
+                    "BGRA {}, {}, {}, {}",
+                    active.b, active.g, active.r, active.a
+                ),
+            );
+        }
     }
 
     fn right_dock(&mut self, ui: &mut egui::Ui) {
         egui::Panel::right("paint-r-right-dock")
-            .default_size(280.0)
+            .exact_size(232.0)
+            .resizable(false)
             .show(ui, |ui| {
-                let colors_height = if self.colors_expanded {
-                    640.0
-                } else {
-                    (ui.available_height() * 0.60).clamp(470.0, 560.0)
-                };
+                let colors_height = if self.colors_expanded { 620.0 } else { 380.0 };
                 if self.colors_visible {
                     egui::ScrollArea::vertical()
                         .id_salt("paint-r-colors-scroll")
@@ -1127,7 +1135,7 @@ impl PaintApp {
                 .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(500.0, 260.0))
-                .default_width(220.0)
+                .default_width(200.0)
                 .show(&context, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("paint-r-floating-history-scroll")
@@ -1146,8 +1154,8 @@ impl PaintApp {
                 .open(&mut open)
                 .frame(frame)
                 .collapsible(false)
-                .default_pos(egui::pos2(20.0, 380.0))
-                .default_width(300.0)
+                .default_pos(egui::pos2(20.0, 470.0))
+                .default_width(232.0)
                 .show(&context, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("paint-r-floating-colors-scroll")
@@ -1167,7 +1175,7 @@ impl PaintApp {
                 .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(980.0, 260.0))
-                .default_width(320.0)
+                .default_width(220.0)
                 .show(&context, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("paint-r-floating-layers-scroll")
@@ -2270,10 +2278,10 @@ fn color_slots_widget(
     secondary: Bgra,
     active: ColorSlot,
 ) -> Option<ColorSlot> {
-    let (bounds, _) = ui.allocate_exact_size(egui::vec2(88.0, 74.0), egui::Sense::hover());
-    let primary_rect = egui::Rect::from_min_size(bounds.min, egui::vec2(44.0, 44.0));
+    let (bounds, _) = ui.allocate_exact_size(egui::vec2(64.0, 54.0), egui::Sense::hover());
+    let primary_rect = egui::Rect::from_min_size(bounds.min, egui::vec2(34.0, 34.0));
     let secondary_rect =
-        egui::Rect::from_min_size(bounds.min + egui::vec2(32.0, 28.0), egui::vec2(44.0, 44.0));
+        egui::Rect::from_min_size(bounds.min + egui::vec2(24.0, 20.0), egui::vec2(34.0, 34.0));
     let secondary_response = ui.interact(
         secondary_rect,
         ui.make_persistent_id("paint-r-secondary-color"),
@@ -2390,7 +2398,7 @@ fn hsv_from_color(color: Bgra) -> (f32, f32, f32) {
 }
 
 fn color_wheel(ui: &mut egui::Ui, current: Bgra) -> Option<Bgra> {
-    let diameter = ui.available_width().clamp(96.0, 170.0);
+    let diameter = ui.available_width().clamp(96.0, 150.0);
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(diameter, diameter), egui::Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Color wheel"));
@@ -2470,7 +2478,7 @@ fn color_swatch(
     color: Bgra,
     selected: bool,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(24.0, 24.0), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();

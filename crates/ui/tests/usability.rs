@@ -11,7 +11,7 @@ use paint_ui::PaintApp;
 use tempfile::TempDir;
 
 fn app() -> Harness<'static, PaintApp> {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new_docked(cc));
     harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
     harness.run();
     harness
@@ -447,6 +447,7 @@ fn colors_window_supports_primary_secondary_swap_and_reset() {
     assert_eq!(harness.state().secondary_color(), Bgra::WHITE);
 
     click(&mut harness, "Secondary color");
+    click(&mut harness, "More");
     replace_field(&mut harness, "Hex color", "#112233");
     click(&mut harness, "Apply color");
     assert_eq!(harness.state().fill_color(), Bgra::BLACK);
@@ -489,8 +490,8 @@ fn window_menu_can_float_and_dock_the_color_and_layer_panels() {
     menu_item(&mut harness, "Window", "Float Panels");
     assert!(harness.state().panels_floating());
     harness.get_by_role_and_label(Role::Button, "Rectangle Select");
-    harness.get_by_role_and_label(Role::Label, "Colors");
-    harness.get_by_role_and_label(Role::Label, "Layers");
+    harness.get_by_role_and_label(Role::Button, "Swap colors");
+    harness.get_by_role_and_label(Role::Button, "New Layer");
     menu_item(&mut harness, "Window", "Dock Panels");
     assert!(!harness.state().panels_floating());
     harness.get_by_role_and_label(Role::Button, "New Layer");
@@ -511,6 +512,7 @@ fn hex_color_input_applies_exact_rgb_and_alpha() {
 
     let mut harness = app();
     let before = harness.state().session().document().clone();
+    click(&mut harness, "More");
     replace_field(&mut harness, "Hex color", "#FF8000");
     click(&mut harness, "Apply color");
 
@@ -1070,4 +1072,14 @@ fn pan_tool_drags_without_editing_the_document() {
     );
     assert!(!harness.state().session().dirty());
     assert!(!harness.state().session().can_undo());
+}
+
+#[test]
+fn default_shell_uses_floating_compact_side_windows() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    assert!(harness.state().panels_floating());
+    harness.get_by_role_and_label(Role::Button, "Swap colors");
+    harness.get_by_role_and_label(Role::Button, "New Layer");
 }

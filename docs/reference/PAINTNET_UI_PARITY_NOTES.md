@@ -102,3 +102,42 @@ are recorded as remaining parity work.
   Rectangle Select, Move, Zoom, Paint Bucket, Pan, Gradient, Color Picker, Paintbrush,
   Eraser, Pencil, Recolor, Line, Rectangle, Ellipse.
 - Pan is implemented as a non-editing canvas scroll action.
+
+### Exact tool order from runtime tooltips
+
+The 20 Paint.NET 5.1.12 toolbox cells, confirmed by hovering each real cell and reading
+the tooltip, are:
+
+1. Rectangle Select
+2. Move Selected Pixels
+3. Lasso Select
+4. Move Selection
+5. Ellipse Select
+6. Zoom
+7. Magic Wand
+8. Pan
+9. Paint Bucket
+10. Gradient
+11. Paintbrush
+12. Eraser
+13. Pencil
+14. Color Picker
+15. Clone Stamp
+16. Recolor
+17. Text
+18. Line / Curve
+19. Shapes
+20. Shapes (second shape mode)
+
+Paint.R currently implements the subset at the same relative order:
+Rectangle Select, Move Selected Pixels, Zoom, Pan, Paint Bucket, Gradient, Paintbrush,
+Eraser, Pencil, Color Picker, Recolor, Line, Rectangle, Ellipse.
+
+### Floating window sizes
+
+Measured real window bounds at 100% DPI: Tools `67×292`, Colors `225×256`,
+Layers `196×219`, History `196×219`. Paint.R now defaults Colors and Layers to floating
+windows instead of one large right dock. The compact Colors panel is 232 px wide, uses a
+150 px wheel and a single-row palette; the palette label and extra headings were removed.
+The docked test mode remains available through `PaintApp::new_docked` for canvas-focused
+tests.
