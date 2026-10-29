@@ -151,3 +151,12 @@ instead of text buttons, an 18 px one-row palette, a 150 px wheel, and a 232 px 
 The wheel updates the active color continuously on pointer down and drag, not only on
 click release; this is covered by the UI acceptance test
 `color_wheel_updates_primary_color_continuously_while_dragging`.
+
+### Colors refinements
+
+The real palette is a one-row strip of 16 solid 12 px swatches with no rounding and no
+gaps; expanding the Colors window reveals three rows (the base palette plus lighter and
+darker variants). The RGB/HSV/Opacity controls are gradient bars with a triangle marker
+below the bar, not standard sliders. The swap icon sits at the top of the color slots, the
+black/white reset icon sits below the slots, and More/Less is right-aligned on the top row.
+Paint.R now follows all of these.

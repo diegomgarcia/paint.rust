@@ -966,7 +966,7 @@ impl PaintApp {
         let mut active = self.active_color();
         let initial_color = active;
         ui.horizontal_top(|ui| {
-            let left_width = if self.colors_expanded { 210.0 } else { 216.0 };
+            let left_width = if self.colors_expanded { 192.0 } else { 216.0 };
             ui.allocate_ui_with_layout(
                 egui::vec2(left_width, 0.0),
                 egui::Layout::top_down(egui::Align::Min),
@@ -997,18 +997,9 @@ impl PaintApp {
                                     self.hex_input = format_hex_color(active);
                                     self.hex_error = None;
                                 }
-                                if small_icon_button(
-                                    ui,
-                                    &self.icons,
-                                    Icon::ResetColors,
-                                    "Reset to black and white",
-                                )
-                                .clicked()
-                                {
-                                    self.reset_colors();
-                                    active = self.active_color();
-                                }
                             });
+                        });
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
                                 .button(if self.colors_expanded { "Less" } else { "More" })
                                 .clicked()
@@ -1017,6 +1008,19 @@ impl PaintApp {
                                 ui.ctx().request_repaint();
                             }
                         });
+                    });
+                    ui.horizontal(|ui| {
+                        if small_icon_button(
+                            ui,
+                            &self.icons,
+                            Icon::ResetColors,
+                            "Reset to black and white",
+                        )
+                        .clicked()
+                        {
+                            self.reset_colors();
+                            active = self.active_color();
+                        }
                     });
                     if self.active_color_slot != initial_slot {
                         active = self.active_color();
@@ -1027,17 +1031,28 @@ impl PaintApp {
                         active = color;
                     }
                     ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing.x = 1.0;
+                        ui.spacing_mut().item_spacing.x = 0.0;
                         for &(label, preset) in PRESET_COLORS {
-                            let response = color_swatch(ui, label, preset, preset == active);
-                            if response.clicked() {
-                                active = preset;
-                            }
-                            if response.secondary_clicked() {
-                                match self.active_color_slot {
-                                    ColorSlot::Primary => self.secondary_color = preset,
-                                    ColorSlot::Secondary => self.fill_color = preset,
+                            let mut select = |color: Bgra, label: &str| {
+                                let response = color_swatch(ui, label, color, color == active);
+                                if response.clicked() {
+                                    active = color;
                                 }
+                                if response.secondary_clicked() {
+                                    match self.active_color_slot {
+                                        ColorSlot::Primary => self.secondary_color = color,
+                                        ColorSlot::Secondary => self.fill_color = color,
+                                    }
+                                }
+                            };
+                            select(preset, label);
+                            if self.colors_expanded {
+                                let light = mix_bgra(preset, Bgra::WHITE, 0.5);
+                                let light_label = format!("{label} light");
+                                select(light, &light_label);
+                                let dark = mix_bgra(preset, Bgra::BLACK, 0.5);
+                                let dark_label = format!("{label} dark");
+                                select(dark, &dark_label);
                             }
                         }
                     });
@@ -2318,6 +2333,16 @@ fn history_label(command: &Command) -> Option<String> {
     }
 }
 
+fn mix_bgra(from: Bgra, to: Bgra, t: f32) -> Bgra {
+    let channel = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * t).round() as u8;
+    Bgra::new(
+        channel(from.b, to.b),
+        channel(from.g, to.g),
+        channel(from.r, to.r),
+        channel(from.a, to.a),
+    )
+}
+
 fn format_hex_color(color: Bgra) -> String {
     if color.a == u8::MAX {
         format!("#{:02X}{:02X}{:02X}", color.r, color.g, color.b)
@@ -2531,60 +2556,24 @@ fn labeled_button(ui: &mut egui::Ui, text: &str, label: &'static str) -> egui::R
     response.on_hover_text(label)
 }
 
-fn color_swatch(
-    ui: &mut egui::Ui,
-    label: &'static str,
-    color: Bgra,
-    selected: bool,
-) -> egui::Response {
+fn color_swatch(ui: &mut egui::Ui, label: &str, color: Bgra, selected: bool) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(12.0, 24.0), egui::Sense::click());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label.to_owned()));
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
-        let checker = 6.0;
-        let mut y = rect.top();
-        let mut row = 0;
-        while y < rect.bottom() {
-            let mut x = rect.left();
-            let mut column = 0;
-            while x < rect.right() {
-                let cell = egui::Rect::from_min_max(
-                    egui::pos2(x, y),
-                    egui::pos2(
-                        (x + checker).min(rect.right()),
-                        (y + checker).min(rect.bottom()),
-                    ),
-                );
-                painter.rect_filled(
-                    cell,
-                    0,
-                    if (row + column) % 2 == 0 {
-                        egui::Color32::from_gray(190)
-                    } else {
-                        egui::Color32::from_gray(110)
-                    },
-                );
-                x += checker;
-                column += 1;
-            }
-            y += checker;
-            row += 1;
-        }
         painter.rect_filled(
             rect,
-            3,
+            0,
             egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
         );
         let stroke = if selected {
-            egui::Stroke::new(2.0, egui::Color32::WHITE)
-        } else if response.hovered() {
-            ui.visuals().widgets.hovered.bg_stroke
+            egui::Stroke::new(1.5, egui::Color32::WHITE)
         } else {
-            egui::Stroke::new(1.0, egui::Color32::from_gray(80))
+            egui::Stroke::new(0.5, egui::Color32::from_gray(70))
         };
-        painter.rect_stroke(rect, 3, stroke, egui::StrokeKind::Inside);
+        painter.rect_stroke(rect, 0, stroke, egui::StrokeKind::Inside);
     }
-    response.on_hover_text(label)
+    response.on_hover_text(label.to_owned())
 }
 
 fn default_session() -> AppSession {
@@ -2678,9 +2667,9 @@ fn hsv_gradient_slider(
         let arrow_x = rect.left() + t * width;
         painter.add(egui::Shape::convex_polygon(
             vec![
-                egui::pos2(arrow_x, rect.top()),
-                egui::pos2(arrow_x - 4.0, rect.top() + 8.0),
-                egui::pos2(arrow_x + 4.0, rect.top() + 8.0),
+                egui::pos2(arrow_x, rect.top() + 9.0),
+                egui::pos2(arrow_x - 4.0, rect.top() + 17.0),
+                egui::pos2(arrow_x + 4.0, rect.top() + 17.0),
             ],
             egui::Color32::WHITE,
             egui::Stroke::NONE,
