@@ -86,6 +86,19 @@ impl Layer {
         }
     }
 
+    pub fn duplicate(&self, id: LayerId, name: impl Into<String>) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            visible: self.visible,
+            opacity: self.opacity,
+            background: false,
+            blend_mode: self.blend_mode,
+            revision: Revision::ZERO,
+            surface: self.surface.clone(),
+        }
+    }
+
     pub fn with_visibility(mut self, visible: bool) -> Self {
         self.visible = visible;
         self

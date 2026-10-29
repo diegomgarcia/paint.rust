@@ -68,6 +68,23 @@ pub enum Command {
     SetActiveLayer {
         index: usize,
     },
+    /// Removes a layer while preserving at least one layer.
+    RemoveLayer {
+        index: usize,
+    },
+    /// Duplicates a layer immediately above itself.
+    DuplicateLayer {
+        index: usize,
+    },
+    /// Merges a layer down into the layer below it.
+    MergeLayerDown {
+        index: usize,
+    },
+    /// Moves a layer by a signed delta in bottom-to-top order.
+    MoveLayer {
+        index: usize,
+        offset: i32,
+    },
     SetLayerVisibility {
         index: usize,
         visible: bool,

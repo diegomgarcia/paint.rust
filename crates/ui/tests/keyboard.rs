@@ -393,10 +393,16 @@ fn keyboard_layer_visibility_opacity_and_history() {
     assert!(harness.state().session().document().layers()[1].is_visible());
     assert_composed(&harness, Bgra::BLACK);
 
-    focus(&mut harness, Role::Slider, "Layer 1 opacity");
+    harness
+        .get_by_role_and_label(Role::Button, "Layer Properties")
+        .click();
+    harness.run();
+    focus(&mut harness, Role::Slider, "Layer opacity");
     for _ in 0..64 {
         harness.key_press(Key::ArrowLeft);
     }
+    harness.run();
+    harness.get_by_role_and_label(Role::Button, "Apply").click();
     harness.run();
     assert_eq!(
         harness.state().session().document().layers()[1].opacity(),
@@ -410,10 +416,9 @@ fn keyboard_layer_visibility_opacity_and_history() {
     press_command(&mut harness, Key::Z);
     assert_eq!(
         harness.state().session().document().layers()[1].opacity(),
-        192,
-        "one Undo must revert exactly one keyboard opacity step"
+        255
     );
-    assert_composed(&harness, Bgra::new(63, 63, 63, 255));
+    assert_composed(&harness, Bgra::BLACK);
     assert!(harness.state().session().can_redo());
     press_command_shift(&mut harness, Key::Z);
     assert_eq!(

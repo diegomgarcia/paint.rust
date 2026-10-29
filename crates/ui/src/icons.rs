@@ -38,6 +38,12 @@ pub(crate) enum Icon {
     ResetColors,
     EyeDropper,
     AddLayer,
+    LayerDelete,
+    LayerDuplicate,
+    LayerMerge,
+    LayerUp,
+    LayerDown,
+    LayerSettings,
 }
 
 pub(crate) struct IconTextures {
@@ -76,6 +82,12 @@ impl IconTextures {
             Icon::ResetColors,
             Icon::EyeDropper,
             Icon::AddLayer,
+            Icon::LayerDelete,
+            Icon::LayerDuplicate,
+            Icon::LayerMerge,
+            Icon::LayerUp,
+            Icon::LayerDown,
+            Icon::LayerSettings,
         ];
         let mut textures = HashMap::with_capacity(icons.len());
         for icon in icons {
@@ -241,6 +253,12 @@ fn icon_png(icon: Icon) -> &'static [u8] {
         Icon::ResetColors => include_bytes!("../assets/lucide/reset.png"),
         Icon::EyeDropper => include_bytes!("../assets/lucide/picker.png"),
         Icon::AddLayer => include_bytes!("../assets/lucide/add-layer.png"),
+        Icon::LayerDelete => include_bytes!("../assets/lucide/layer-delete.png"),
+        Icon::LayerDuplicate => include_bytes!("../assets/lucide/layer-duplicate.png"),
+        Icon::LayerMerge => include_bytes!("../assets/lucide/layer-merge.png"),
+        Icon::LayerUp => include_bytes!("../assets/lucide/layer-up.png"),
+        Icon::LayerDown => include_bytes!("../assets/lucide/layer-down.png"),
+        Icon::LayerSettings => include_bytes!("../assets/lucide/layer-settings.png"),
     }
 }
 
@@ -275,5 +293,11 @@ fn icon_name(icon: Icon) -> &'static str {
         Icon::ResetColors => "reset",
         Icon::EyeDropper => "picker",
         Icon::AddLayer => "add-layer",
+        Icon::LayerDelete => "layer-delete",
+        Icon::LayerDuplicate => "layer-duplicate",
+        Icon::LayerMerge => "layer-merge",
+        Icon::LayerUp => "layer-up",
+        Icon::LayerDown => "layer-down",
+        Icon::LayerSettings => "layer-settings",
     }
 }

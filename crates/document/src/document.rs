@@ -217,6 +217,22 @@ impl Document {
         Ok(true)
     }
 
+    /// Duplicates a layer immediately above the source and makes it active.
+    pub fn duplicate_layer(&mut self, index: usize) -> Result<LayerId, DocumentError> {
+        let source = self
+            .layers
+            .get(index)
+            .ok_or(DocumentError::LayerIndexOutOfBounds {
+                index,
+                len: self.layers.len(),
+            })?;
+        let id = self.next_layer_id;
+        let name = format!("{} copy", source.name());
+        let duplicate = source.duplicate(id, name);
+        self.insert_layer(index + 1, duplicate)?;
+        Ok(id)
+    }
+
     pub fn remove_layer(&mut self, layer_id: LayerId) -> Result<Layer, DocumentError> {
         let index = self.index_of(layer_id)?;
         if self.layers.len() == 1 {

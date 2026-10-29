@@ -84,6 +84,10 @@ pub struct PaintApp {
     layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
     floating_selection: Option<FloatingSelectionState>,
     floating_generation: u64,
+    layer_properties_open: bool,
+    layer_properties_index: usize,
+    layer_properties_opacity: u8,
+    layer_properties_visible: bool,
     next_layer_number: usize,
     status: String,
     path_dialog: Option<PathDialog>,
@@ -154,6 +158,10 @@ impl PaintApp {
             layer_thumbnails: HashMap::new(),
             floating_selection: None,
             floating_generation: 0,
+            layer_properties_open: false,
+            layer_properties_index: 0,
+            layer_properties_opacity: u8::MAX,
+            layer_properties_visible: true,
             next_layer_number: 1,
             status: "New 800×600 opaque-white document".to_owned(),
             path_dialog: None,
@@ -784,12 +792,6 @@ impl PaintApp {
                 {
                     self.execute(Command::Redo, "Redid the next edit");
                 }
-                ui.add_space(5.0);
-                ui.separator();
-                ui.add_space(5.0);
-                if icon_button(ui, &self.icons, Icon::AddLayer, "Add Layer", true).clicked() {
-                    self.add_layer();
-                }
             });
             ui.add_space(2.0);
         });
@@ -1100,19 +1102,130 @@ impl PaintApp {
 
     fn layers_content(&mut self, ui: &mut egui::Ui) {
         let mut pending = None;
-        ui.horizontal(|ui| {
-            if !self.panels_floating {
-                ui.heading("Layers");
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if icon_button(ui, &self.icons, Icon::AddLayer, "New Layer", true).clicked() {
+        if !self.panels_floating {
+            ui.heading("Layers");
+            ui.separator();
+        }
+        let (count, active_index, active_opacity, active_visible) = {
+            let document = self.session.document();
+            let active_index = document
+                .layers()
+                .iter()
+                .position(|layer| layer.id() == document.active_layer_id())
+                .unwrap_or(0);
+            let active_layer = document.layers().get(active_index);
+            (
+                document.layers().len(),
+                active_index,
+                active_layer.map_or(u8::MAX, |layer| layer.opacity()),
+                active_layer.is_none_or(|layer| layer.is_visible()),
+            )
+        };
+        let can_delete = count > 1;
+        let can_merge = active_index > 0;
+        let can_up = active_index + 1 < count;
+        let can_down = active_index > 0;
+        egui::Panel::bottom("paint-r-layer-buttons").show(ui, |ui| {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                if tool_button(ui, &self.icons, Icon::AddLayer, "Add Layer", true, false).clicked()
+                {
                     self.add_layer();
                 }
+                if tool_button(
+                    ui,
+                    &self.icons,
+                    Icon::LayerDelete,
+                    "Delete Layer",
+                    can_delete,
+                    false,
+                )
+                .clicked()
+                {
+                    pending = Some(Command::RemoveLayer {
+                        index: active_index,
+                    });
+                }
+                if tool_button(
+                    ui,
+                    &self.icons,
+                    Icon::LayerDuplicate,
+                    "Duplicate Layer",
+                    true,
+                    false,
+                )
+                .clicked()
+                {
+                    pending = Some(Command::DuplicateLayer {
+                        index: active_index,
+                    });
+                }
+                if tool_button(
+                    ui,
+                    &self.icons,
+                    Icon::LayerMerge,
+                    "Merge Layer Down",
+                    can_merge,
+                    false,
+                )
+                .clicked()
+                {
+                    pending = Some(Command::MergeLayerDown {
+                        index: active_index,
+                    });
+                }
+                if tool_button(
+                    ui,
+                    &self.icons,
+                    Icon::LayerUp,
+                    "Move Layer Up",
+                    can_up,
+                    false,
+                )
+                .clicked()
+                {
+                    pending = Some(Command::MoveLayer {
+                        index: active_index,
+                        offset: 1,
+                    });
+                }
+                if tool_button(
+                    ui,
+                    &self.icons,
+                    Icon::LayerDown,
+                    "Move Layer Down",
+                    can_down,
+                    false,
+                )
+                .clicked()
+                {
+                    pending = Some(Command::MoveLayer {
+                        index: active_index,
+                        offset: -1,
+                    });
+                }
+                if tool_button(
+                    ui,
+                    &self.icons,
+                    Icon::LayerSettings,
+                    "Layer Properties",
+                    true,
+                    false,
+                )
+                .clicked()
+                {
+                    self.layer_properties_open = true;
+                    self.layer_properties_index = active_index;
+                    self.layer_properties_opacity = active_opacity;
+                    self.layer_properties_visible = active_visible;
+                }
             });
+            ui.add_space(2.0);
         });
-        ui.separator();
         egui::ScrollArea::vertical()
             .id_salt("paint-r-layer-list")
+            .auto_shrink([false, false])
             .show(ui, |ui| {
                 let document = self.session.document();
                 for index in (0..document.layers().len()).rev() {
@@ -1145,6 +1258,12 @@ impl PaintApp {
                                 if active_label.clicked() {
                                     pending = Some(Command::SetActiveLayer { index });
                                 }
+                                ui.label(format!(
+                                    "{}% · Normal",
+                                    u16::from(layer.opacity()) * 100 / 255
+                                ));
+                            });
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                                 let mut visible = layer.is_visible();
                                 let visible_response = ui
                                     .checkbox(&mut visible, "Visible")
@@ -1154,13 +1273,6 @@ impl PaintApp {
                                 }
                             });
                         });
-                        let mut opacity = layer.opacity();
-                        let opacity_response = ui
-                            .add(egui::Slider::new(&mut opacity, 0..=u8::MAX).text("Opacity"))
-                            .accessible_name(format!("Layer {index} opacity"));
-                        if opacity_response.changed() {
-                            pending = Some(Command::SetLayerOpacity { index, opacity });
-                        }
                     });
                 }
             });
@@ -1492,10 +1604,7 @@ impl PaintApp {
                     ui.separator();
                 }
                 if self.layers_visible {
-                    egui::ScrollArea::vertical()
-                        .id_salt("paint-r-layers-scroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| self.layers_content(ui));
+                    self.layers_content(ui);
                 }
             });
     }
@@ -1580,18 +1689,75 @@ impl PaintApp {
                 .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(980.0, 260.0))
-                .default_width(220.0)
-                .show(&context, |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("paint-r-floating-layers-scroll")
-                        .max_height(520.0)
-                        .show(ui, |ui| self.layers_content(ui));
-                })
+                .default_width(196.0)
+                .default_height(219.0)
+                .show(&context, |ui| self.layers_content(ui))
             {
                 self.layers_window_rect = Some(inner.response.rect);
             }
             self.layers_visible = open;
         }
+    }
+
+    fn layer_properties_dialog(&mut self, context: &egui::Context) {
+        if !self.layer_properties_open {
+            return;
+        }
+        let Some(layer) = self
+            .session
+            .document()
+            .layers()
+            .get(self.layer_properties_index)
+        else {
+            self.layer_properties_open = false;
+            return;
+        };
+        let name = layer.name().to_owned();
+        let mut open = self.layer_properties_open;
+        let mut apply = false;
+        let mut close = false;
+        egui::Window::new("Layer Properties")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(240.0)
+            .show(context, |ui| {
+                ui.label(format!("Layer: {name}"));
+                ui.separator();
+                layer_opacity_slider(ui, &mut self.layer_properties_opacity);
+                ui.checkbox(&mut self.layer_properties_visible, "Visible");
+                ui.label("Blend Mode: Normal");
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.button("Apply").clicked() {
+                        apply = true;
+                    }
+                    if ui.button("Close").clicked() {
+                        close = true;
+                    }
+                });
+            });
+        if apply {
+            let index = self.layer_properties_index;
+            self.execute(
+                Command::SetLayerOpacity {
+                    index,
+                    opacity: self.layer_properties_opacity,
+                },
+                "Layer properties updated",
+            );
+            self.execute(
+                Command::SetLayerVisibility {
+                    index,
+                    visible: self.layer_properties_visible,
+                },
+                "Layer properties updated",
+            );
+        }
+        if close {
+            open = false;
+        }
+        self.layer_properties_open = open;
     }
 
     fn status_panel(&mut self, ui: &mut egui::Ui) {
@@ -2475,6 +2641,7 @@ impl eframe::App for PaintApp {
         if !self.panels_floating && (self.colors_visible || self.layers_visible) {
             self.right_dock(ui);
         }
+        self.layer_properties_dialog(ui.ctx());
         self.canvas_panel(ui);
         self.path_dialog(ui);
         self.discard_confirmation(ui);
@@ -2749,6 +2916,48 @@ fn open_png_preview(
     Ok(DialogPreview { label, texture })
 }
 
+fn layer_opacity_slider(ui: &mut egui::Ui, value: &mut u8) -> egui::Response {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(170.0, 20.0), egui::Sense::click_and_drag());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, "Layer opacity"));
+    let painter = ui.painter();
+    painter.rect_filled(rect, 3, ui.visuals().extreme_bg_color);
+    let fraction = f32::from(*value) / 255.0;
+    painter.rect_filled(
+        egui::Rect::from_min_size(rect.min, egui::vec2(rect.width() * fraction, rect.height())),
+        3,
+        egui::Color32::from_rgb(31, 78, 116),
+    );
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        format!("Opacity {value}"),
+        egui::FontId::proportional(12.0),
+        egui::Color32::WHITE,
+    );
+    if (response.dragged() || response.clicked() || response.is_pointer_button_down_on())
+        && let Some(position) = response.interact_pointer_pos()
+    {
+        let fraction = ((position.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
+        *value = (fraction * 255.0).round() as u8;
+    }
+    if response.has_focus() {
+        let (left, right) = ui.input(|input| {
+            (
+                input.key_pressed(egui::Key::ArrowLeft),
+                input.key_pressed(egui::Key::ArrowRight),
+            )
+        });
+        if left {
+            *value = value.saturating_sub(1);
+        }
+        if right {
+            *value = value.saturating_add(1);
+        }
+    }
+    response
+}
+
 fn history_label(command: &Command) -> Option<String> {
     match command {
         Command::Fill(_) | Command::FloodFill { .. } => Some("Paint Bucket".to_owned()),
@@ -2762,6 +2971,10 @@ fn history_label(command: &Command) -> Option<String> {
         Command::FlipLayerHorizontal => Some("Flip Layer Horizontal".to_owned()),
         Command::FlipLayerVertical => Some("Flip Layer Vertical".to_owned()),
         Command::AddLayer { name, .. } => Some(format!("Add Layer: {name}")),
+        Command::RemoveLayer { .. } => Some("Delete Layer".to_owned()),
+        Command::DuplicateLayer { .. } => Some("Duplicate Layer".to_owned()),
+        Command::MergeLayerDown { .. } => Some("Merge Layer Down".to_owned()),
+        Command::MoveLayer { .. } => Some("Move Layer".to_owned()),
         Command::SetLayerVisibility { index, visible } => {
             Some(format!("Layer {index} visibility: {visible}"))
         }

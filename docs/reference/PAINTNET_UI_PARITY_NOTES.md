@@ -179,3 +179,14 @@ Magic Wand, Clone Stamp, Text, and Shapes (Freeform). Ellipse/Lasso/Magic Wand
 need a non-rectangular selection mask; Clone Stamp needs source sampling; Text
 needs glyph rasterization; Freeform needs polygon fill. The slots are shown so the
 layout is complete, but they are explicitly disabled rather than faking behavior.
+
+
+### Layers bottom bar
+
+Paint.R now matches the real Layers window structure: layer list above, fixed bottom
+button bar with Add, Delete, Duplicate, Merge Down, Move Up, Move Down, and Layer
+Properties. Add/Delete/Duplicate/Merge/Move are real document commands with undo;
+Delete is disabled for the last layer, Merge Down for the bottom layer, and Move for
+the respective edge. Layer Properties opens a dialog for opacity, visibility, and the
+Normal blend label. Per-layer opacity sliders were removed from the list, matching
+Paint.NET's properties-dialog placement.

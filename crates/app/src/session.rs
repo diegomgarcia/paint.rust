@@ -149,6 +149,10 @@ impl AppSession {
                 visible,
             } => self.add_layer(name, opacity, visible),
             Command::SetActiveLayer { index } => self.set_active_layer(index),
+            Command::RemoveLayer { index } => self.remove_layer(index),
+            Command::DuplicateLayer { index } => self.duplicate_layer(index),
+            Command::MergeLayerDown { index } => self.merge_layer_down(index),
+            Command::MoveLayer { index, offset } => self.move_layer(index, offset),
             Command::SetLayerVisibility { index, visible } => {
                 let layer_id = self.layer_id(index)?;
                 self.apply_new_mutation(Mutation::SetVisibility {
@@ -420,6 +424,140 @@ impl AppSession {
         Ok(true)
     }
 
+    pub fn remove_layer(&mut self, index: usize) -> Result<bool, SessionError> {
+        let layer = self
+            .document
+            .layers()
+            .get(index)
+            .ok_or(DocumentError::LayerIndexOutOfBounds {
+                index,
+                len: self.document.layers().len(),
+            })?
+            .clone();
+        let restore_active = if self.document.active_layer_id() == layer.id() {
+            self.document
+                .layers()
+                .get(index + 1)
+                .or_else(|| {
+                    index
+                        .checked_sub(1)
+                        .and_then(|index| self.document.layers().get(index))
+                })
+                .map_or(self.document.active_layer_id(), |layer| layer.id())
+        } else {
+            self.document.active_layer_id()
+        };
+        let mutation = Mutation::RemoveLayer {
+            layer,
+            index,
+            restore_active,
+        };
+        let mut candidate = self.document.clone();
+        let Some(inverse) = mutation.apply(&mut candidate)? else {
+            return Ok(false);
+        };
+        self.commit_new(candidate, inverse);
+        Ok(true)
+    }
+
+    pub fn duplicate_layer(&mut self, index: usize) -> Result<bool, SessionError> {
+        if self.document.layers().len() >= self.limits.max_layers {
+            return Err(ResourceLimitError::Layers {
+                actual: self.document.layers().len().saturating_add(1),
+                max: self.limits.max_layers,
+            }
+            .into());
+        }
+        let restore_active = self.document.active_layer_id();
+        let mut candidate = self.document.clone();
+        let duplicate = candidate.duplicate_layer(index)?;
+        let layer = candidate
+            .layer(duplicate)
+            .ok_or(SessionError::DocumentInvariant(
+                "duplicated layer cannot be found",
+            ))?
+            .clone();
+        let inverse = Mutation::RemoveLayer {
+            layer,
+            index: index + 1,
+            restore_active,
+        };
+        self.commit_new(candidate, inverse);
+        Ok(true)
+    }
+
+    pub fn move_layer(&mut self, index: usize, offset: i32) -> Result<bool, SessionError> {
+        let len = self.document.layers().len();
+        let target = (index as i64 + i64::from(offset)).clamp(0, len as i64 - 1) as usize;
+        if target == index {
+            return Ok(false);
+        }
+        let layer_id = self.layer_id(index)?;
+        let mutation = Mutation::MoveLayer {
+            layer_id,
+            from: index,
+            to: target,
+        };
+        let mut candidate = self.document.clone();
+        let Some(inverse) = mutation.apply(&mut candidate)? else {
+            return Ok(false);
+        };
+        self.commit_new(candidate, inverse);
+        Ok(true)
+    }
+
+    pub fn merge_layer_down(&mut self, index: usize) -> Result<bool, SessionError> {
+        if index == 0 {
+            return Ok(false);
+        }
+        let upper = self
+            .document
+            .layers()
+            .get(index)
+            .ok_or(DocumentError::LayerIndexOutOfBounds {
+                index,
+                len: self.document.layers().len(),
+            })?
+            .clone();
+        let lower = self
+            .document
+            .layers()
+            .get(index - 1)
+            .ok_or(DocumentError::LayerIndexOutOfBounds {
+                index: index - 1,
+                len: self.document.layers().len(),
+            })?
+            .clone();
+        let rect = self.document.canvas_rect();
+        let before = lower.surface().read_region(rect)?;
+        let mut after = before.clone();
+        if upper.is_visible() {
+            for y in 0..rect.height() {
+                for x in 0..rect.width() {
+                    let point = Point::new(rect.left() as u32 + x, rect.top() as u32 + y);
+                    let source = *upper.surface().pixel(point)?;
+                    let target = *lower.surface().pixel(point)?;
+                    let index = (y * rect.width() + x) as usize;
+                    after[index] = paint_raster::normal_over(target, source, upper.opacity());
+                }
+            }
+        }
+        let patch = PixelPatch::new(lower.id(), lower.revision(), rect, before, after)
+            .map_err(DocumentError::from)?;
+        let mutation = Mutation::MergeDown {
+            patch,
+            upper,
+            upper_index: index,
+            restore_active: self.document.active_layer_id(),
+        };
+        let mut candidate = self.document.clone();
+        let Some(inverse) = mutation.apply(&mut candidate)? else {
+            return Ok(false);
+        };
+        self.commit_new(candidate, inverse);
+        Ok(true)
+    }
+
     pub fn set_active_layer(&mut self, index: usize) -> Result<bool, SessionError> {
         let layer_id = self.layer_id(index)?;
         Ok(self.document.set_active_layer(layer_id)?)
@@ -538,6 +676,23 @@ enum Mutation {
         layer_id: LayerId,
         value: u8,
     },
+    MoveLayer {
+        layer_id: LayerId,
+        from: usize,
+        to: usize,
+    },
+    MergeDown {
+        patch: PixelPatch,
+        upper: Layer,
+        upper_index: usize,
+        restore_active: LayerId,
+    },
+    UnmergeDown {
+        patch: PixelPatch,
+        upper: Layer,
+        upper_index: usize,
+        restore_active: LayerId,
+    },
 }
 
 impl Mutation {
@@ -627,6 +782,48 @@ impl Mutation {
                 Ok(Some(Self::AddLayer {
                     layer: removed,
                     index: actual_index,
+                }))
+            }
+            Self::MoveLayer { layer_id, from, to } => {
+                document.move_layer(*layer_id, *to)?;
+                Ok(Some(Self::MoveLayer {
+                    layer_id: *layer_id,
+                    from: *to,
+                    to: *from,
+                }))
+            }
+            Self::MergeDown {
+                patch,
+                upper,
+                upper_index,
+                restore_active,
+            } => {
+                let inverse_patch = patch.inverse().map_err(DocumentError::from)?;
+                document.apply_patch(patch)?;
+                let removed = document.remove_layer(upper.id())?;
+                document.set_active_layer(patch.layer_id())?;
+                Ok(Some(Self::UnmergeDown {
+                    patch: inverse_patch,
+                    upper: removed,
+                    upper_index: *upper_index,
+                    restore_active: *restore_active,
+                }))
+            }
+            Self::UnmergeDown {
+                patch,
+                upper,
+                upper_index,
+                restore_active,
+            } => {
+                let forward = patch.inverse().map_err(DocumentError::from)?;
+                document.insert_layer(*upper_index, upper.clone())?;
+                document.apply_patch(patch)?;
+                document.set_active_layer(*restore_active)?;
+                Ok(Some(Self::MergeDown {
+                    patch: forward,
+                    upper: upper.clone(),
+                    upper_index: *upper_index,
+                    restore_active: *restore_active,
                 }))
             }
             Self::SetVisibility { layer_id, value } => {

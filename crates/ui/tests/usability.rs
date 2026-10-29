@@ -496,10 +496,10 @@ fn window_menu_can_float_and_dock_the_color_and_layer_panels() {
     assert!(harness.state().panels_floating());
     harness.get_by_role_and_label(Role::Button, "Rectangle Select");
     harness.get_by_role_and_label(Role::Button, "Swap colors");
-    harness.get_by_role_and_label(Role::Button, "New Layer");
+    harness.get_by_role_and_label(Role::Button, "Add Layer");
     menu_item(&mut harness, "Window", "Dock Panels");
     assert!(!harness.state().panels_floating());
-    harness.get_by_role_and_label(Role::Button, "New Layer");
+    harness.get_by_role_and_label(Role::Button, "Add Layer");
 }
 
 #[test]
@@ -623,9 +623,12 @@ fn layer_add_opacity_active_selection_and_visibility_change_composition() {
             .all(|pixel| *pixel == Bgra::BLACK)
     );
 
+    click(&mut harness, "Layer Properties");
     harness
-        .get_by_role_and_label(Role::Slider, "Layer 1 opacity")
+        .get_by_role_and_label(Role::Slider, "Layer opacity")
         .click();
+    harness.run();
+    click(&mut harness, "Apply");
     harness.run();
     let opacity = harness.state().session().document().layers()[1].opacity();
     assert!(
@@ -1086,7 +1089,7 @@ fn default_shell_uses_floating_compact_side_windows() {
     harness.run();
     assert!(harness.state().panels_floating());
     harness.get_by_role_and_label(Role::Button, "Swap colors");
-    harness.get_by_role_and_label(Role::Button, "New Layer");
+    harness.get_by_role_and_label(Role::Button, "Add Layer");
 }
 
 #[test]
@@ -1464,4 +1467,62 @@ fn moving_pixels_lifts_once_and_reuses_the_floating_selection() {
         after_second + 1,
         "tool change should place pixels"
     );
+}
+
+#[test]
+fn layers_bottom_bar_adds_duplicates_moves_deletes_and_merges() {
+    let mut harness = app();
+    for label in [
+        "Add Layer",
+        "Delete Layer",
+        "Duplicate Layer",
+        "Merge Layer Down",
+        "Move Layer Up",
+        "Move Layer Down",
+        "Layer Properties",
+    ] {
+        harness.get_by_role_and_label(Role::Button, label);
+    }
+
+    click(&mut harness, "Add Layer");
+    assert_eq!(harness.state().session().document().layers().len(), 2);
+    click(&mut harness, "Duplicate Layer");
+    assert_eq!(harness.state().session().document().layers().len(), 3);
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .snapshot()
+            .expect("snapshot")
+            .active_layer_index,
+        2
+    );
+    click(&mut harness, "Move Layer Down");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .snapshot()
+            .expect("snapshot")
+            .active_layer_index,
+        1
+    );
+    click(&mut harness, "Delete Layer");
+    eprintln!("STATUS {}", harness.state().status());
+    eprintln!(
+        "LAYERS {:?}",
+        harness
+            .state()
+            .session()
+            .document()
+            .layers()
+            .iter()
+            .map(|l| l.name())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(harness.state().session().document().layers().len(), 2);
+    click(&mut harness, "Merge Layer Down");
+    assert_eq!(harness.state().session().document().layers().len(), 1);
+    click(&mut harness, "Undo");
+    assert_eq!(harness.state().session().document().layers().len(), 2);
 }
