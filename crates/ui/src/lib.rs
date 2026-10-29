@@ -6,6 +6,7 @@ mod app;
 mod colors;
 pub mod headless;
 mod icons;
+mod layers;
 pub mod native;
 
 pub use app::PaintApp;
