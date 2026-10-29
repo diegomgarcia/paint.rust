@@ -559,10 +559,10 @@ fn palette_updates_primary_color_without_mutating_the_document() {
     let before = harness.state().session().document().clone();
 
     click(&mut harness, "Preset red");
-    assert_eq!(harness.state().fill_color(), Bgra::new(0, 0, 255, 255));
+    assert_eq!(harness.state().fill_color(), Bgra::new(52, 52, 243, 255));
 
-    click(&mut harness, "Preset transparent");
-    assert_eq!(harness.state().fill_color(), Bgra::TRANSPARENT);
+    click(&mut harness, "Preset blue");
+    assert_eq!(harness.state().fill_color(), Bgra::new(243, 163, 52, 255));
     assert_eq!(harness.state().session().document(), &before);
 }
 

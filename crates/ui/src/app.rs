@@ -17,17 +17,22 @@ const PREVIEW_WIDTH: f32 = 180.0;
 const PREVIEW_HEIGHT: f32 = 140.0;
 const MAX_BROWSER_ENTRIES: usize = 200;
 const PRESET_COLORS: &[(&str, Bgra)] = &[
-    ("Preset black", Bgra::BLACK),
-    ("Preset white", Bgra::WHITE),
-    ("Preset red", Bgra::new(0, 0, 255, 255)),
-    ("Preset orange", Bgra::new(0, 128, 255, 255)),
-    ("Preset yellow", Bgra::new(0, 255, 255, 255)),
-    ("Preset green", Bgra::new(0, 255, 0, 255)),
-    ("Preset cyan", Bgra::new(255, 255, 0, 255)),
-    ("Preset blue", Bgra::new(255, 0, 0, 255)),
-    ("Preset magenta", Bgra::new(255, 0, 255, 255)),
-    ("Preset gray", Bgra::new(128, 128, 128, 255)),
-    ("Preset transparent", Bgra::TRANSPARENT),
+    ("Preset black", Bgra::new(52, 52, 52, 255)),
+    ("Preset gray", Bgra::new(100, 100, 100, 255)),
+    ("Preset red", Bgra::new(52, 52, 243, 255)),
+    ("Preset orange", Bgra::new(52, 131, 243, 255)),
+    ("Preset yellow", Bgra::new(52, 214, 243, 255)),
+    ("Preset lime", Bgra::new(52, 243, 188, 255)),
+    ("Preset green", Bgra::new(52, 243, 109, 255)),
+    ("Preset light green", Bgra::new(77, 243, 52, 255)),
+    ("Preset mint", Bgra::new(160, 243, 52, 255)),
+    ("Preset cyan", Bgra::new(243, 243, 52, 255)),
+    ("Preset blue", Bgra::new(243, 163, 52, 255)),
+    ("Preset dark blue", Bgra::new(243, 80, 52, 255)),
+    ("Preset violet", Bgra::new(243, 52, 106, 255)),
+    ("Preset purple", Bgra::new(243, 52, 185, 255)),
+    ("Preset magenta", Bgra::new(217, 52, 243, 255)),
+    ("Preset pink", Bgra::new(134, 52, 243, 255)),
 ];
 
 /// Original development-preview shell. `AppSession` remains the only document writer.
@@ -1073,38 +1078,38 @@ impl PaintApp {
                     let mut hue_value = hue;
                     let mut saturation_value = saturation * 100.0;
                     let mut brightness_value = value * 100.0;
-                    ui.horizontal(|ui| {
-                        let hue_label = ui.label("H");
-                        let _hue = ui
-                            .add(
-                                egui::DragValue::new(&mut hue_value)
-                                    .range(0.0..=360.0)
-                                    .speed(1.0)
-                                    .suffix("°"),
-                            )
-                            .labelled_by(hue_label.id);
+                    let hue_base = hue_value;
+                    let saturation_base = saturation_value;
+                    let brightness_base = brightness_value;
+                    hsv_gradient_slider(ui, "Hue", "H", &mut hue_value, 0.0, 360.0, |t| {
+                        let bgra = crate::color_from_hsv(t * 360.0, 1.0, 1.0, 255);
+                        egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
                     });
-                    ui.horizontal(|ui| {
-                        let sat_label = ui.label("S");
-                        let _sat = ui
-                            .add(
-                                egui::DragValue::new(&mut saturation_value)
-                                    .range(0.0..=100.0)
-                                    .speed(1.0)
-                                    .suffix("%"),
-                            )
-                            .labelled_by(sat_label.id);
-                    });
-                    ui.horizontal(|ui| {
-                        let value_label = ui.label("V");
-                        let _value = ui
-                            .add(
-                                egui::DragValue::new(&mut brightness_value)
-                                    .range(0.0..=100.0)
-                                    .speed(1.0)
-                                    .suffix("%"),
-                            )
-                            .labelled_by(value_label.id);
+                    hsv_gradient_slider(
+                        ui,
+                        "Saturation",
+                        "S",
+                        &mut saturation_value,
+                        0.0,
+                        100.0,
+                        |t| {
+                            let bgra = crate::color_from_hsv(
+                                hue_base,
+                                t / 100.0,
+                                brightness_base / 100.0,
+                                255,
+                            );
+                            egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
+                        },
+                    );
+                    hsv_gradient_slider(ui, "Value", "V", &mut brightness_value, 0.0, 100.0, |t| {
+                        let bgra = crate::color_from_hsv(
+                            hue_base,
+                            saturation_base / 100.0,
+                            t / 100.0,
+                            255,
+                        );
+                        egui::Color32::from_rgb(bgra.r, bgra.g, bgra.b)
                     });
                     if (hue_value, saturation_value, brightness_value)
                         != (hue, saturation * 100.0, value * 100.0)
@@ -2532,7 +2537,7 @@ fn color_swatch(
     color: Bgra,
     selected: bool,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(12.0, 24.0), egui::Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
@@ -2611,12 +2616,167 @@ fn compact_color_slider(
     value: &mut u8,
 ) {
     ui.horizontal(|ui| {
-        let text = ui.label(short);
-        let _slider = ui
-            .add(egui::Slider::new(value, 0..=u8::MAX).show_value(false))
-            .labelled_by(text.id)
-            .accessible_name(label);
+        ui.label(short);
+        let channel = match short {
+            "R" => GradientChannel::Red,
+            "G" => GradientChannel::Green,
+            "B" => GradientChannel::Blue,
+            _ => GradientChannel::Alpha,
+        };
+        gradient_slider(ui, label, value, channel);
     });
+}
+
+enum GradientChannel {
+    Red,
+    Green,
+    Blue,
+    Alpha,
+}
+
+fn hsv_gradient_slider(
+    ui: &mut egui::Ui,
+    label: &'static str,
+    short: &'static str,
+    value: &mut f32,
+    minimum: f32,
+    maximum: f32,
+    color_at: impl Fn(f32) -> egui::Color32,
+) {
+    ui.horizontal(|ui| {
+        ui.label(short);
+        let width = ui.available_width().max(40.0);
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, label));
+        let painter = ui.painter();
+        let track =
+            egui::Rect::from_min_size(rect.min + egui::vec2(0.0, 9.0), egui::vec2(width, 8.0));
+        let columns = width.round() as usize;
+        for index in 0..columns {
+            let t = if columns > 1 {
+                index as f32 / (columns as f32 - 1.0)
+            } else {
+                0.0
+            };
+            painter.rect_filled(
+                egui::Rect::from_min_size(
+                    egui::pos2(track.left() + index as f32, track.top()),
+                    egui::vec2(1.0, track.height()),
+                ),
+                0,
+                color_at(t),
+            );
+        }
+        painter.rect_stroke(
+            track,
+            0,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(70)),
+            egui::StrokeKind::Inside,
+        );
+        let t = ((*value - minimum) / (maximum - minimum)).clamp(0.0, 1.0);
+        let arrow_x = rect.left() + t * width;
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                egui::pos2(arrow_x, rect.top()),
+                egui::pos2(arrow_x - 4.0, rect.top() + 8.0),
+                egui::pos2(arrow_x + 4.0, rect.top() + 8.0),
+            ],
+            egui::Color32::WHITE,
+            egui::Stroke::NONE,
+        ));
+        if (response.dragged() || response.clicked() || response.is_pointer_button_down_on())
+            && let Some(position) = response.interact_pointer_pos()
+        {
+            let fraction = ((position.x - rect.left()) / width).clamp(0.0, 1.0);
+            *value = minimum + fraction * (maximum - minimum);
+        }
+    });
+}
+
+fn gradient_slider(
+    ui: &mut egui::Ui,
+    label: &'static str,
+    value: &mut u8,
+    channel: GradientChannel,
+) {
+    let width = ui.available_width().max(40.0);
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, label));
+    let painter = ui.painter();
+    let track = egui::Rect::from_min_size(rect.min + egui::vec2(0.0, 9.0), egui::vec2(width, 8.0));
+    if matches!(channel, GradientChannel::Alpha) {
+        let cell: f32 = 4.0;
+        let mut row = 0;
+        let mut y = track.top();
+        while y < track.bottom() {
+            let mut col = 0;
+            let mut x = track.left();
+            while x < track.right() {
+                let bright = if (row + col) % 2 == 0 { 90 } else { 150 };
+                painter.rect_filled(
+                    egui::Rect::from_min_size(
+                        egui::pos2(x, y),
+                        egui::vec2(cell.min(track.right() - x), cell.min(track.bottom() - y)),
+                    ),
+                    0,
+                    egui::Color32::from_gray(bright),
+                );
+                x += cell;
+                col += 1;
+            }
+            y += cell;
+            row += 1;
+        }
+    }
+    let t = f32::from(*value) / 255.0;
+    let columns = width.round() as usize;
+    for index in 0..columns {
+        let tt = if columns > 1 {
+            index as f32 / (columns as f32 - 1.0)
+        } else {
+            0.0
+        };
+        let color = match channel {
+            GradientChannel::Red => egui::Color32::from_rgb((tt * 255.0) as u8, 0, 0),
+            GradientChannel::Green => egui::Color32::from_rgb(0, (tt * 255.0) as u8, 0),
+            GradientChannel::Blue => egui::Color32::from_rgb(0, 0, (tt * 255.0) as u8),
+            GradientChannel::Alpha => {
+                egui::Color32::from_rgba_unmultiplied(255, 255, 255, (tt * 255.0) as u8)
+            }
+        };
+        painter.rect_filled(
+            egui::Rect::from_min_size(
+                egui::pos2(track.left() + index as f32, track.top()),
+                egui::vec2(1.0, track.height()),
+            ),
+            0,
+            color,
+        );
+    }
+    painter.rect_stroke(
+        track,
+        0,
+        egui::Stroke::new(1.0, egui::Color32::from_gray(70)),
+        egui::StrokeKind::Inside,
+    );
+    let arrow_x = rect.left() + t * width;
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(arrow_x, rect.top()),
+            egui::pos2(arrow_x - 4.0, rect.top() + 8.0),
+            egui::pos2(arrow_x + 4.0, rect.top() + 8.0),
+        ],
+        egui::Color32::WHITE,
+        egui::Stroke::NONE,
+    ));
+    if (response.dragged() || response.clicked() || response.is_pointer_button_down_on())
+        && let Some(position) = response.interact_pointer_pos()
+    {
+        let fraction = ((position.x - rect.left()) / width).clamp(0.0, 1.0);
+        *value = (fraction * 255.0).round() as u8;
+    }
 }
 
 fn canvas_point_at(position: egui::Pos2, rect: egui::Rect, zoom: f32, size: Size) -> Option<Point> {
