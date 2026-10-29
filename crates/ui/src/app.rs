@@ -1071,12 +1071,19 @@ impl PaintApp {
                     compact_color_slider(ui, "Green", "G", &mut active.g);
                     compact_color_slider(ui, "Blue", "B", &mut active.b);
                     ui.horizontal(|ui| {
-                        ui.label("HEX");
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(26.0, 20.0),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.label("HEX");
+                            },
+                        );
                         let response = ui
                             .add_sized(
-                                [104.0, 20.0],
+                                [142.0, 20.0],
                                 egui::TextEdit::singleline(&mut self.hex_input)
-                                    .desired_width(104.0),
+                                    .desired_width(142.0),
                             )
                             .accessible_name("Hex color");
                         if response.changed() {

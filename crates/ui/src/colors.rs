@@ -334,7 +334,14 @@ pub(crate) fn compact_color_slider(
     value: &mut u8,
 ) {
     ui.horizontal(|ui| {
-        ui.label(short);
+        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.allocate_ui_with_layout(
+            egui::vec2(26.0, 20.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.label(short);
+            },
+        );
         let channel = match short {
             "R" => GradientChannel::Red,
             "G" => GradientChannel::Green,
@@ -342,6 +349,23 @@ pub(crate) fn compact_color_slider(
             _ => GradientChannel::Alpha,
         };
         gradient_slider(ui, label, value, channel);
+        let (up, down) = value_field(
+            ui,
+            match label {
+                "Red" => "Red value",
+                "Green" => "Green value",
+                "Blue" => "Blue value",
+                _ => "Opacity value",
+            },
+            &format!("{value}"),
+            44.0,
+        );
+        if up {
+            *value = value.saturating_add(1);
+        }
+        if down {
+            *value = value.saturating_sub(1);
+        }
     });
 }
 
@@ -362,8 +386,15 @@ pub(crate) fn hsv_gradient_slider(
     color_at: impl Fn(f32) -> egui::Color32,
 ) {
     ui.horizontal(|ui| {
-        ui.label(short);
-        let width = 96.0;
+        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.allocate_ui_with_layout(
+            egui::vec2(26.0, 20.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.label(short);
+            },
+        );
+        let width = 94.0;
         let (rect, response) =
             ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
         response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, label));
@@ -433,8 +464,7 @@ fn gradient_slider(
     value: &mut u8,
     channel: GradientChannel,
 ) {
-    let total = ui.available_width();
-    let width = (total - 48.0).max(40.0);
+    let width = 94.0;
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, label));
@@ -510,22 +540,5 @@ fn gradient_slider(
     {
         let fraction = ((position.x - rect.left()) / width).clamp(0.0, 1.0);
         *value = (fraction * 255.0).round() as u8;
-    }
-    let (up, down) = value_field(
-        ui,
-        match label {
-            "Red" => "Red value",
-            "Green" => "Green value",
-            "Blue" => "Blue value",
-            _ => "Opacity value",
-        },
-        &format!("{value}"),
-        40.0,
-    );
-    if up {
-        *value = value.saturating_add(1);
-    }
-    if down {
-        *value = value.saturating_sub(1);
     }
 }
