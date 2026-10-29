@@ -1589,11 +1589,17 @@ impl PaintApp {
                             egui::Image::from_texture(&texture).paint_at(ui, rect);
                         }
                         let phase = ui.input(|input| input.time) as f32;
-                        if let Some(selection) = self
-                            .session
-                            .document()
-                            .selection()
-                            .and_then(|selection| selection.clip_to(size))
+                        let dragging_selection = matches!(
+                            self.active_tool,
+                            Tool::Select | Tool::MoveSelection | Tool::Move
+                        ) && self.drag_start.is_some()
+                            && self.drag_current.is_some();
+                        if !dragging_selection
+                            && let Some(selection) = self
+                                .session
+                                .document()
+                                .selection()
+                                .and_then(|selection| selection.clip_to(size))
                         {
                             let min = rect.min
                                 + egui::vec2(
@@ -1832,7 +1838,10 @@ impl PaintApp {
                                         egui::Color32::from_white_alpha(24),
                                     );
                                     paint_selection_outline(ui.painter(), marquee, phase);
-                                } else if self.active_tool == Tool::MoveSelection {
+                                } else if matches!(
+                                    self.active_tool,
+                                    Tool::Move | Tool::MoveSelection
+                                ) {
                                     if let Some(selection) = self.session.document().selection() {
                                         let dx = i64::from(end.x) - i64::from(start.x);
                                         let dy = i64::from(end.y) - i64::from(start.y);

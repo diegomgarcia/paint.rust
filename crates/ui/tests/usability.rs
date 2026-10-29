@@ -1415,3 +1415,28 @@ fn move_selection_drag_translates_the_selection_bounds() {
     assert_eq!(after.right(), before.right() + 5);
     assert_eq!(after.bottom(), before.bottom() + 3);
 }
+
+#[test]
+fn moving_selected_pixels_also_moves_the_selection_outline() {
+    let mut harness = app();
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(6.0, 6.0), egui::vec2(26.0, 18.0));
+    let before = harness
+        .state()
+        .session()
+        .document()
+        .selection()
+        .expect("rectangle selection");
+    click(&mut harness, "Move Selected Pixels");
+    drag_canvas(&mut harness, egui::vec2(10.0, 10.0), egui::vec2(15.0, 13.0));
+    let after = harness
+        .state()
+        .session()
+        .document()
+        .selection()
+        .expect("selection after moving pixels");
+    assert_eq!(after.left(), before.left() + 5);
+    assert_eq!(after.top(), before.top() + 3);
+    assert_eq!(after.right(), before.right() + 5);
+    assert_eq!(after.bottom(), before.bottom() + 3);
+}

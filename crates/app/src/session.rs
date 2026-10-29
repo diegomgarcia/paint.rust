@@ -282,10 +282,22 @@ impl AppSession {
     pub fn translate(&mut self, dx: i32, dy: i32) -> Result<bool, SessionError> {
         let patch =
             paint_raster::translate(&self.document, self.document.active_layer_id(), dx, dy)?;
-        match patch {
-            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
-            None => Ok(false),
+        let moved = match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch))?,
+            None => false,
+        };
+        if moved
+            && let Some(selection) = self.document.selection()
+            && let Ok(rect) = Rect::new(
+                selection.left() + i64::from(dx),
+                selection.top() + i64::from(dy),
+                selection.right() + i64::from(dx),
+                selection.bottom() + i64::from(dy),
+            )
+        {
+            self.document.set_selection(Some(rect))?;
         }
+        Ok(moved)
     }
 
     pub fn fill_ellipse(&mut self, rect: Rect, color: Bgra) -> Result<bool, SessionError> {
