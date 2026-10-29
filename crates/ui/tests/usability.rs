@@ -1135,3 +1135,74 @@ fn colors_more_click_expands_the_whole_window_chrome() {
         bounds.right()
     );
 }
+
+#[test]
+fn hsv_gradient_sliders_react_to_drag_and_window_size_stays_stable() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    click(&mut harness, "More");
+    for _ in 0..4 {
+        harness.run();
+    }
+
+    let start = harness.state().fill_color();
+    let saturation = harness
+        .get_by_role_and_label(Role::Slider, "Saturation")
+        .rect();
+    let value_rect = harness.get_by_role_and_label(Role::Slider, "Value").rect();
+    let hue_rect = harness.get_by_role_and_label(Role::Slider, "Hue").rect();
+    eprintln!(
+        "COLORS_BOUNDS={:?} SAT={saturation:?} VAL={value_rect:?} HUE={hue_rect:?}",
+        harness.state().colors_window_bounds()
+    );
+    harness.drag_at(saturation.center());
+    harness.run();
+    harness.hover_at(saturation.center() + egui::vec2(saturation.width() * 0.7, 0.0));
+    harness.run();
+    harness.drop_at(saturation.center() + egui::vec2(saturation.width() * 0.7, 0.0));
+    harness.run();
+
+    let value = harness.get_by_role_and_label(Role::Slider, "Value").rect();
+    harness.drag_at(value.center());
+    harness.run();
+    harness.hover_at(value.center() + egui::vec2(value.width() * 0.7, 0.0));
+    harness.run();
+    let after_value = harness.state().fill_color();
+    assert_ne!(
+        after_value, start,
+        "dragging Saturation/Value did not change the color"
+    );
+    harness.drop_at(value.center() + egui::vec2(value.width() * 0.7, 0.0));
+    harness.run();
+
+    let hue = harness.get_by_role_and_label(Role::Slider, "Hue").rect();
+    harness.drag_at(hue.center());
+    harness.run();
+    harness.hover_at(hue.center() + egui::vec2(hue.width() * 0.35, 0.0));
+    harness.run();
+    let after_hue = harness.state().fill_color();
+    assert_ne!(
+        after_hue, after_value,
+        "dragging Hue did not change the color"
+    );
+    harness.drop_at(hue.center() + egui::vec2(hue.width() * 0.35, 0.0));
+    harness.run();
+
+    let first = harness
+        .state()
+        .colors_window_bounds()
+        .expect("Colors bounds");
+    for _ in 0..5 {
+        harness.run();
+    }
+    let second = harness
+        .state()
+        .colors_window_bounds()
+        .expect("Colors bounds");
+    assert!(
+        (first.width() - second.width()).abs() < 1.0
+            && (first.height() - second.height()).abs() < 1.0,
+        "Colors window resized across idle frames: {first:?} -> {second:?}"
+    );
+}

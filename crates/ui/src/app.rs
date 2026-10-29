@@ -28,6 +28,10 @@ pub struct PaintApp {
     fill_color: Bgra,
     secondary_color: Bgra,
     active_color_slot: ColorSlot,
+    hsv_hue: f32,
+    hsv_saturation: f32,
+    hsv_value: f32,
+    hsv_base_color: Bgra,
     colors_expanded: bool,
     tools_visible: bool,
     tools_floating: bool,
@@ -88,6 +92,10 @@ impl PaintApp {
             fill_color: Bgra::BLACK,
             secondary_color: Bgra::WHITE,
             active_color_slot: ColorSlot::Primary,
+            hsv_hue: 0.0,
+            hsv_saturation: 0.0,
+            hsv_value: 0.0,
+            hsv_base_color: Bgra::BLACK,
             colors_expanded: false,
             tools_visible: true,
             tools_floating: true,
@@ -1084,7 +1092,16 @@ impl PaintApp {
                         );
                     }
                     ui.strong("HSV");
-                    let (hue, saturation, value) = hsv_from_color(active);
+                    if self.hsv_base_color != active {
+                        let (hue, saturation, value) = hsv_from_color(active);
+                        self.hsv_hue = hue;
+                        self.hsv_saturation = saturation;
+                        self.hsv_value = value;
+                        self.hsv_base_color = active;
+                    }
+                    let hue = self.hsv_hue;
+                    let saturation = self.hsv_saturation;
+                    let value = self.hsv_value;
                     let mut hue_value = hue;
                     let mut saturation_value = saturation * 100.0;
                     let mut brightness_value = value * 100.0;
@@ -1124,12 +1141,16 @@ impl PaintApp {
                     if (hue_value, saturation_value, brightness_value)
                         != (hue, saturation * 100.0, value * 100.0)
                     {
+                        self.hsv_hue = hue_value;
+                        self.hsv_saturation = saturation_value / 100.0;
+                        self.hsv_value = brightness_value / 100.0;
                         active = crate::color_from_hsv(
-                            hue_value,
-                            saturation_value / 100.0,
-                            brightness_value / 100.0,
+                            self.hsv_hue,
+                            self.hsv_saturation,
+                            self.hsv_value,
                             active.a,
                         );
+                        self.hsv_base_color = active;
                     }
                     ui.strong("Opacity");
                     compact_color_slider(ui, "Opacity", "A", &mut active.a);
