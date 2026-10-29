@@ -268,6 +268,65 @@ pub(crate) fn color_swatch(
     response.on_hover_text(label.to_owned())
 }
 
+fn value_field(ui: &mut egui::Ui, label: &'static str, text: &str, width: f32) -> (bool, bool) {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::SpinButton, true, label));
+    let painter = ui.painter();
+    painter.rect_filled(rect, 3, ui.visuals().extreme_bg_color);
+    painter.rect_stroke(
+        rect,
+        3,
+        egui::Stroke::new(1.0, egui::Color32::from_gray(70)),
+        egui::StrokeKind::Inside,
+    );
+    painter.text(
+        rect.center() - egui::vec2(6.0, 0.0),
+        egui::Align2::CENTER_CENTER,
+        text,
+        egui::FontId::proportional(12.0),
+        ui.visuals().text_color(),
+    );
+    let split = rect.right() - 12.0;
+    let up_rect = egui::Rect::from_min_max(
+        egui::pos2(split, rect.top()),
+        egui::pos2(rect.right(), rect.center().y),
+    );
+    let down_rect = egui::Rect::from_min_max(
+        egui::pos2(split, rect.center().y),
+        egui::pos2(rect.right(), rect.bottom()),
+    );
+    let up = ui.interact(
+        up_rect,
+        ui.scope_id().with((label, "up")),
+        egui::Sense::click(),
+    );
+    let down = ui.interact(
+        down_rect,
+        ui.scope_id().with((label, "down")),
+        egui::Sense::click(),
+    );
+    let arrow = egui::Color32::from_gray(210);
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(up_rect.center().x, up_rect.center().y - 3.0),
+            egui::pos2(up_rect.center().x - 3.0, up_rect.center().y + 2.0),
+            egui::pos2(up_rect.center().x + 3.0, up_rect.center().y + 2.0),
+        ],
+        arrow,
+        egui::Stroke::NONE,
+    ));
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(down_rect.center().x, down_rect.center().y + 3.0),
+            egui::pos2(down_rect.center().x - 3.0, down_rect.center().y - 2.0),
+            egui::pos2(down_rect.center().x + 3.0, down_rect.center().y - 2.0),
+        ],
+        arrow,
+        egui::Stroke::NONE,
+    ));
+    (up.clicked(), down.clicked())
+}
+
 pub(crate) fn compact_color_slider(
     ui: &mut egui::Ui,
     label: &'static str,
@@ -349,13 +408,22 @@ pub(crate) fn hsv_gradient_slider(
             let fraction = ((position.x - rect.left()) / width).clamp(0.0, 1.0);
             *value = minimum + fraction * (maximum - minimum);
         }
-        let _value = ui
-            .add(
-                egui::DragValue::new(value)
-                    .range(minimum..=maximum)
-                    .speed(1.0),
-            )
-            .accessible_name(format!("{label} value"));
+        let (up, down) = value_field(
+            ui,
+            match label {
+                "Hue" => "Hue value",
+                "Saturation" => "Saturation value",
+                _ => "Value value",
+            },
+            &format!("{value:.0}"),
+            44.0,
+        );
+        if up {
+            *value = (*value + 1.0).min(maximum);
+        }
+        if down {
+            *value = (*value - 1.0).max(minimum);
+        }
     });
 }
 
@@ -443,7 +511,21 @@ fn gradient_slider(
         let fraction = ((position.x - rect.left()) / width).clamp(0.0, 1.0);
         *value = (fraction * 255.0).round() as u8;
     }
-    let _value = ui
-        .add(egui::DragValue::new(value).range(0..=u8::MAX))
-        .accessible_name(format!("{label} value"));
+    let (up, down) = value_field(
+        ui,
+        match label {
+            "Red" => "Red value",
+            "Green" => "Green value",
+            "Blue" => "Blue value",
+            _ => "Opacity value",
+        },
+        &format!("{value}"),
+        40.0,
+    );
+    if up {
+        *value = value.saturating_add(1);
+    }
+    if down {
+        *value = value.saturating_sub(1);
+    }
 }

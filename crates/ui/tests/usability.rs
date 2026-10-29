@@ -449,7 +449,6 @@ fn colors_window_supports_primary_secondary_swap_and_reset() {
     click(&mut harness, "Secondary color");
     click(&mut harness, "More");
     replace_field(&mut harness, "Hex color", "#112233");
-    click(&mut harness, "Apply color");
     assert_eq!(harness.state().fill_color(), Bgra::BLACK);
     assert_eq!(
         harness.state().secondary_color(),
@@ -514,7 +513,6 @@ fn hex_color_input_applies_exact_rgb_and_alpha() {
     let before = harness.state().session().document().clone();
     click(&mut harness, "More");
     replace_field(&mut harness, "Hex color", "#FF8000");
-    click(&mut harness, "Apply color");
 
     assert_eq!(harness.state().fill_color(), Bgra::new(0, 128, 255, 255));
     assert_eq!(harness.state().session().document(), &before);
@@ -1205,4 +1203,45 @@ fn hsv_gradient_sliders_react_to_drag_and_window_size_stays_stable() {
             && (first.height() - second.height()).abs() < 1.0,
         "Colors window resized across idle frames: {first:?} -> {second:?}"
     );
+}
+
+#[test]
+fn color_value_fields_keep_fixed_width_when_entering_long_values() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    click(&mut harness, "More");
+    for _ in 0..4 {
+        harness.run();
+    }
+
+    let red_before = harness.get_by_label("Red value").rect();
+    let hue_before = harness.get_by_label("Hue value").rect();
+    let window_before = harness
+        .state()
+        .colors_window_bounds()
+        .expect("Colors bounds");
+
+    let hue_slider = harness.get_by_role_and_label(Role::Slider, "Hue").rect();
+    harness.drag_at(hue_slider.center());
+    harness.run();
+    harness.hover_at(hue_slider.right_top() + egui::vec2(-2.0, hue_slider.height() / 2.0));
+    harness.run();
+    harness.drop_at(hue_slider.right_top() + egui::vec2(-2.0, hue_slider.height() / 2.0));
+    for _ in 0..4 {
+        harness.run();
+    }
+
+    let red_after = harness.get_by_label("Red value").rect();
+    let hue_after = harness.get_by_label("Hue value").rect();
+    let window_after = harness
+        .state()
+        .colors_window_bounds()
+        .expect("Colors bounds");
+
+    eprintln!(
+        "WINDOW before={window_before:?} after={window_after:?} RED {red_before:?}->{red_after:?} HUE {hue_before:?}->{hue_after:?}"
+    );
+    assert!((window_before.width() - window_after.width()).abs() < 0.5);
+    assert!((window_before.height() - window_after.height()).abs() < 0.5);
 }

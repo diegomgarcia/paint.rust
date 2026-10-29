@@ -1070,21 +1070,25 @@ impl PaintApp {
                     compact_color_slider(ui, "Red", "R", &mut active.r);
                     compact_color_slider(ui, "Green", "G", &mut active.g);
                     compact_color_slider(ui, "Blue", "B", &mut active.b);
-                    ui.strong("Hex");
-                    let hex_label = ui.label("Hex color");
-                    let _response = ui
-                        .add(egui::TextEdit::singleline(&mut self.hex_input).desired_width(145.0))
-                        .labelled_by(hex_label.id);
-                    if ui.button("Apply color").clicked() {
-                        match crate::color_from_hex(&self.hex_input) {
-                            Ok(parsed) => {
-                                active = parsed;
-                                self.hex_input = format_hex_color(parsed);
-                                self.hex_error = None;
+                    ui.horizontal(|ui| {
+                        ui.label("HEX");
+                        let response = ui
+                            .add_sized(
+                                [104.0, 20.0],
+                                egui::TextEdit::singleline(&mut self.hex_input)
+                                    .desired_width(104.0),
+                            )
+                            .accessible_name("Hex color");
+                        if response.changed() {
+                            match crate::color_from_hex(&self.hex_input) {
+                                Ok(parsed) => {
+                                    active = parsed;
+                                    self.hex_error = None;
+                                }
+                                Err(error) => self.hex_error = Some(error),
                             }
-                            Err(error) => self.hex_error = Some(error),
                         }
-                    }
+                    });
                     if let Some(error) = &self.hex_error {
                         ui.colored_label(
                             egui::Color32::LIGHT_RED,
