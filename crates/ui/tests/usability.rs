@@ -1526,3 +1526,34 @@ fn layers_bottom_bar_adds_duplicates_moves_deletes_and_merges() {
     click(&mut harness, "Undo");
     assert_eq!(harness.state().session().document().layers().len(), 2);
 }
+
+#[test]
+fn layers_window_margins_and_bottom_bar_are_symmetric() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    let bounds = harness
+        .state()
+        .layers_window_bounds()
+        .expect("Layers bounds");
+    let thumbnail = harness
+        .get_by_label_contains("Layer 0 thumbnail: Background")
+        .rect();
+    let eye = harness
+        .get_by_role_and_label(Role::CheckBox, "Layer 0 visible")
+        .rect();
+    let add = harness
+        .get_by_role_and_label(Role::Button, "Add Layer")
+        .rect();
+    let left = thumbnail.left() - bounds.left();
+    let right = bounds.right() - eye.right();
+    assert!(
+        (left - right).abs() < 4.0,
+        "Layers margins {left} vs {right} bounds={bounds:?}"
+    );
+    assert!(
+        bounds.bottom() - add.bottom() < 10.0,
+        "bottom bar gap {}",
+        bounds.bottom() - add.bottom()
+    );
+}

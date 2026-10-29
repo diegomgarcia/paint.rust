@@ -44,6 +44,8 @@ pub(crate) enum Icon {
     LayerUp,
     LayerDown,
     LayerSettings,
+    Eye,
+    EyeOff,
 }
 
 pub(crate) struct IconTextures {
@@ -88,6 +90,8 @@ impl IconTextures {
             Icon::LayerUp,
             Icon::LayerDown,
             Icon::LayerSettings,
+            Icon::Eye,
+            Icon::EyeOff,
         ];
         let mut textures = HashMap::with_capacity(icons.len());
         for icon in icons {
@@ -154,6 +158,28 @@ pub(crate) fn icon_button_at(
         paint_button(ui, icons, rect, icon, true, false, &response);
     }
     response.on_hover_text(label)
+}
+
+pub(crate) fn visibility_button(
+    ui: &mut Ui,
+    icons: &IconTextures,
+    visible: bool,
+    label: &str,
+) -> (Response, bool) {
+    let (rect, response) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
+    response.widget_info(|| WidgetInfo::selected(Role::CheckBox, true, visible, label));
+    if ui.is_rect_visible(rect) {
+        egui::Image::from_texture(icons.get(if visible { Icon::Eye } else { Icon::EyeOff }))
+            .tint(if visible {
+                Color32::WHITE
+            } else {
+                Color32::from_gray(140)
+            })
+            .paint_at(ui, rect.shrink(1.0));
+    }
+    let toggled = response.clicked()
+        || (response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Space)));
+    (response.on_hover_text(label), toggled)
 }
 
 pub(crate) fn tool_button(
@@ -259,6 +285,8 @@ fn icon_png(icon: Icon) -> &'static [u8] {
         Icon::LayerUp => include_bytes!("../assets/lucide/layer-up.png"),
         Icon::LayerDown => include_bytes!("../assets/lucide/layer-down.png"),
         Icon::LayerSettings => include_bytes!("../assets/lucide/layer-settings.png"),
+        Icon::Eye => include_bytes!("../assets/lucide/eye.png"),
+        Icon::EyeOff => include_bytes!("../assets/lucide/eye-off.png"),
     }
 }
 
@@ -299,5 +327,7 @@ fn icon_name(icon: Icon) -> &'static str {
         Icon::LayerUp => "layer-up",
         Icon::LayerDown => "layer-down",
         Icon::LayerSettings => "layer-settings",
+        Icon::Eye => "eye",
+        Icon::EyeOff => "eye-off",
     }
 }

@@ -12,7 +12,9 @@ use crate::colors::{
     ColorSlot, PRESET_COLORS, color_slots_widget, color_swatch, color_wheel, compact_color_slider,
     format_hex_color, hsv_from_color, hsv_gradient_slider, mix_bgra,
 };
-use crate::icons::{Icon, IconTextures, icon_button, icon_button_at, tool_button};
+use crate::icons::{
+    Icon, IconTextures, icon_button, icon_button_at, tool_button, visibility_button,
+};
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
 #[cfg(target_os = "macos")]
 use crate::menu::{NativeCommand, NativeMenu, NativeMenuState};
@@ -64,6 +66,7 @@ pub struct PaintApp {
     native_menu: Option<NativeMenu>,
     tools_window_rect: Option<egui::Rect>,
     tools_close_requested: bool,
+    layers_close_requested: bool,
     history_window_rect: Option<egui::Rect>,
     colors_window_rect: Option<egui::Rect>,
     colors_close_requested: bool,
@@ -138,6 +141,7 @@ impl PaintApp {
             native_menu: NativeMenu::install(creation_context.egui_ctx.clone()),
             tools_window_rect: None,
             tools_close_requested: false,
+            layers_close_requested: false,
             history_window_rect: None,
             colors_window_rect: None,
             colors_close_requested: false,
@@ -199,6 +203,11 @@ impl PaintApp {
     #[doc(hidden)]
     pub const fn tools_window_bounds(&self) -> Option<egui::Rect> {
         self.tools_window_rect
+    }
+
+    #[doc(hidden)]
+    pub const fn layers_window_bounds(&self) -> Option<egui::Rect> {
+        self.layers_window_rect
     }
 
     #[doc(hidden)]
@@ -1102,7 +1111,21 @@ impl PaintApp {
 
     fn layers_content(&mut self, ui: &mut egui::Ui) {
         let mut pending = None;
-        if !self.panels_floating {
+        if self.panels_floating {
+            ui.horizontal(|ui| {
+                ui.strong("Layers");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(egui::Button::new("×").min_size(egui::vec2(16.0, 16.0)))
+                        .on_hover_text("Close Layers window")
+                        .clicked()
+                    {
+                        self.layers_close_requested = true;
+                    }
+                });
+            });
+            ui.separator();
+        } else {
             ui.heading("Layers");
             ui.separator();
         }
@@ -1126,8 +1149,10 @@ impl PaintApp {
         let can_up = active_index + 1 < count;
         let can_down = active_index > 0;
         egui::Panel::bottom("paint-r-layer-buttons").show(ui, |ui| {
-            ui.add_space(2.0);
+            ui.separator();
             ui.horizontal(|ui| {
+                let pad = ((ui.available_width() - 175.0) / 2.0).max(0.0);
+                ui.add_space(pad);
                 ui.spacing_mut().item_spacing.x = 0.0;
                 if tool_button(ui, &self.icons, Icon::AddLayer, "Add Layer", true, false).clicked()
                 {
@@ -1221,7 +1246,6 @@ impl PaintApp {
                     self.layer_properties_visible = active_visible;
                 }
             });
-            ui.add_space(2.0);
         });
         egui::ScrollArea::vertical()
             .id_salt("paint-r-layer-list")
@@ -1264,12 +1288,13 @@ impl PaintApp {
                                 ));
                             });
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                let mut visible = layer.is_visible();
-                                let visible_response = ui
-                                    .checkbox(&mut visible, "Visible")
-                                    .accessible_name(format!("Layer {index} visible"));
-                                if visible_response.changed() {
-                                    pending = Some(Command::SetLayerVisibility { index, visible });
+                                let label = format!("Layer {index} visible");
+                                if visibility_button(ui, &self.icons, layer.is_visible(), &label).1
+                                {
+                                    pending = Some(Command::SetLayerVisibility {
+                                        index,
+                                        visible: !layer.is_visible(),
+                                    });
                                 }
                             });
                         });
@@ -1686,14 +1711,18 @@ impl PaintApp {
             let frame = floating_window_frame(&context, self.layers_window_rect);
             if let Some(inner) = egui::Window::new("Layers")
                 .open(&mut open)
+                .title_bar(false)
                 .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(980.0, 260.0))
-                .default_width(196.0)
-                .default_height(219.0)
+                .fixed_size(egui::vec2(196.0, 219.0))
                 .show(&context, |ui| self.layers_content(ui))
             {
                 self.layers_window_rect = Some(inner.response.rect);
+            }
+            if self.layers_close_requested {
+                open = false;
+                self.layers_close_requested = false;
             }
             self.layers_visible = open;
         }
