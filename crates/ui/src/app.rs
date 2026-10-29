@@ -13,6 +13,8 @@ use crate::colors::{
 };
 use crate::icons::{Icon, IconTextures, icon_button, icon_button_at, tool_button};
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
+#[cfg(target_os = "macos")]
+use crate::menu::{NativeCommand, NativeMenu, NativeMenuState};
 
 const DEFAULT_WIDTH: u32 = 800;
 const DEFAULT_HEIGHT: u32 = 600;
@@ -46,6 +48,8 @@ pub struct PaintApp {
     fill_global: bool,
     paint_points: Vec<Point>,
     icons: IconTextures,
+    #[cfg(target_os = "macos")]
+    native_menu: Option<NativeMenu>,
     tools_window_rect: Option<egui::Rect>,
     history_window_rect: Option<egui::Rect>,
     colors_window_rect: Option<egui::Rect>,
@@ -110,6 +114,8 @@ impl PaintApp {
             fill_global: false,
             paint_points: Vec::new(),
             icons,
+            #[cfg(target_os = "macos")]
+            native_menu: NativeMenu::install(creation_context.egui_ctx.clone()),
             tools_window_rect: None,
             history_window_rect: None,
             colors_window_rect: None,
@@ -389,6 +395,89 @@ impl PaintApp {
             );
         }
         self.layer_thumbnails = refreshed;
+    }
+
+    fn shows_in_window_menu(&self) -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            self.native_menu.is_none() || cfg!(debug_assertions)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            true
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn poll_native_menu(&mut self, context: &egui::Context) {
+        for command in NativeMenu::poll() {
+            match command {
+                NativeCommand::New => self.request_new(),
+                NativeCommand::Open => self.show_path_dialog(PathDialogKind::Open),
+                NativeCommand::Export => self.show_path_dialog(PathDialogKind::Export),
+                NativeCommand::Quit => self.request_quit(context),
+                NativeCommand::Undo => {
+                    self.execute(Command::Undo, "Undid the last edit");
+                }
+                NativeCommand::Redo => {
+                    self.execute(Command::Redo, "Redid the next edit");
+                }
+                NativeCommand::Deselect => {
+                    self.execute(Command::ClearSelection, "Selection cleared");
+                }
+                NativeCommand::ZoomIn => self.zoom = (self.zoom + 0.25).min(8.0),
+                NativeCommand::ZoomOut => self.zoom = (self.zoom - 0.25).max(0.1),
+                NativeCommand::ActualSize => self.zoom = 1.0,
+                NativeCommand::FitCanvas => self.fit_canvas_requested = true,
+                NativeCommand::FlipHorizontal => {
+                    self.execute(
+                        Command::FlipLayerHorizontal,
+                        "Flipped the active layer horizontally",
+                    );
+                }
+                NativeCommand::FlipVertical => {
+                    self.execute(
+                        Command::FlipLayerVertical,
+                        "Flipped the active layer vertically",
+                    );
+                }
+                NativeCommand::Invert => {
+                    self.execute(Command::Invert, "Inverted colors on the active layer");
+                }
+                NativeCommand::ToggleTools => self.tools_visible = !self.tools_visible,
+                NativeCommand::ToggleColors => self.colors_visible = !self.colors_visible,
+                NativeCommand::ToggleLayers => self.layers_visible = !self.layers_visible,
+                NativeCommand::ToggleHistory => self.history_visible = !self.history_visible,
+                NativeCommand::ToggleFloatPanels => {
+                    self.panels_floating = !self.panels_floating;
+                    if self.panels_floating {
+                        self.tools_visible = true;
+                        self.tools_floating = true;
+                        self.colors_visible = true;
+                        self.layers_visible = true;
+                    } else {
+                        self.tools_floating = false;
+                    }
+                }
+                NativeCommand::About => {
+                    self.status =
+                        "Paint.R development preview · MIT first-party license".to_owned();
+                }
+            }
+        }
+        let state = NativeMenuState {
+            can_undo: self.session.can_undo(),
+            can_redo: self.session.can_redo(),
+            has_selection: self.session.document().selection().is_some(),
+            tools_visible: self.tools_visible,
+            colors_visible: self.colors_visible,
+            layers_visible: self.layers_visible,
+            history_visible: self.history_visible,
+            float_panels: self.panels_floating,
+        };
+        if let Some(menu) = self.native_menu.as_ref() {
+            menu.sync(state);
+        }
     }
 
     fn menu_panel(&mut self, ui: &mut egui::Ui) {
@@ -2029,6 +2118,8 @@ impl PaintApp {
 impl eframe::App for PaintApp {
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         // `logic` also runs for hidden windows, where `ui` would not see the close request.
+        #[cfg(target_os = "macos")]
+        self.poll_native_menu(context);
         self.handle_keyboard_shortcuts(context);
         self.handle_close_request(context);
     }
@@ -2036,7 +2127,9 @@ impl eframe::App for PaintApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.refresh_texture(ui.ctx());
         self.refresh_layer_thumbnails(ui.ctx());
-        self.menu_panel(ui);
+        if self.shows_in_window_menu() {
+            self.menu_panel(ui);
+        }
         self.toolbar_panel(ui);
         self.tool_options_panel(ui);
         self.status_panel(ui);

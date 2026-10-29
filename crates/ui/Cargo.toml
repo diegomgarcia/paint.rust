@@ -20,6 +20,8 @@ serde_json.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 winit.workspace = true
+muda = "0.21.2"
+objc2 = "0.6.1"
 
 [dev-dependencies]
 egui_kittest = { workspace = true, features = ["eframe"] }

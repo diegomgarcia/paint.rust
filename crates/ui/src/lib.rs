@@ -7,6 +7,8 @@ mod colors;
 pub mod headless;
 mod icons;
 mod layers;
+#[cfg(target_os = "macos")]
+mod menu;
 pub mod native;
 
 pub use app::PaintApp;
