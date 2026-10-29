@@ -939,161 +939,164 @@ impl PaintApp {
         let initial_slot = self.active_color_slot;
         let mut active = self.active_color();
         let initial_color = active;
-        ui.horizontal(|ui| {
-            if let Some(slot) = color_slots_widget(
-                ui,
-                self.fill_color,
-                self.secondary_color,
-                self.active_color_slot,
-            ) {
-                self.active_color_slot = slot;
-            }
+        ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    if small_icon_button(ui, &self.icons, Icon::SwapColors, "Swap colors").clicked()
-                    {
-                        self.swap_colors();
-                        active = self.active_color();
-                        self.hex_input = format_hex_color(active);
-                        self.hex_error = None;
-                    }
-                    if small_icon_button(
+                    if let Some(slot) = color_slots_widget(
                         ui,
-                        &self.icons,
-                        Icon::ResetColors,
-                        "Reset to black and white",
-                    )
-                    .clicked()
-                    {
-                        self.reset_colors();
-                        active = self.active_color();
+                        self.fill_color,
+                        self.secondary_color,
+                        self.active_color_slot,
+                    ) {
+                        self.active_color_slot = slot;
+                    }
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            if small_icon_button(ui, &self.icons, Icon::SwapColors, "Swap colors")
+                                .clicked()
+                            {
+                                self.swap_colors();
+                                active = self.active_color();
+                                self.hex_input = format_hex_color(active);
+                                self.hex_error = None;
+                            }
+                            if small_icon_button(
+                                ui,
+                                &self.icons,
+                                Icon::ResetColors,
+                                "Reset to black and white",
+                            )
+                            .clicked()
+                            {
+                                self.reset_colors();
+                                active = self.active_color();
+                            }
+                        });
+                        if ui
+                            .button(if self.colors_expanded { "Less" } else { "More" })
+                            .clicked()
+                        {
+                            self.colors_expanded = !self.colors_expanded;
+                        }
+                    });
+                });
+                if self.active_color_slot != initial_slot {
+                    active = self.active_color();
+                    self.hex_input = format_hex_color(active);
+                    self.hex_error = None;
+                }
+                if let Some(color) = color_wheel(ui, active) {
+                    active = color;
+                }
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 1.0;
+                    for &(label, preset) in PRESET_COLORS {
+                        let response = color_swatch(ui, label, preset, preset == active);
+                        if response.clicked() {
+                            active = preset;
+                        }
+                        if response.secondary_clicked() {
+                            match self.active_color_slot {
+                                ColorSlot::Primary => self.secondary_color = preset,
+                                ColorSlot::Secondary => self.fill_color = preset,
+                            }
+                        }
                     }
                 });
-                if ui
-                    .button(if self.colors_expanded { "Less" } else { "More" })
-                    .clicked()
-                {
-                    self.colors_expanded = !self.colors_expanded;
-                }
             });
-        });
-        if self.active_color_slot != initial_slot {
-            active = self.active_color();
-            self.hex_input = format_hex_color(active);
-            self.hex_error = None;
-        }
-        if self.colors_expanded {
-            ui.horizontal(|ui| {
-                let label = ui.label("Hex color");
-                let _response = ui
-                    .text_edit_singleline(&mut self.hex_input)
-                    .labelled_by(label.id);
-            });
-            if ui.button("Apply color").clicked() {
-                match crate::color_from_hex(&self.hex_input) {
-                    Ok(parsed) => {
-                        active = parsed;
-                        self.hex_input = format_hex_color(parsed);
-                        self.hex_error = None;
+            if self.colors_expanded {
+                ui.add_space(4.0);
+                ui.separator();
+                ui.vertical(|ui| {
+                    ui.set_width(160.0);
+                    ui.strong("RGB");
+                    color_slider(ui, "Red", &mut active.r);
+                    color_slider(ui, "Green", &mut active.g);
+                    color_slider(ui, "Blue", &mut active.b);
+                    ui.strong("Hex");
+                    ui.horizontal(|ui| {
+                        let label = ui.label("Hex color");
+                        let _response = ui
+                            .text_edit_singleline(&mut self.hex_input)
+                            .labelled_by(label.id);
+                    });
+                    if ui.button("Apply color").clicked() {
+                        match crate::color_from_hex(&self.hex_input) {
+                            Ok(parsed) => {
+                                active = parsed;
+                                self.hex_input = format_hex_color(parsed);
+                                self.hex_error = None;
+                            }
+                            Err(error) => self.hex_error = Some(error),
+                        }
                     }
-                    Err(error) => self.hex_error = Some(error),
-                }
-            }
-        }
-        if let Some(error) = &self.hex_error {
-            ui.colored_label(
-                egui::Color32::LIGHT_RED,
-                format!("Invalid hex color: {error}"),
-            );
-        }
-        if let Some(color) = color_wheel(ui, active) {
-            active = color;
-        }
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 1.0;
-            for &(label, preset) in PRESET_COLORS {
-                let response = color_swatch(ui, label, preset, preset == active);
-                if response.clicked() {
-                    active = preset;
-                }
-                if response.secondary_clicked() {
-                    match self.active_color_slot {
-                        ColorSlot::Primary => self.secondary_color = preset,
-                        ColorSlot::Secondary => self.fill_color = preset,
+                    if let Some(error) = &self.hex_error {
+                        ui.colored_label(
+                            egui::Color32::LIGHT_RED,
+                            format!("Invalid hex color: {error}"),
+                        );
                     }
-                }
+                    ui.strong("HSV");
+                    let (hue, saturation, value) = hsv_from_color(active);
+                    let mut hue_value = hue;
+                    let mut saturation_value = saturation * 100.0;
+                    let mut brightness_value = value * 100.0;
+                    ui.horizontal(|ui| {
+                        let hue_label = ui.label("Hue");
+                        let _hue = ui
+                            .add(
+                                egui::DragValue::new(&mut hue_value)
+                                    .range(0.0..=360.0)
+                                    .speed(1.0)
+                                    .suffix("°"),
+                            )
+                            .labelled_by(hue_label.id);
+                        let sat_label = ui.label("Sat");
+                        let _sat = ui
+                            .add(
+                                egui::DragValue::new(&mut saturation_value)
+                                    .range(0.0..=100.0)
+                                    .speed(1.0)
+                                    .suffix("%"),
+                            )
+                            .labelled_by(sat_label.id);
+                        let value_label = ui.label("Val");
+                        let _value = ui
+                            .add(
+                                egui::DragValue::new(&mut brightness_value)
+                                    .range(0.0..=100.0)
+                                    .speed(1.0)
+                                    .suffix("%"),
+                            )
+                            .labelled_by(value_label.id);
+                    });
+                    if (hue_value, saturation_value, brightness_value)
+                        != (hue, saturation * 100.0, value * 100.0)
+                    {
+                        active = crate::color_from_hsv(
+                            hue_value,
+                            saturation_value / 100.0,
+                            brightness_value / 100.0,
+                            active.a,
+                        );
+                    }
+                    ui.strong("Opacity");
+                    color_slider(ui, "Opacity", &mut active.a);
+                });
             }
         });
-        if self.colors_expanded {
-            ui.separator();
-            color_slider(ui, "Blue", &mut active.b);
-            color_slider(ui, "Green", &mut active.g);
-            color_slider(ui, "Red", &mut active.r);
-            color_slider(ui, "Opacity", &mut active.a);
-            let (hue, saturation, value) = hsv_from_color(active);
-            let mut hue_value = hue;
-            let mut saturation_value = saturation * 100.0;
-            let mut brightness_value = value * 100.0;
-            ui.horizontal(|ui| {
-                let hue_label = ui.label("Hue");
-                let _hue = ui
-                    .add(
-                        egui::DragValue::new(&mut hue_value)
-                            .range(0.0..=360.0)
-                            .speed(1.0)
-                            .suffix("°"),
-                    )
-                    .labelled_by(hue_label.id);
-                let sat_label = ui.label("Sat");
-                let _sat = ui
-                    .add(
-                        egui::DragValue::new(&mut saturation_value)
-                            .range(0.0..=100.0)
-                            .speed(1.0)
-                            .suffix("%"),
-                    )
-                    .labelled_by(sat_label.id);
-                let value_label = ui.label("Val");
-                let _value = ui
-                    .add(
-                        egui::DragValue::new(&mut brightness_value)
-                            .range(0.0..=100.0)
-                            .speed(1.0)
-                            .suffix("%"),
-                    )
-                    .labelled_by(value_label.id);
-            });
-            if (hue_value, saturation_value, brightness_value)
-                != (hue, saturation * 100.0, value * 100.0)
-            {
-                active = crate::color_from_hsv(
-                    hue_value,
-                    saturation_value / 100.0,
-                    brightness_value / 100.0,
-                    active.a,
-                );
-            }
-        }
         self.set_active_color(active);
         if active != initial_color || self.active_color_slot != initial_slot {
             self.hex_input = format_hex_color(active);
             self.hex_error = None;
         }
-        if self.colors_expanded {
-            ui.colored_label(
-                egui::Color32::from_rgba_unmultiplied(active.r, active.g, active.b, active.a),
-                format!(
-                    "BGRA {}, {}, {}, {}",
-                    active.b, active.g, active.r, active.a
-                ),
-            );
-        }
     }
 
     fn right_dock(&mut self, ui: &mut egui::Ui) {
+        let dock_width = if self.colors_expanded { 402.0 } else { 232.0 };
         egui::Panel::right("paint-r-right-dock")
-            .exact_size(232.0)
+            .exact_size(dock_width)
             .resizable(false)
             .show(ui, |ui| {
                 let colors_height = if self.colors_expanded { 620.0 } else { 380.0 };
@@ -1162,7 +1165,8 @@ impl PaintApp {
                 .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(20.0, 470.0))
-                .default_width(232.0)
+                .min_width(if self.colors_expanded { 402.0 } else { 232.0 })
+                .max_width(if self.colors_expanded { 402.0 } else { 232.0 })
                 .show(&context, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("paint-r-floating-colors-scroll")
