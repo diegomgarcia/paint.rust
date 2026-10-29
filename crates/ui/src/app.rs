@@ -978,6 +978,7 @@ impl PaintApp {
                             .clicked()
                         {
                             self.colors_expanded = !self.colors_expanded;
+                            ui.ctx().request_repaint();
                         }
                     });
                 });
@@ -1160,21 +1161,22 @@ impl PaintApp {
         if self.panels_floating && self.colors_visible {
             let mut open = self.colors_visible;
             let frame = floating_window_frame(&context, self.colors_window_rect);
+            let colors_width = if self.colors_expanded { 402.0 } else { 232.0 };
             if let Some(inner) = egui::Window::new("Colors")
                 .open(&mut open)
                 .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(20.0, 470.0))
-                .min_width(if self.colors_expanded { 402.0 } else { 232.0 })
-                .max_width(if self.colors_expanded { 402.0 } else { 232.0 })
-                .show(&context, |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("paint-r-floating-colors-scroll")
-                        .max_height(620.0)
-                        .show(ui, |ui| self.colors_content(ui));
-                })
+                .fixed_size(egui::vec2(
+                    colors_width,
+                    if self.colors_expanded { 390.0 } else { 300.0 },
+                ))
+                .show(&context, |ui| self.colors_content(ui))
             {
                 self.colors_window_rect = Some(inner.response.rect);
+                if inner.response.rect.width() + 1.0 < colors_width {
+                    context.request_repaint();
+                }
             }
             self.colors_visible = open;
         }
