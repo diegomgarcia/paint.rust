@@ -67,6 +67,7 @@ pub struct PaintApp {
     tools_window_rect: Option<egui::Rect>,
     tools_close_requested: bool,
     layers_close_requested: bool,
+    history_close_requested: bool,
     history_window_rect: Option<egui::Rect>,
     colors_window_rect: Option<egui::Rect>,
     colors_close_requested: bool,
@@ -142,6 +143,7 @@ impl PaintApp {
             tools_window_rect: None,
             tools_close_requested: false,
             layers_close_requested: false,
+            history_close_requested: false,
             history_window_rect: None,
             colors_window_rect: None,
             colors_close_requested: false,
@@ -1302,8 +1304,20 @@ impl PaintApp {
     }
 
     fn history_content(&mut self, ui: &mut egui::Ui) {
-        ui.heading("History");
-        ui.separator();
+        if self.panels_floating {
+            ui.horizontal(|ui| {
+                ui.strong("History");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if window_close_button(ui, "Close History window") {
+                        self.history_close_requested = true;
+                    }
+                });
+            });
+            ui.separator();
+        } else {
+            ui.heading("History");
+            ui.separator();
+        }
         egui::ScrollArea::vertical()
             .id_salt("paint-r-history-list")
             .show(ui, |ui| {
@@ -1654,18 +1668,18 @@ impl PaintApp {
             let frame = floating_window_frame(&context, self.history_window_rect);
             if let Some(inner) = egui::Window::new("History")
                 .open(&mut open)
+                .title_bar(false)
                 .frame(frame)
                 .collapsible(false)
                 .default_pos(egui::pos2(500.0, 260.0))
-                .default_width(200.0)
-                .show(&context, |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("paint-r-floating-history-scroll")
-                        .max_height(260.0)
-                        .show(ui, |ui| self.history_content(ui));
-                })
+                .fixed_size(egui::vec2(196.0, 219.0))
+                .show(&context, |ui| self.history_content(ui))
             {
                 self.history_window_rect = Some(inner.response.rect);
+            }
+            if self.history_close_requested {
+                open = false;
+                self.history_close_requested = false;
             }
             self.history_visible = open;
         }

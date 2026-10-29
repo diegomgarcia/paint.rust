@@ -1557,3 +1557,17 @@ fn layers_window_margins_and_bottom_bar_are_symmetric() {
         bounds.bottom() - add.bottom()
     );
 }
+
+#[test]
+fn floating_windows_use_the_same_close_button_labels() {
+    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    for label in [
+        "Close Tools window",
+        "Close Colors window",
+        "Close Layers window",
+        "Close History window",
+    ] {
+        harness.get_by_role_and_label(Role::Button, label);
+    }
+}
