@@ -2,7 +2,7 @@ use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, DocumentError, Layer, LayerId, PatchError, PixelPatch, Revision};
 use sha2::{Digest, Sha256};
 
-use crate::{Command, ResourceLimitError, SemanticSnapshot, SessionError, snapshot};
+use crate::{Command, Effect, ResourceLimitError, SemanticSnapshot, SessionError, snapshot};
 
 /// Bounds applied to externally supplied traces and session operations.
 /// Selected pixels detached from the layer while they are being moved.
@@ -143,6 +143,7 @@ impl AppSession {
             } => self.recolor(&points, size, target, replacement, tolerance),
             Command::Move { dx, dy } => self.translate(dx, dy),
             Command::Invert => self.invert(),
+            Command::ApplyEffect(effect) => self.apply_effect(effect),
             Command::FlipLayerHorizontal => self.flip_layer_horizontal(),
             Command::FlipLayerVertical => self.flip_layer_vertical(),
             Command::FlipImageHorizontal => self.flip_image(true),
@@ -440,6 +441,25 @@ impl AppSession {
 
     pub fn invert(&mut self) -> Result<bool, SessionError> {
         let patch = paint_raster::invert(&self.document, self.document.active_layer_id())?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    /// Applies one implemented effect through a single generic dispatch.
+    ///
+    /// The resulting `PixelPatch` is committed as one inverse-based mutation, so undo and redo
+    /// treat the complete effect as a single history entry. No-op effects return `Ok(false)`.
+    pub fn apply_effect(&mut self, effect: Effect) -> Result<bool, SessionError> {
+        let layer_id = self.document.active_layer_id();
+        let patch = match effect {
+            Effect::Grayscale => paint_raster::grayscale(&self.document, layer_id)?,
+            Effect::Sepia => paint_raster::sepia(&self.document, layer_id)?,
+            Effect::GaussianBlur { radius } => {
+                paint_raster::gaussian_blur(&self.document, layer_id, radius)?
+            }
+        };
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
             None => Ok(false),

@@ -1,4 +1,4 @@
-use paint_app::{AppSession, Command, ResourceLimits, SNAPSHOT_FORMAT, SessionError};
+use paint_app::{AppSession, Command, Effect, ResourceLimits, SNAPSHOT_FORMAT, SessionError};
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId};
 
@@ -603,4 +603,97 @@ fn undoing_an_inactive_layer_add_does_not_undo_later_active_ui_state() {
     assert_eq!(session.document().layers().len(), 2);
     assert_eq!(session.document().active_layer_id(), background);
     assert!(session.document().revision().get() > history_revision.get());
+}
+
+fn session_from_pixels(width: u32, height: u32, pixels: Vec<Bgra>) -> AppSession {
+    let size = Size::new(width, height).expect("nonzero test dimensions");
+    let surface = Surface::from_pixels(size, pixels).expect("test surface");
+    let layer = Layer::new(LayerId::new(1), "Background", surface).with_background(true);
+    let document = Document::from_layers(size, vec![layer]).expect("test document");
+    AppSession::new(document)
+}
+
+#[test]
+fn effect_commands_are_single_undoable_mutations_and_respect_the_selection() {
+    let mut session = session_from_pixels(
+        3,
+        1,
+        vec![
+            Bgra::new(0, 0, 255, 255),
+            Bgra::new(0, 255, 0, 255),
+            Bgra::new(255, 0, 0, 255),
+        ],
+    );
+    let selection = Rect::new(1, 0, 2, 1).unwrap();
+    session.execute(Command::SelectRect(selection)).unwrap();
+
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::Grayscale))
+            .unwrap()
+    );
+    assert!(session.dirty());
+    assert!(session.can_undo());
+    assert_eq!(pixel(&session, 0, 0), Bgra::new(0, 0, 255, 255));
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(150, 150, 150, 255));
+    assert_eq!(pixel(&session, 2, 0), Bgra::new(255, 0, 0, 255));
+    assert_eq!(session.document().selection(), Some(selection));
+
+    assert!(session.undo().unwrap());
+    assert!(!session.dirty());
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(0, 255, 0, 255));
+    assert!(session.can_redo());
+
+    assert!(session.redo().unwrap());
+    assert!(session.dirty());
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(150, 150, 150, 255));
+
+    assert!(session.undo().unwrap());
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::Sepia))
+            .unwrap()
+    );
+    assert!(!session.can_redo(), "a new effect must invalidate redo");
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(136, 175, 196, 255));
+    assert_eq!(pixel(&session, 0, 0), Bgra::new(0, 0, 255, 255));
+
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::GaussianBlur { radius: 1 }))
+            .unwrap()
+    );
+    assert_eq!(pixel(&session, 0, 0).a, 255);
+    assert_eq!(pixel(&session, 2, 0).a, 255);
+    assert!(session.undo().unwrap());
+    assert!(session.undo().unwrap());
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+}
+
+#[test]
+fn zero_radius_blur_is_a_noop_and_invalid_radius_is_rejected_atomically() {
+    let mut session = session_from_pixels(3, 1, vec![Bgra::WHITE, Bgra::BLACK, Bgra::WHITE]);
+
+    assert!(
+        !session
+            .execute(Command::ApplyEffect(Effect::GaussianBlur { radius: 0 }))
+            .unwrap()
+    );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::GaussianBlur {
+                radius: u32::MAX,
+            }))
+            .is_err()
+    );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+    assert_eq!(
+        session.document().active_layer().surface().pixels(),
+        &[Bgra::WHITE, Bgra::BLACK, Bgra::WHITE]
+    );
 }

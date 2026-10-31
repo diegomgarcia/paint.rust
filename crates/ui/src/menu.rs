@@ -25,6 +25,9 @@ pub(crate) enum NativeCommand {
     FlipHorizontal,
     FlipVertical,
     Invert,
+    Grayscale,
+    Sepia,
+    GaussianBlur,
     ToggleTools,
     ToggleColors,
     ToggleLayers,
@@ -50,6 +53,9 @@ impl NativeCommand {
             "layers.flip_h" => Self::FlipHorizontal,
             "layers.flip_v" => Self::FlipVertical,
             "adjust.invert" => Self::Invert,
+            "effects.grayscale" => Self::Grayscale,
+            "effects.sepia" => Self::Sepia,
+            "effects.gaussian_blur" => Self::GaussianBlur,
             "window.tools" => Self::ToggleTools,
             "window.colors" => Self::ToggleColors,
             "window.layers" => Self::ToggleLayers,
@@ -135,6 +141,99 @@ impl NativeMenu {
         let invert = MenuItem::with_id("adjust.invert", "Invert Colors", true, None);
         adjustments.append(&invert).ok()?;
 
+        let effects = Submenu::new("Effects", true);
+        let artistic = Submenu::new("Artistic", true);
+        let ink_sketch =
+            MenuItem::with_id("effects.artistic.ink_sketch", "Ink Sketch", false, None);
+        let oil_painting =
+            MenuItem::with_id("effects.artistic.oil_painting", "Oil Painting", false, None);
+        let pencil_sketch = MenuItem::with_id(
+            "effects.artistic.pencil_sketch",
+            "Pencil Sketch",
+            false,
+            None,
+        );
+        artistic
+            .append_items(&[&ink_sketch, &oil_painting, &pencil_sketch])
+            .ok()?;
+
+        let blurs = Submenu::new("Blurs", true);
+        let gaussian_blur =
+            MenuItem::with_id("effects.gaussian_blur", "Gaussian Blur…", true, None);
+        let motion_blur = MenuItem::with_id("effects.blurs.motion", "Motion Blur", false, None);
+        let radial_blur = MenuItem::with_id("effects.blurs.radial", "Radial Blur", false, None);
+        let unfocus = MenuItem::with_id("effects.blurs.unfocus", "Unfocus", false, None);
+        blurs
+            .append_items(&[&gaussian_blur, &motion_blur, &radial_blur, &unfocus])
+            .ok()?;
+
+        let distort = Submenu::new("Distort", true);
+        let bulge = MenuItem::with_id("effects.distort.bulge", "Bulge", false, None);
+        let dents = MenuItem::with_id("effects.distort.dents", "Dents", false, None);
+        let pixelate = MenuItem::with_id("effects.distort.pixelate", "Pixelate", false, None);
+        let twist = MenuItem::with_id("effects.distort.twist", "Twist", false, None);
+        distort
+            .append_items(&[&bulge, &dents, &pixelate, &twist])
+            .ok()?;
+
+        let noise = Submenu::new("Noise", true);
+        let add_noise = MenuItem::with_id("effects.noise.add", "Add Noise", false, None);
+        let median = MenuItem::with_id("effects.noise.median", "Median", false, None);
+        let reduce_noise = MenuItem::with_id("effects.noise.reduce", "Reduce Noise", false, None);
+        noise
+            .append_items(&[&add_noise, &median, &reduce_noise])
+            .ok()?;
+
+        let photo = Submenu::new("Photo", true);
+        let grayscale = MenuItem::with_id("effects.grayscale", "Grayscale", true, None);
+        let sepia = MenuItem::with_id("effects.sepia", "Sepia", true, None);
+        let glow = MenuItem::with_id("effects.photo.glow", "Glow", false, None);
+        let sharpen = MenuItem::with_id("effects.photo.sharpen", "Sharpen", false, None);
+        let soft_portrait = MenuItem::with_id(
+            "effects.photo.soften_portrait",
+            "Soften Portrait",
+            false,
+            None,
+        );
+        let vignette = MenuItem::with_id("effects.photo.vignette", "Vignette", false, None);
+        photo
+            .append_items(&[
+                &grayscale,
+                &sepia,
+                &PredefinedMenuItem::separator(),
+                &glow,
+                &sharpen,
+                &soft_portrait,
+                &vignette,
+            ])
+            .ok()?;
+
+        let render = Submenu::new("Render", true);
+        let clouds = MenuItem::with_id("effects.render.clouds", "Clouds", false, None);
+        let julia = MenuItem::with_id("effects.render.julia", "Julia Fractal", false, None);
+        let mandelbrot = MenuItem::with_id(
+            "effects.render.mandelbrot",
+            "Mandelbrot Fractal",
+            false,
+            None,
+        );
+        render.append_items(&[&clouds, &julia, &mandelbrot]).ok()?;
+
+        let stylize = Submenu::new("Stylize", true);
+        let edge_detect = MenuItem::with_id("effects.stylize.edge", "Edge Detect", false, None);
+        let emboss = MenuItem::with_id("effects.stylize.emboss", "Emboss", false, None);
+        let outline = MenuItem::with_id("effects.stylize.outline", "Outline", false, None);
+        let relief = MenuItem::with_id("effects.stylize.relief", "Relief", false, None);
+        stylize
+            .append_items(&[&edge_detect, &emboss, &outline, &relief])
+            .ok()?;
+
+        effects
+            .append_items(&[
+                &artistic, &blurs, &distort, &noise, &photo, &render, &stylize,
+            ])
+            .ok()?;
+
         let window = Submenu::new("Window", true);
         let tools = CheckMenuItem::with_id("window.tools", "Tools", true, true, None);
         let colors = CheckMenuItem::with_id("window.colors", "Colors", true, true, None);
@@ -163,6 +262,7 @@ impl NativeMenu {
             &view,
             &layers,
             &adjustments,
+            &effects,
             &window,
             &help,
         ])
@@ -230,6 +330,9 @@ mod tests {
             ("layers.flip_h", FlipHorizontal),
             ("layers.flip_v", FlipVertical),
             ("adjust.invert", Invert),
+            ("effects.grayscale", Grayscale),
+            ("effects.sepia", Sepia),
+            ("effects.gaussian_blur", GaussianBlur),
             ("window.tools", ToggleTools),
             ("window.colors", ToggleColors),
             ("window.layers", ToggleLayers),

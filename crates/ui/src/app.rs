@@ -3,9 +3,10 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use paint_app::{AppSession, Command};
+use paint_app::{AppSession, Command, Effect};
 use paint_core::{Bgra, Point, Rect, Size};
 use paint_document::{Document, LayerId};
+use paint_raster::MAX_GAUSSIAN_BLUR_RADIUS;
 
 use crate::checkerboard::paint_checkerboard;
 use crate::colors::{
@@ -112,6 +113,8 @@ pub struct PaintApp {
     layer_properties_index: usize,
     layer_properties_opacity: u8,
     layer_properties_visible: bool,
+    gaussian_blur_open: bool,
+    gaussian_blur_radius: u32,
     document_title: String,
     document_thumbnail: Option<egui::TextureHandle>,
     tabs: Vec<Option<DocumentTabState>>,
@@ -193,6 +196,8 @@ impl PaintApp {
             layer_properties_index: 0,
             layer_properties_opacity: u8::MAX,
             layer_properties_visible: true,
+            gaussian_blur_open: false,
+            gaussian_blur_radius: 2,
             document_title: "New Image".to_owned(),
             document_thumbnail: None,
             tabs: vec![None],
@@ -373,6 +378,7 @@ impl PaintApp {
         self.load_active_tab(state);
         self.active_tab = index;
         self.layer_properties_open = false;
+        self.gaussian_blur_open = false;
         self.status = format!("Switched to {}", self.document_title);
     }
 
@@ -395,6 +401,7 @@ impl PaintApp {
         self.path_dialog = None;
         self.pending_discard = None;
         self.focus_discard_buttons = false;
+        self.gaussian_blur_open = false;
         self.texture_dirty = true;
         self.zoom = 1.0;
         self.fit_canvas_requested = false;
@@ -731,6 +738,21 @@ impl PaintApp {
                 NativeCommand::Invert => {
                     self.execute(Command::Invert, "Inverted colors on the active layer");
                 }
+                NativeCommand::Grayscale => {
+                    self.execute(
+                        Command::ApplyEffect(Effect::Grayscale),
+                        "Applied Grayscale to the selection",
+                    );
+                }
+                NativeCommand::Sepia => {
+                    self.execute(
+                        Command::ApplyEffect(Effect::Sepia),
+                        "Applied Sepia to the selection",
+                    );
+                }
+                NativeCommand::GaussianBlur => {
+                    self.gaussian_blur_open = true;
+                }
                 NativeCommand::ToggleTools => self.tools_visible = !self.tools_visible,
                 NativeCommand::ToggleColors => self.colors_visible = !self.colors_visible,
                 NativeCommand::ToggleLayers => self.layers_visible = !self.layers_visible,
@@ -1040,9 +1062,60 @@ impl PaintApp {
                         ui.close();
                     }
                     ui.separator();
-                    ui.add_enabled(false, egui::Button::new("Grayscale"));
-                    ui.add_enabled(false, egui::Button::new("Sepia"));
-                    ui.add_enabled(false, egui::Button::new("Gaussian Blur"));
+                    ui.menu_button("Artistic", |ui| {
+                        for label in ["Ink Sketch", "Oil Painting", "Pencil Sketch"] {
+                            disabled_effect_item(ui, label);
+                        }
+                    });
+                    ui.menu_button("Blurs", |ui| {
+                        if ui.button("Gaussian Blur…").clicked() {
+                            self.gaussian_blur_open = true;
+                            ui.close();
+                        }
+                        for label in ["Motion Blur", "Radial Blur", "Unfocus", "Zoom Blur"] {
+                            disabled_effect_item(ui, label);
+                        }
+                    });
+                    ui.menu_button("Distort", |ui| {
+                        for label in ["Bulge", "Dents", "Pixelate", "Twist"] {
+                            disabled_effect_item(ui, label);
+                        }
+                    });
+                    ui.menu_button("Noise", |ui| {
+                        for label in ["Add Noise", "Median", "Reduce Noise"] {
+                            disabled_effect_item(ui, label);
+                        }
+                    });
+                    ui.menu_button("Photo", |ui| {
+                        if ui.button("Grayscale").clicked() {
+                            self.execute(
+                                Command::ApplyEffect(Effect::Grayscale),
+                                "Applied Grayscale to the selection",
+                            );
+                            ui.close();
+                        }
+                        if ui.button("Sepia").clicked() {
+                            self.execute(
+                                Command::ApplyEffect(Effect::Sepia),
+                                "Applied Sepia to the selection",
+                            );
+                            ui.close();
+                        }
+                        ui.separator();
+                        for label in ["Glow", "Sharpen", "Soften Portrait", "Vignette"] {
+                            disabled_effect_item(ui, label);
+                        }
+                    });
+                    ui.menu_button("Render", |ui| {
+                        for label in ["Clouds", "Julia Fractal", "Mandelbrot Fractal"] {
+                            disabled_effect_item(ui, label);
+                        }
+                    });
+                    ui.menu_button("Stylize", |ui| {
+                        for label in ["Edge Detect", "Emboss", "Outline", "Relief"] {
+                            disabled_effect_item(ui, label);
+                        }
+                    });
                 });
                 ui.menu_button("Window", |ui| {
                     ui.checkbox(&mut self.tools_visible, "Tools window");
@@ -2234,6 +2307,50 @@ impl PaintApp {
         self.layer_properties_open = open;
     }
 
+    fn gaussian_blur_dialog(&mut self, context: &egui::Context) {
+        if !self.gaussian_blur_open {
+            return;
+        }
+        let mut open = self.gaussian_blur_open;
+        let mut apply = false;
+        let mut cancel = false;
+        egui::Window::new("Gaussian Blur")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(260.0)
+            .show(context, |ui| {
+                ui.label("Soften the selection with a separable Gaussian kernel.");
+                ui.separator();
+                ui.add(
+                    egui::Slider::new(&mut self.gaussian_blur_radius, 0..=MAX_GAUSSIAN_BLUR_RADIUS)
+                        .text("Radius"),
+                );
+                ui.label("A radius of zero leaves the selection unchanged.");
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.button("Apply").clicked() {
+                        apply = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if cancel {
+            open = false;
+        }
+        if apply {
+            let radius = self.gaussian_blur_radius;
+            self.execute(
+                Command::ApplyEffect(Effect::GaussianBlur { radius }),
+                format!("Applied Gaussian Blur (radius {radius})"),
+            );
+            open = false;
+        }
+        self.gaussian_blur_open = open;
+    }
+
     fn status_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::bottom("paint-r-status").show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -3111,6 +3228,7 @@ impl eframe::App for PaintApp {
             self.right_dock(ui);
         }
         self.layer_properties_dialog(ui.ctx());
+        self.gaussian_blur_dialog(ui.ctx());
         self.canvas_panel(ui);
         self.path_dialog(ui);
         self.discard_confirmation(ui);
@@ -3446,6 +3564,7 @@ fn history_label(command: &Command) -> Option<String> {
         Command::Recolor { .. } => Some("Recolor".to_owned()),
         Command::Move { .. } => Some("Move Selected Pixels".to_owned()),
         Command::Invert => Some("Invert Colors".to_owned()),
+        Command::ApplyEffect(effect) => Some(effect.history_label()),
         Command::FlipLayerHorizontal => Some("Flip Layer Horizontal".to_owned()),
         Command::FlipLayerVertical => Some("Flip Layer Vertical".to_owned()),
         Command::FlipImageHorizontal => Some("Flip Image Horizontal".to_owned()),
@@ -3468,6 +3587,11 @@ fn history_label(command: &Command) -> Option<String> {
         | Command::Undo
         | Command::Redo => None,
     }
+}
+
+fn disabled_effect_item(ui: &mut egui::Ui, label: &str) {
+    ui.add_enabled(false, egui::Button::new(label))
+        .on_disabled_hover_text("Not implemented in the Paint.R preview");
 }
 
 fn labeled_button(ui: &mut egui::Ui, text: &str, label: &'static str) -> egui::Response {

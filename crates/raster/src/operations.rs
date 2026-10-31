@@ -120,21 +120,24 @@ pub fn flip_vertical(
     )?))
 }
 
-fn layer(document: &Document, layer_id: LayerId) -> Result<&Layer, RasterError> {
+pub(crate) fn layer(document: &Document, layer_id: LayerId) -> Result<&Layer, RasterError> {
     document
         .layer(layer_id)
         .ok_or(DocumentError::LayerNotFound { layer_id })
         .map_err(RasterError::from)
 }
 
-fn operation_rect(document: &Document) -> Option<Rect> {
+pub(crate) fn operation_rect(document: &Document) -> Option<Rect> {
     match document.selection() {
         Some(selection) => selection.clip_to(document.size()),
         None => Some(document.canvas_rect()),
     }
 }
 
-fn copy_pixels(pixels: &[Bgra], requested_bytes: usize) -> Result<Vec<Bgra>, RasterError> {
+pub(crate) fn copy_pixels(
+    pixels: &[Bgra],
+    requested_bytes: usize,
+) -> Result<Vec<Bgra>, RasterError> {
     let mut copy = Vec::new();
     copy.try_reserve_exact(pixels.len())
         .map_err(|_| RasterError::AllocationFailed { requested_bytes })?;

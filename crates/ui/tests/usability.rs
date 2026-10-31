@@ -1783,3 +1783,92 @@ fn reference_driven_layer_menu_and_zoom_to_selection_work() {
     menu_item(&mut harness, "Image", "Flatten Image");
     assert_eq!(harness.state().session().document().layers().len(), 1);
 }
+
+#[test]
+fn effects_menu_uses_paint_net_groups_and_applies_real_effects_undoably() {
+    let mut harness = app();
+
+    click(&mut harness, "Effects");
+    for group in [
+        "Artistic", "Blurs", "Distort", "Noise", "Photo", "Render", "Stylize",
+    ] {
+        harness.get_by_role_and_label(Role::Button, group);
+    }
+    harness.get_by_role_and_label(Role::Button, "Invert Colors");
+
+    click(&mut harness, "Photo");
+    harness.get_by_role_and_label(Role::Button, "Grayscale");
+    click(&mut harness, "Sepia");
+    assert!(harness.state().session().can_undo());
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()[0],
+        Bgra::new(239, 255, 255, 255)
+    );
+    click(&mut harness, "Undo");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()[0],
+        Bgra::WHITE
+    );
+
+    click(&mut harness, "Shapes");
+    drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(14.0, 15.0));
+    menu_item(&mut harness, "Effects", "Blurs");
+    harness.get_by_role_and_label(Role::Button, "Gaussian Blur…");
+    assert!(button_is_disabled(&harness, "Motion Blur"));
+    click(&mut harness, "Gaussian Blur…");
+    harness.get_by_role_and_label(Role::Slider, "Radius");
+    click(&mut harness, "Apply");
+
+    let session = harness.state().session();
+    let blended = *session
+        .document()
+        .active_layer()
+        .surface()
+        .pixel(Point::new(16, 10))
+        .expect("blurred neighbor");
+    assert!(
+        blended.r < 255,
+        "the rectangle edge should blur into the canvas: {blended:?}"
+    );
+    assert_eq!(
+        *session
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(30, 10))
+            .expect("far white pixel"),
+        Bgra::WHITE
+    );
+    assert!(
+        harness
+            .state()
+            .history_entries()
+            .last()
+            .is_some_and(|label| label.contains("Gaussian Blur")),
+        "history should record the configured blur: {:?}",
+        harness.state().history_entries()
+    );
+
+    click(&mut harness, "Undo");
+    assert_eq!(
+        *harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(16, 10))
+            .expect("restored pixel"),
+        Bgra::WHITE
+    );
+}

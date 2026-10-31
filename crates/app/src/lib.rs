@@ -1,6 +1,7 @@
 #![doc = "Single-writer application sessions, traces, snapshots, and inverse-based history."]
 
 mod command;
+mod effect;
 mod error;
 mod persistence;
 mod session;
@@ -8,6 +9,7 @@ mod snapshot;
 mod trace;
 
 pub use command::Command;
+pub use effect::{Effect, EffectCategory};
 pub use error::{ExpectationError, ExpectationField, ResourceLimitError, SessionError, TraceError};
 pub use session::{AppSession, FloatingSelection, ResourceLimits};
 pub use snapshot::{

@@ -1,5 +1,7 @@
 use paint_core::{Bgra, Point, Rect};
 
+use crate::Effect;
+
 /// One UI-neutral operation submitted to the single-writer session.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
@@ -54,6 +56,8 @@ pub enum Command {
     },
     /// Inverts RGB in the active layer and selection while preserving alpha.
     Invert,
+    /// Applies an implemented raster effect to the active layer and selection as one mutation.
+    ApplyEffect(Effect),
     /// Flips the complete active layer left-to-right, ignoring the selection.
     FlipLayerHorizontal,
     /// Flips the complete active layer top-to-bottom, ignoring the selection.
