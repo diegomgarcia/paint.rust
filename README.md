@@ -12,9 +12,10 @@ An original, cross-platform Rust image editor being developed against a pinned P
   Layers/Adjustments/Effects/Window/Help menus; compact icon toolbar; two-column Tools
   strip; Tool Options; floating/docked Colors, Layers and History panels; canvas; status
   bar with units and zoom.
-- All 19 Paint.NET tools are present: Rectangle/Ellipse/Lasso/Magic Wand selection,
-  Move Selected Pixels, Move Selection, Zoom, Pan, Paint Bucket, Gradient, Paintbrush,
-  Eraser, Pencil, Color Picker, Clone Stamp, Recolor, Text, Line/Curve and Shapes.
+- All 19 Paint.NET tools are present in the reference order: Rectangle/Ellipse/Lasso/Magic
+  Wand selection, Move Selected Pixels, Move Selection, Zoom, Pan, Paint Bucket, Gradient,
+  Paintbrush, Eraser, Pencil, Color Picker, Clone Stamp, Recolor, Text, Line/Curve and
+  Shapes. Tool hotkeys and Shift cycles follow the reference metadata.
 - Real per-pixel selection masks with Replace/Union/Subtract/Intersect/Xor, Shift/Alt
   modifiers, magic-wand Active Layer/Image sampling, blue tint and marching ants along
   the actual mask boundary.
@@ -24,8 +25,11 @@ An original, cross-platform Rust image editor being developed against a pinned P
 - Image operations: Crop to Selection, Resize, Canvas Size, Rotate 90/180, Flips and
   Flatten. Layer operations: add/delete/duplicate/merge/reorder, rename/properties,
   visibility, opacity, and real Normal/Multiply/Screen/Overlay blending.
+- Edit actions: Select All, Deselect, Invert Selection, Erase Selection, Fill Selection,
+  Copy/Cut/Paste, Paste Into New Layer/Image; New Image dialog with reference fills.
 - Effects/Adjustments: Invert, Grayscale, Sepia, Gaussian/Motion blur, Sharpen, Add Noise,
-  Brightness/Contrast, Hue/Saturation, Auto-Level (with previews and undo).
+  Brightness/Contrast, Hue/Saturation, Auto-Level, Levels, Posterize, Black and White and
+  Threshold (with previews and undo). Move supports subpixel resampling modes.
 - Clipboard Copy/Cut/Paste, Select All/Invert/Erase/Fill and Paste Into actions where
   implemented by the current menus; keyboard shortcuts are documented in Help.
 - Grid, rulers, Pixel/Inch/Centimeter units, fit/zoom, and PNG-only document semantics.
@@ -36,10 +40,10 @@ icons; it never embeds Paint.NET bitmaps or code. Paint.NET is a behavioral/layo
 only. The editor is not pixel-identical to Paint.NET and does not load Paint.NET plugins.
 
 Known gaps for 0.1.0: layered documents are not saved (Save writes a flattened PNG);
-several advanced effects/adjustments remain disabled; Move uses integer translation without
-scale/rotation; shape interior for `Both` uses the primary color; text is committed as
-pixels with left alignment; OS clipboard and native-menu interaction are not fully exercised
-by headless tests; DPI/print/color-profile metadata is absent. See
+advanced effects/adjustments (Curves, Exposure, etc.) remain disabled; Move has subpixel
+resampling but no scale/rotation handles; Freeform shapes are not implemented; shape
+interior for `Both` uses the primary color; OS clipboard and native-menu interaction are not
+fully exercised by headless tests; DPI/print/color-profile metadata is absent. See
 [UI_PARITY_DIFF.md](docs/reference/UI_PARITY_DIFF.md) and
 [release notes](docs/releases/v0.1.0.md) for the current matrix.
 
