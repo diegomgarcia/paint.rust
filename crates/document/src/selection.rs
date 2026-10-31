@@ -618,7 +618,8 @@ impl SelectionCombineMode {
 ///
 /// A rectangular selection stores only its bounds, matching the historical `Option<Rect>` model.
 /// Shape tools install a mask and expose its tight bounds through [`Selection::bounds`] so status
-/// text, zoom-to-selection, and the bounding-box marching-ants outline keep working.
+/// text and zoom-to-selection keep working. The UI traces the mask boundary for marching ants and
+/// tints the selected runs, not their bounding box.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Selection {
     bounds: Rect,

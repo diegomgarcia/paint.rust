@@ -26,7 +26,7 @@ use crate::icons::{
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
 #[cfg(target_os = "macos")]
 use crate::menu::{NativeCommand, NativeMenu, NativeMenuState};
-use crate::selection::paint_selection_outline;
+use crate::selection::{paint_selection, paint_selection_outline};
 
 const DEFAULT_WIDTH: u32 = 800;
 const DEFAULT_HEIGHT: u32 = 600;
@@ -4068,27 +4068,9 @@ impl PaintApp {
                         ) && self.drag_start.is_some()
                             && self.drag_current.is_some();
                         if !dragging_selection
-                            && let Some(selection) = self
-                                .session
-                                .document()
-                                .selection()
-                                .and_then(|selection| selection.clip_to(size))
+                            && let Some(selection) = self.session.document().selection_model()
                         {
-                            let min = rect.min
-                                + egui::vec2(
-                                    selection.left() as f32 * zoom,
-                                    selection.top() as f32 * zoom,
-                                );
-                            let max = rect.min
-                                + egui::vec2(
-                                    selection.right() as f32 * zoom,
-                                    selection.bottom() as f32 * zoom,
-                                );
-                            paint_selection_outline(
-                                ui.painter(),
-                                egui::Rect::from_min_max(min, max),
-                                phase,
-                            );
+                            paint_selection(ui.painter(), rect, zoom, selection, phase);
                             if ui.style().animation_time > 0.0 {
                                 ui.ctx()
                                     .request_repaint_after(std::time::Duration::from_millis(80));
