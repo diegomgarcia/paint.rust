@@ -3983,3 +3983,41 @@ fn clone_source_marker_follows_the_brush_while_the_preview_is_live() {
     harness.drop_at(rect.min + egui::vec2(120.0, 100.0));
     harness.run_steps(2);
 }
+
+#[test]
+fn gradient_tool_previews_pixels_during_the_drag() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Gradient");
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let rect = canvas.rect();
+    harness.drag_at(rect.min + egui::vec2(20.0, 20.0));
+    harness.run_steps(1);
+    harness.hover_at(rect.min + egui::vec2(80.0, 20.0));
+    harness.run_steps(1);
+    let preview = *harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixel(Point::new(50, 20))
+        .expect("preview pixel");
+    assert!(
+        preview.r > 40 && preview.r < 215,
+        "gradient must render live during the drag, got {preview:?}"
+    );
+    assert!(!harness.state().session().can_undo());
+    harness.drop_at(rect.min + egui::vec2(80.0, 20.0));
+    harness.run_steps(2);
+    let committed = *harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixel(Point::new(50, 20))
+        .expect("committed pixel");
+    assert_eq!(preview, committed);
+    assert!(harness.state().session().can_undo());
+}

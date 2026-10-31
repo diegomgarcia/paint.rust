@@ -1176,6 +1176,22 @@ impl PaintApp {
         });
     }
 
+    fn preview_live_gradient(&mut self) {
+        let (Some(start), Some(end)) = (self.drag_start, self.drag_current) else {
+            return;
+        };
+        match self.session.preview_gradient(
+            start,
+            end,
+            self.fill_color,
+            self.secondary_color,
+            GradientOptions::new(self.gradient_type, self.gradient_repeat),
+        ) {
+            Ok(_) => self.texture_dirty = true,
+            Err(error) => self.status = format!("Gradient preview failed: {error}"),
+        }
+    }
+
     fn preview_live_clone(&mut self) {
         let Some(source) = self.clone_source else {
             return;
@@ -1217,6 +1233,10 @@ impl PaintApp {
             }
             Tool::CloneStamp => self.finish_live_clone(),
             Tool::Pencil | Tool::Brush | Tool::Eraser => self.finish_live_stroke(),
+            Tool::Gradient => {
+                self.session.cancel_preview();
+                self.texture_dirty = true;
+            }
             _ => {}
         }
     }
@@ -1227,6 +1247,10 @@ impl PaintApp {
         self.clone_source = None;
         self.clone_offset = None;
         self.clone_alt_down = false;
+        if self.session.has_preview() {
+            self.session.cancel_preview();
+            self.texture_dirty = true;
+        }
     }
 
     fn add_layer(&mut self) {
@@ -4553,6 +4577,10 @@ impl PaintApp {
                                     self.session.begin_stroke_preview();
                                     self.preview_live_stroke();
                                 }
+                                if self.active_tool == Tool::Gradient {
+                                    self.session.begin_preview();
+                                    self.preview_live_gradient();
+                                }
                                 if self.active_tool == Tool::Move
                                     && self.session.document().selection().is_some()
                                 {
@@ -4566,6 +4594,7 @@ impl PaintApp {
                             if response.dragged()
                                 && let Some(point) = point()
                             {
+                                let drag_point_changed = self.drag_current != Some(point);
                                 self.drag_current = Some(point);
                                 if self.active_tool == Tool::Move
                                     && let (Some(start), Some(floating)) =
@@ -4581,6 +4610,9 @@ impl PaintApp {
                                     if is_paint {
                                         self.preview_live_stroke();
                                     }
+                                }
+                                if self.active_tool == Tool::Gradient && drag_point_changed {
+                                    self.preview_live_gradient();
                                 }
                             }
                             if let (Some(start), Some(end)) = (self.drag_start, self.drag_current) {
@@ -4769,19 +4801,23 @@ impl PaintApp {
                                         },
                                         "Drew a line".to_owned(),
                                     )),
-                                    Tool::Gradient => Some((
-                                        Command::Gradient {
-                                            start,
-                                            end,
-                                            from: color,
-                                            to: self.secondary_color,
-                                            options: GradientOptions::new(
-                                                self.gradient_type,
-                                                self.gradient_repeat,
-                                            ),
-                                        },
-                                        "Painted a gradient".to_owned(),
-                                    )),
+                                    Tool::Gradient => {
+                                        self.session.cancel_preview();
+                                        self.texture_dirty = true;
+                                        Some((
+                                            Command::Gradient {
+                                                start,
+                                                end,
+                                                from: color,
+                                                to: self.secondary_color,
+                                                options: GradientOptions::new(
+                                                    self.gradient_type,
+                                                    self.gradient_repeat,
+                                                ),
+                                            },
+                                            "Painted a gradient".to_owned(),
+                                        ))
+                                    }
                                     Tool::Recolor => {
                                         let points = if self.paint_points.is_empty() {
                                             vec![start, end]
