@@ -1132,6 +1132,20 @@ impl PaintApp {
         }
     }
 
+    /// The source crosshair follows the brush by the fixed stroke offset while stamping.
+    #[doc(hidden)]
+    pub fn clone_marker_point(&self) -> Option<(i64, i64)> {
+        let source = self.clone_source?;
+        let (dx, dy) = match (self.drag_start, self.drag_current) {
+            (Some(start), Some(current)) => (
+                i64::from(current.x) - i64::from(start.x),
+                i64::from(current.y) - i64::from(start.y),
+            ),
+            _ => (0, 0),
+        };
+        Some((i64::from(source.x) + dx, i64::from(source.y) + dy))
+    }
+
     fn clone_tool_options(&mut self, ui: &mut egui::Ui) {
         ui.label("Width");
         ui.add(
@@ -4358,10 +4372,10 @@ impl PaintApp {
                             ui.painter().circle_stroke(marker, 4.0, stroke);
                         }
                         if self.active_tool == Tool::CloneStamp
-                            && let Some(source) = self.clone_source
+                            && let Some((source_x, source_y)) = self.clone_marker_point()
                         {
                             let marker = rect.min
-                                + egui::vec2(source.x as f32 * zoom, source.y as f32 * zoom);
+                                + egui::vec2(source_x as f32 * zoom, source_y as f32 * zoom);
                             let radius = (self.brush_size.max(1) as f32 * zoom / 2.0).max(2.0);
                             let stroke = egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE);
                             ui.painter().circle_stroke(marker, radius, stroke);

@@ -3946,3 +3946,40 @@ fn add_noise_dialog_previews_applies_and_cancel_restores() {
         "undo must restore pixels"
     );
 }
+
+#[test]
+fn clone_source_marker_follows_the_brush_while_the_preview_is_live() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Pencil");
+    drag_canvas(&mut harness, egui::vec2(8.0, 40.0), egui::vec2(40.0, 40.0));
+    click(&mut harness, "Clone Stamp");
+    alt_click_canvas_at(&mut harness, egui::vec2(20.0, 40.0));
+
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let rect = canvas.rect();
+    harness.drag_at(rect.min + egui::vec2(100.0, 100.0));
+    harness.run_steps(1);
+    assert_eq!(harness.state().clone_marker_point(), Some((20, 40)));
+    harness.hover_at(rect.min + egui::vec2(120.0, 100.0));
+    harness.run_steps(1);
+    assert_eq!(
+        harness.state().clone_marker_point(),
+        Some((40, 40)),
+        "source crosshair must follow the fixed stroke offset"
+    );
+    assert_eq!(
+        *harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(120, 100))
+            .expect("live cloned pixel"),
+        Bgra::BLACK,
+        "live preview must sample the offset source"
+    );
+    harness.drop_at(rect.min + egui::vec2(120.0, 100.0));
+    harness.run_steps(2);
+}
