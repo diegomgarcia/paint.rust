@@ -17,8 +17,8 @@ pub(crate) fn layer_thumbnail_texture(
             layer.revision().get()
         ),
         layer.surface(),
-        42.0,
-        42.0,
+        50.0,
+        50.0,
     )
 }
 

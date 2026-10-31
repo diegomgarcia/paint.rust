@@ -188,6 +188,7 @@ impl AppSession {
             Command::DuplicateLayer { index } => self.duplicate_layer(index),
             Command::MergeLayerDown { index } => self.merge_layer_down(index),
             Command::MoveLayer { index, offset } => self.move_layer(index, offset),
+            Command::RenameLayer { index, name } => self.rename_layer(index, name),
             Command::SetLayerVisibility { index, visible } => {
                 let layer_id = self.layer_id(index)?;
                 self.apply_new_mutation(Mutation::SetVisibility {
@@ -907,6 +908,16 @@ impl AppSession {
         Ok(true)
     }
 
+    /// Renames a layer as one undoable content edit without changing the active layer.
+    pub fn rename_layer(&mut self, index: usize, name: String) -> Result<bool, SessionError> {
+        validate_layer_name(&name, &self.limits)?;
+        let layer_id = self.layer_id(index)?;
+        self.apply_new_mutation(Mutation::SetName {
+            layer_id,
+            value: name,
+        })
+    }
+
     pub fn merge_layer_down(&mut self, index: usize) -> Result<bool, SessionError> {
         if index == 0 {
             return Ok(false);
@@ -1076,6 +1087,10 @@ enum Mutation {
     SetOpacity {
         layer_id: LayerId,
         value: u8,
+    },
+    SetName {
+        layer_id: LayerId,
+        value: String,
     },
     MoveLayer {
         layer_id: LayerId,
@@ -1267,6 +1282,22 @@ impl Mutation {
                 }
                 document.set_layer_opacity(*layer_id, *value)?;
                 Ok(Some(Self::SetOpacity {
+                    layer_id: *layer_id,
+                    value: previous,
+                }))
+            }
+            Self::SetName { layer_id, value } => {
+                let layer = document
+                    .layer(*layer_id)
+                    .ok_or(DocumentError::LayerNotFound {
+                        layer_id: *layer_id,
+                    })?;
+                let previous = layer.name().to_owned();
+                if previous == *value {
+                    return Ok(None);
+                }
+                document.set_layer_name(*layer_id, value.clone())?;
+                Ok(Some(Self::SetName {
                     layer_id: *layer_id,
                     value: previous,
                 }))

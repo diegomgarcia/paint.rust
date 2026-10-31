@@ -168,6 +168,11 @@ pub enum Command {
         index: usize,
         offset: i32,
     },
+    /// Renames a layer, preserving history and the active layer identity.
+    RenameLayer {
+        index: usize,
+        name: String,
+    },
     SetLayerVisibility {
         index: usize,
         visible: bool,

@@ -1,4 +1,6 @@
-use paint_app::{AppSession, Command, Effect, ResourceLimits, SNAPSHOT_FORMAT, SessionError};
+use paint_app::{
+    AppSession, Command, Effect, ResourceLimitError, ResourceLimits, SNAPSHOT_FORMAT, SessionError,
+};
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId};
 
@@ -827,4 +829,90 @@ fn clone_stamp_is_one_undoable_selection_clipped_content_edit() {
         session.document().active_layer().surface().pixels(),
         original
     );
+}
+
+#[test]
+fn rename_layer_is_one_undoable_content_commit_preserving_active_identity() {
+    let mut session = session_with_color(1, 1, Bgra::WHITE);
+    session
+        .execute(Command::AddLayer {
+            name: "Ink".to_owned(),
+            opacity: 255,
+            visible: true,
+        })
+        .unwrap();
+    session
+        .execute(Command::SetActiveLayer { index: 0 })
+        .unwrap();
+    let active = session.document().active_layer_id();
+    let target = session.document().layers()[1].id();
+    let history_depth = session.document().revision();
+
+    assert!(
+        session
+            .execute(Command::RenameLayer {
+                index: 1,
+                name: "Paint".to_owned(),
+            })
+            .unwrap()
+    );
+    assert_eq!(session.document().layers()[1].name(), "Paint");
+    assert_eq!(session.document().active_layer_id(), active);
+    assert_ne!(session.document().layers()[1].id(), active);
+    assert_eq!(session.document().layers()[1].id(), target);
+    assert!(session.dirty());
+    assert!(session.document().revision().get() > history_depth.get());
+
+    assert!(session.undo().unwrap());
+    assert_eq!(session.document().layers()[1].name(), "Ink");
+    assert_eq!(session.document().active_layer_id(), active);
+
+    assert!(session.redo().unwrap());
+    assert_eq!(session.document().layers()[1].name(), "Paint");
+}
+
+#[test]
+fn rename_layer_rejects_empty_and_overlong_names_without_side_effects() {
+    let mut session = session_with_color(1, 1, Bgra::WHITE);
+    let before = session.document().clone();
+    let error = session
+        .execute(Command::RenameLayer {
+            index: 0,
+            name: String::new(),
+        })
+        .expect_err("empty names must be rejected");
+    assert!(matches!(error, SessionError::EmptyLayerName));
+    assert_eq!(session.document(), &before);
+    assert!(!session.can_undo());
+    assert!(!session.can_redo());
+    assert!(!session.dirty());
+
+    let limits = ResourceLimits {
+        max_layer_name_bytes: 3,
+        ..ResourceLimits::default()
+    };
+    let mut limited = AppSession::with_limits(before, limits).expect("limited session");
+    let error = limited
+        .execute(Command::RenameLayer {
+            index: 0,
+            name: "four".to_owned(),
+        })
+        .expect_err("overlong names must be rejected");
+    assert!(matches!(
+        error,
+        SessionError::ResourceLimit(ResourceLimitError::LayerNameBytes { actual: 4, max: 3 })
+    ));
+    assert_eq!(limited.document().layers()[0].name(), "Background");
+    assert!(!limited.can_undo());
+
+    assert!(
+        !session
+            .execute(Command::RenameLayer {
+                index: 0,
+                name: "Background".to_owned(),
+            })
+            .unwrap(),
+        "renaming to the same name is a no-op"
+    );
+    assert!(!session.can_undo());
 }

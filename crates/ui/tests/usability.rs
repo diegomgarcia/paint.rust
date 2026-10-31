@@ -17,6 +17,37 @@ fn app() -> Harness<'static, PaintApp> {
     harness
 }
 
+/// A docked app whose simulated frames are close enough together for double-click detection.
+fn fast_app() -> Harness<'static, PaintApp> {
+    let mut harness = Harness::builder()
+        .with_step_dt(0.02)
+        .build_eframe(|cc| PaintApp::new_docked(cc));
+    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
+    harness.run();
+    harness
+}
+
+fn layer_names(harness: &Harness<'_, PaintApp>) -> Vec<String> {
+    harness
+        .state()
+        .session()
+        .document()
+        .layers()
+        .iter()
+        .map(|layer| layer.name().to_owned())
+        .collect()
+}
+
+fn double_click(harness: &mut Harness<'_, PaintApp>, label: &str) {
+    // Let egui's earlier click history expire so the second click is a double, not a triple.
+    harness.run_steps(20);
+    harness.get_by_role_and_label(Role::Button, label).click();
+    harness.step();
+    harness.get_by_role_and_label(Role::Button, label).click();
+    harness.step();
+    harness.run();
+}
+
 fn click(harness: &mut Harness<'_, PaintApp>, label: &str) {
     harness.get_by_role_and_label(Role::Button, label).click();
     harness.run();
@@ -1534,6 +1565,237 @@ fn layers_window_margins_and_bottom_bar_are_symmetric() {
         "bottom bar gap {}",
         bounds.bottom() - add.bottom()
     );
+}
+
+#[test]
+fn layer_list_uses_paintnet_metrics_and_the_scrollbar_never_covers_text() {
+    let mut harness = app();
+    let geometry = harness
+        .state()
+        .layer_list_geometry()
+        .expect("layer list geometry while the Layers panel is visible");
+    assert!((geometry.item_height - 62.0).abs() < 0.5, "{geometry:?}");
+    assert!((geometry.thumbnail_size - 50.0).abs() < 0.5, "{geometry:?}");
+    assert!((geometry.padding - 4.0).abs() < 0.5, "{geometry:?}");
+    assert!(
+        geometry.scrollbar.is_none(),
+        "one layer must not need a scrollbar"
+    );
+    let row = geometry
+        .rows
+        .iter()
+        .find(|row| row.index == 0)
+        .expect("background row geometry");
+    assert!((row.rect.height() - 62.0).abs() < 0.5, "{row:?}");
+    assert!((row.rect.width() - geometry.viewport.width()).abs() < 0.5);
+    assert!((row.thumbnail.width() - 50.0).abs() < 0.5, "{row:?}");
+    assert!((row.thumbnail.height() - 50.0).abs() < 0.5, "{row:?}");
+    assert!(
+        (row.thumbnail.left() - row.rect.left() - 4.0).abs() < 0.5,
+        "thumbnail padding {row:?}"
+    );
+    assert!(
+        (row.rect.right() - row.visibility.right() - 4.0).abs() < 0.5,
+        "visibility hit area must sit 4 px from the row edge: {row:?}"
+    );
+    assert!(
+        row.visibility.height() >= 50.0,
+        "visibility hit area is too small: {row:?}"
+    );
+
+    for _ in 0..12 {
+        click(&mut harness, "Add Layer");
+    }
+    let scroll_bars: Vec<egui::Rect> = harness
+        .get_all_by_role(Role::ScrollBar)
+        .map(|node| node.rect())
+        .collect();
+    let geometry = harness
+        .state()
+        .layer_list_geometry()
+        .expect("layer list geometry after adding layers");
+    for pair in geometry.rows.windows(2) {
+        assert!(
+            (pair[1].rect.top() - pair[0].rect.top() - 62.0).abs() < 0.5,
+            "layer rows must keep an exact 62 px pitch: {pair:?}"
+        );
+    }
+    let scrollbar = geometry
+        .scrollbar
+        .expect("a long layer list must show a scrollbar");
+    assert!(scrollbar.width() >= 6.0, "{scrollbar:?}");
+    assert!(
+        (scrollbar.right() - geometry.outer.right()).abs() < 0.5,
+        "scrollbar must sit at the right edge: {scrollbar:?} vs {:?}",
+        geometry.outer
+    );
+    assert!(
+        (scrollbar.left() - geometry.viewport.right()).abs() < 0.5,
+        "scrollbar must be allocated outside the content viewport: {scrollbar:?} vs {:?}",
+        geometry.viewport
+    );
+    let painted_scrollbar = scroll_bars
+        .iter()
+        .find(|rect| scrollbar.contains(rect.center()))
+        .expect("the real scrollbar must sit inside the reserved strip");
+    assert!(
+        painted_scrollbar.left() >= geometry.viewport.right() - 0.5,
+        "the rendered scrollbar must not overlap layer content: {painted_scrollbar:?}"
+    );
+    for row in &geometry.rows {
+        assert!(
+            row.rect.right() <= scrollbar.left() + 0.5,
+            "layer row text may be covered by the scrollbar: {row:?} vs {scrollbar:?}"
+        );
+        assert!(
+            (row.rect.right() - row.visibility.right() - 4.0).abs() < 0.5,
+            "visibility hit area must stay inside the content viewport: {row:?}"
+        );
+    }
+}
+
+#[test]
+fn pointer_dragging_a_layer_reorders_once_preserving_the_active_layer_and_undoes() {
+    let mut harness = app();
+    click(&mut harness, "Add Layer");
+    click(&mut harness, "Add Layer");
+    let before = layer_names(&harness);
+    assert_eq!(before, ["Background", "Layer 1", "Layer 2"]);
+    let active_before = harness
+        .state()
+        .session()
+        .snapshot()
+        .expect("snapshot")
+        .active_layer_index;
+    assert_eq!(active_before, 2);
+
+    let start = harness
+        .get_by_label_contains("Layer 2 thumbnail: Layer 2")
+        .rect()
+        .center();
+    let background = harness
+        .get_by_label_contains("Layer 0 thumbnail: Background")
+        .rect();
+    let end = background.center() + egui::vec2(0.0, 40.0);
+
+    harness.drag_at(start);
+    harness.run();
+    harness.hover_at(end);
+    harness.run();
+    let geometry = harness
+        .state()
+        .layer_list_geometry()
+        .expect("layer list geometry during a drag");
+    assert!(
+        geometry.insertion_indicator.is_some(),
+        "dragging must paint an insertion indicator: {geometry:?}"
+    );
+
+    let history_before = harness.state().history_entries().len();
+    harness.drop_at(end);
+    harness.run();
+
+    assert_eq!(
+        layer_names(&harness),
+        ["Layer 2", "Background", "Layer 1"],
+        "one drag must move the dragged layer to the drop position"
+    );
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .snapshot()
+            .expect("snapshot")
+            .active_layer_index,
+        0,
+        "the active layer keeps its identity and moves with its row"
+    );
+    assert_eq!(
+        harness.state().history_entries().len(),
+        history_before + 1,
+        "one drag is one MoveLayer history entry"
+    );
+    assert_eq!(
+        harness.state().session().document().active_layer().name(),
+        "Layer 2"
+    );
+
+    click(&mut harness, "Undo");
+    assert_eq!(layer_names(&harness), before);
+    assert_eq!(
+        harness.state().session().document().active_layer().name(),
+        "Layer 2",
+        "undo must not change the active layer identity"
+    );
+}
+
+#[test]
+fn double_clicking_a_layer_opens_properties_for_that_layer() {
+    let mut harness = fast_app();
+    click(&mut harness, "Add Layer");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .snapshot()
+            .expect("snapshot")
+            .active_layer_index,
+        1
+    );
+
+    double_click(&mut harness, "Active layer 0: Background");
+
+    assert!(harness.state().layer_properties_open());
+    assert_eq!(harness.state().layer_properties_target(), Some(0));
+    harness.get_by_label("Layer: Background");
+    harness.get_by_label("Blend Mode: Normal");
+}
+
+#[test]
+fn layer_properties_rename_is_validated_undoable_and_commits_once() {
+    let mut harness = app();
+    click(&mut harness, "Add Layer");
+    click(&mut harness, "Layer Properties");
+    let history_before = harness.state().history_entries().len();
+
+    replace_field(&mut harness, "Layer name", "Ink");
+    click(&mut harness, "Apply");
+
+    let layers = harness.state().session().document().layers();
+    assert_eq!(layers[1].name(), "Ink");
+    assert_eq!(
+        harness.state().history_entries().len(),
+        history_before + 1,
+        "a rename is exactly one history commit"
+    );
+    assert!(harness.state().session().dirty());
+
+    click(&mut harness, "Undo");
+    assert_eq!(
+        harness.state().session().document().layers()[1].name(),
+        "Layer 1"
+    );
+
+    click(&mut harness, "Layer Properties");
+    harness.get_by_label("Layer name").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.run();
+    harness.key_press(egui::Key::Backspace);
+    harness.run();
+    click(&mut harness, "Apply");
+
+    assert!(
+        harness
+            .query_by_label_contains("Layer name cannot be empty")
+            .is_some(),
+        "empty names must be rejected in the properties dialog"
+    );
+    assert_eq!(
+        harness.state().session().document().layers()[1].name(),
+        "Layer 1"
+    );
+    assert_eq!(harness.state().layer_properties_target(), Some(1));
 }
 
 #[test]

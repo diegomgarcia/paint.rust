@@ -187,9 +187,15 @@ Paint.R now matches the real Layers window structure: layer list above, fixed bo
 button bar with Add, Delete, Duplicate, Merge Down, Move Up, Move Down, and Layer
 Properties. Add/Delete/Duplicate/Merge/Move are real document commands with undo;
 Delete is disabled for the last layer, Merge Down for the bottom layer, and Move for
-the respective edge. Layer Properties opens a dialog for opacity, visibility, and the
-Normal blend label. Per-layer opacity sliders were removed from the list, matching
-Paint.NET's properties-dialog placement.
+the respective edge. Double-clicking a layer row opens Layer Properties for that exact
+layer; the dialog renames (validated, one undoable command), changes opacity and
+visibility, and shows the live blend-mode label. Per-layer opacity sliders were removed
+from the list, matching Paint.NET's properties-dialog placement.
+
+Pointer-dragging a row reorders layers with a painted insertion indicator and commits
+exactly one undoable `MoveLayer` on release; the active layer keeps its identity even
+when a different row is dragged. The list uses a reserved solid scrollbar at the right
+edge, so rows and their text never sit underneath the scrollbar.
 
 
 ### Live stroke preview and document tab
@@ -218,8 +224,9 @@ are preserved and the quit guard checks all tabs.
 
 The extracted controls/designers in `references/pdn-re` were used to align concrete
 metrics and menu distribution. `VerticalImageStrip` sets `thumbEdgeLength = 50` dips and
-`imagePaddingPx = 4`, giving 62 px layer items; Paint.R now uses a 42 px image inset in a
-50 px frame with 4 px padding and balanced right-side eye spacing. The Image menu order
+`imagePaddingPx = 4`, giving `50 + 3 × 4 = 62` px layer items; Paint.R now uses a 50 px
+thumbnail frame, 4 px item padding, 62 px rows, a 22×54 px right-side eye hit area, and
+a selected-row highlight. The Image menu order
 was aligned to Crop/Resize/Canvas Size, Flip, Rotate, Color Profile, Flatten; View exposes
 Zoom to Window/Selection and outlines Grid/Rulers; the Layers menu now exposes add,
 delete, duplicate, merge, visibility, flips, go-to, move, and properties entries in the

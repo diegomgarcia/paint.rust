@@ -14,7 +14,7 @@ use crate::colors::{
     format_hex_color, hsv_from_color, hsv_gradient_slider, mix_bgra,
 };
 use crate::icons::{
-    Icon, IconTextures, icon_button, icon_button_at, tool_button, visibility_button,
+    Icon, IconTextures, icon_button, icon_button_at, tool_button, visibility_button_at,
 };
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
 #[cfg(target_os = "macos")]
@@ -28,6 +28,41 @@ const MAX_PREVIEW_DECODED_BYTES: usize = 64 * 1024 * 1024;
 const PREVIEW_WIDTH: f32 = 180.0;
 const PREVIEW_HEIGHT: f32 = 140.0;
 const MAX_BROWSER_ENTRIES: usize = 200;
+
+/// Paint.NET LayersStrip metrics: 50 px thumbnail + 3 × 4 px padding = 62 px rows.
+const LAYER_ITEM_HEIGHT: f32 = 62.0;
+const LAYER_THUMBNAIL_SIZE: f32 = 50.0;
+const LAYER_ITEM_PADDING: f32 = 4.0;
+const LAYER_VISIBILITY_HIT_WIDTH: f32 = 22.0;
+
+/// Screen geometry of one layer row, captured for usability and geometry tests.
+#[derive(Clone, Debug)]
+pub struct LayerRowGeometry {
+    pub index: usize,
+    pub rect: egui::Rect,
+    pub thumbnail: egui::Rect,
+    pub visibility: egui::Rect,
+}
+
+/// Geometry of the layer list viewport, its optional scrollbar, and the drag indicator.
+#[derive(Clone, Debug)]
+pub struct LayerListGeometry {
+    pub item_height: f32,
+    pub thumbnail_size: f32,
+    pub padding: f32,
+    pub outer: egui::Rect,
+    pub viewport: egui::Rect,
+    pub scrollbar: Option<egui::Rect>,
+    pub rows: Vec<LayerRowGeometry>,
+    pub insertion_indicator: Option<egui::Rect>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LayerDragState {
+    layer_id: LayerId,
+    from_index: usize,
+    pointer_y: f32,
+}
 
 struct DocumentTabState {
     session: AppSession,
@@ -121,8 +156,14 @@ pub struct PaintApp {
     layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
     floating_selection: Option<FloatingSelectionState>,
     floating_generation: u64,
+    layer_list_geometry: Option<LayerListGeometry>,
+    layer_drag: Option<LayerDragState>,
+    layer_drop_pointer_y: Option<f32>,
     layer_properties_open: bool,
+    layer_properties_layer: Option<LayerId>,
     layer_properties_index: usize,
+    layer_properties_name: String,
+    layer_properties_name_error: Option<String>,
     layer_properties_opacity: u8,
     layer_properties_visible: bool,
     gaussian_blur_open: bool,
@@ -218,8 +259,14 @@ impl PaintApp {
             layer_thumbnails: HashMap::new(),
             floating_selection: None,
             floating_generation: 0,
+            layer_list_geometry: None,
+            layer_drag: None,
+            layer_drop_pointer_y: None,
             layer_properties_open: false,
+            layer_properties_layer: None,
             layer_properties_index: 0,
+            layer_properties_name: String::new(),
+            layer_properties_name_error: None,
             layer_properties_opacity: u8::MAX,
             layer_properties_visible: true,
             gaussian_blur_open: false,
@@ -272,6 +319,25 @@ impl PaintApp {
     #[doc(hidden)]
     pub const fn layers_window_bounds(&self) -> Option<egui::Rect> {
         self.layers_window_rect
+    }
+
+    #[doc(hidden)]
+    pub const fn layer_list_geometry(&self) -> Option<&LayerListGeometry> {
+        self.layer_list_geometry.as_ref()
+    }
+
+    #[doc(hidden)]
+    pub const fn layer_properties_open(&self) -> bool {
+        self.layer_properties_open
+    }
+
+    #[doc(hidden)]
+    pub fn layer_properties_target(&self) -> Option<usize> {
+        if !self.layer_properties_open {
+            return None;
+        }
+        self.layer_properties_layer
+            .and_then(|layer_id| self.session.document().layer_index(layer_id))
     }
 
     #[doc(hidden)]
@@ -407,11 +473,22 @@ impl PaintApp {
         self.load_active_tab(state);
         self.active_tab = index;
         self.reset_transient_tool_state();
+        self.reset_layer_interaction_state();
         self.layer_properties_open = false;
         self.gaussian_blur_open = false;
         self.resize_dialog = None;
         self.canvas_size_dialog = None;
         self.status = format!("Switched to {}", self.document_title);
+    }
+
+    fn reset_layer_interaction_state(&mut self) {
+        self.layer_list_geometry = None;
+        self.layer_drag = None;
+        self.layer_drop_pointer_y = None;
+        self.layer_properties_open = false;
+        self.layer_properties_layer = None;
+        self.layer_properties_name.clear();
+        self.layer_properties_name_error = None;
     }
 
     fn new_tab(&mut self) {
@@ -448,6 +525,7 @@ impl PaintApp {
         self.document_title = "New Image".to_owned();
         self.document_thumbnail = None;
         self.status = "New 800×600 opaque-white document".to_owned();
+        self.reset_layer_interaction_state();
     }
 
     fn show_path_dialog(&mut self, kind: PathDialogKind) {
@@ -513,6 +591,7 @@ impl PaintApp {
                 self.resize_dialog = None;
                 self.canvas_size_dialog = None;
                 self.reset_transient_tool_state();
+                self.reset_layer_interaction_state();
                 self.status = format!("Opened flattened PNG: {}", path_buffer.display());
             }
             Err(error) => {
@@ -1227,7 +1306,7 @@ impl PaintApp {
                         ui.close();
                     }
                 });
-                let (layer_count, active_layer_index, active_layer_visible, active_opacity) = {
+                let (layer_count, active_layer_index, active_layer_visible) = {
                     let document = self.session.document();
                     let index = document
                         .layers()
@@ -1239,7 +1318,6 @@ impl PaintApp {
                         document.layers().len(),
                         index,
                         layer.is_none_or(|layer| layer.is_visible()),
-                        layer.map_or(u8::MAX, |layer| layer.opacity()),
                     )
                 };
                 ui.menu_button("Layers", |ui| {
@@ -1361,10 +1439,7 @@ impl PaintApp {
                     }
                     ui.separator();
                     if ui.button("Layer Properties…").clicked() {
-                        self.layer_properties_open = true;
-                        self.layer_properties_index = active_layer_index;
-                        self.layer_properties_opacity = active_opacity;
-                        self.layer_properties_visible = active_layer_visible;
+                        self.open_layer_properties(active_layer_index);
                         ui.close();
                     }
                 });
@@ -1930,8 +2005,22 @@ impl PaintApp {
         });
     }
 
+    fn open_layer_properties(&mut self, index: usize) {
+        let Some(layer) = self.session.document().layers().get(index) else {
+            return;
+        };
+        self.layer_properties_open = true;
+        self.layer_properties_layer = Some(layer.id());
+        self.layer_properties_index = index;
+        self.layer_properties_name = layer.name().to_owned();
+        self.layer_properties_name_error = None;
+        self.layer_properties_opacity = layer.opacity();
+        self.layer_properties_visible = layer.is_visible();
+    }
+
     fn layers_content(&mut self, ui: &mut egui::Ui) {
         let mut pending = None;
+        self.layer_list_geometry = None;
         if self.panels_floating {
             ui.horizontal(|ui| {
                 ui.strong("Layers");
@@ -1946,20 +2035,14 @@ impl PaintApp {
             ui.heading("Layers");
             ui.separator();
         }
-        let (count, active_index, active_opacity, active_visible) = {
+        let (count, active_index) = {
             let document = self.session.document();
             let active_index = document
                 .layers()
                 .iter()
                 .position(|layer| layer.id() == document.active_layer_id())
                 .unwrap_or(0);
-            let active_layer = document.layers().get(active_index);
-            (
-                document.layers().len(),
-                active_index,
-                active_layer.map_or(u8::MAX, |layer| layer.opacity()),
-                active_layer.is_none_or(|layer| layer.is_visible()),
-            )
+            (document.layers().len(), active_index)
         };
         let can_delete = count > 1;
         let can_merge = active_index > 0;
@@ -2061,78 +2144,283 @@ impl PaintApp {
                     )
                     .clicked()
                     {
-                        self.layer_properties_open = true;
-                        self.layer_properties_index = active_index;
-                        self.layer_properties_opacity = active_opacity;
-                        self.layer_properties_visible = active_visible;
+                        self.open_layer_properties(active_index);
                     }
                 });
             });
-        egui::ScrollArea::vertical()
+
+        // Add Layer runs immediately, so refresh the state the list is about to render.
+        let count = self.session.document().layers().len();
+
+        // Paint.NET docks a solid scrollbar beside the strip, so content is never covered.
+        let mut scroll_style = ui.spacing().scroll;
+        scroll_style.floating = false;
+        scroll_style.bar_width = scroll_style.bar_width.max(8.0);
+        scroll_style.bar_inner_margin = 4.0;
+        scroll_style.bar_outer_margin = 0.0;
+        scroll_style.content_margin = egui::Margin::ZERO;
+        ui.spacing_mut().scroll = scroll_style;
+
+        let outer = ui.available_rect_before_wrap();
+        let mut rows = Vec::with_capacity(count);
+        let mut drag_started = None;
+        let mut drag_pointer_y = None;
+        let mut drop_pointer_y = None;
+        let dragged_layer = self.layer_drag.map(|drag| drag.layer_id);
+        let output = egui::ScrollArea::vertical()
             .id_salt("paint-r-layer-list")
             .auto_shrink([false, false])
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
             .show(ui, |ui| {
-                let document = self.session.document();
-                for index in (0..document.layers().len()).rev() {
-                    let layer = &document.layers()[index];
-                    let active = layer.id() == document.active_layer_id();
-                    ui.group(|ui| {
-                        ui.horizontal_top(|ui| {
-                            if let Some(thumbnail) = self.layer_thumbnails.get(&layer.id()) {
-                                egui::Frame::new()
-                                    .fill(egui::Color32::from_rgb(24, 24, 24))
-                                    .corner_radius(3)
-                                    .inner_margin(4)
-                                    .show(ui, |ui| {
-                                        let (rect, response) = ui.allocate_exact_size(
-                                            egui::vec2(42.0, 42.0),
-                                            egui::Sense::hover(),
-                                        );
-                                        response.widget_info(|| {
-                                            egui::WidgetInfo::labeled(
-                                                egui::Role::Image,
-                                                true,
-                                                format!(
-                                                    "Layer {index} thumbnail: {}",
-                                                    layer.name()
-                                                ),
-                                            )
-                                        });
-                                        paint_checkerboard(ui.painter(), rect);
-                                        egui::Image::from_texture(&thumbnail.texture)
-                                            .paint_at(ui, rect);
-                                    });
-                            }
-                            ui.vertical(|ui| {
-                                let active_label =
-                                    ui.selectable_label(active, layer.name()).accessible_name(
-                                        format!("Active layer {index}: {}", layer.name()),
-                                    );
-                                if active_label.clicked() {
-                                    pending = Some(Command::SetActiveLayer { index });
-                                }
-                                ui.label(format!(
-                                    "{}% · Normal",
-                                    u16::from(layer.opacity()) * 100 / 255
-                                ));
-                            });
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                ui.add_space(4.0);
-                                let label = format!("Layer {index} visible");
-                                if visibility_button(ui, &self.icons, layer.is_visible(), &label).1
-                                {
-                                    pending = Some(Command::SetLayerVisibility {
-                                        index,
-                                        visible: !layer.is_visible(),
-                                    });
-                                }
-                            });
+                ui.spacing_mut().item_spacing.y = 0.0;
+                let row_width = ui.available_width();
+                for index in (0..count).rev() {
+                    let (layer_id, name, visible, active, opacity, blend_mode) = {
+                        let document = self.session.document();
+                        let layer = &document.layers()[index];
+                        (
+                            layer.id(),
+                            layer.name().to_owned(),
+                            layer.is_visible(),
+                            layer.id() == document.active_layer_id(),
+                            layer.opacity(),
+                            layer.blend_mode(),
+                        )
+                    };
+                    let (row_rect, row_response) = ui.allocate_exact_size(
+                        egui::vec2(row_width, LAYER_ITEM_HEIGHT),
+                        egui::Sense::click_and_drag(),
+                    );
+                    row_response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::Role::Button,
+                            true,
+                            active,
+                            format!("Layer {index}: {name}"),
+                        )
+                    });
+                    let row_hovered = row_response.hovered();
+                    let selected_fill = ui.visuals().selection.bg_fill;
+                    let painter = ui.painter();
+                    if active {
+                        painter.rect_filled(
+                            row_rect.shrink2(egui::vec2(0.0, 1.0)),
+                            4,
+                            selected_fill,
+                        );
+                    } else if row_hovered {
+                        painter.rect_filled(
+                            row_rect.shrink2(egui::vec2(0.0, 1.0)),
+                            4,
+                            egui::Color32::from_rgb(52, 52, 52),
+                        );
+                    }
+                    if dragged_layer == Some(layer_id) {
+                        painter.rect_filled(
+                            row_rect.shrink2(egui::vec2(2.0, 1.0)),
+                            4,
+                            egui::Color32::from_rgba_unmultiplied(31, 78, 116, 110),
+                        );
+                    }
+                    let thumbnail_rect = egui::Rect::from_min_size(
+                        egui::pos2(
+                            row_rect.left() + LAYER_ITEM_PADDING,
+                            row_rect.center().y - LAYER_THUMBNAIL_SIZE / 2.0,
+                        ),
+                        egui::vec2(LAYER_THUMBNAIL_SIZE, LAYER_THUMBNAIL_SIZE),
+                    );
+                    let visibility_rect = egui::Rect::from_min_size(
+                        egui::pos2(
+                            row_rect.right() - LAYER_ITEM_PADDING - LAYER_VISIBILITY_HIT_WIDTH,
+                            row_rect.top() + LAYER_ITEM_PADDING,
+                        ),
+                        egui::vec2(
+                            LAYER_VISIBILITY_HIT_WIDTH,
+                            LAYER_ITEM_HEIGHT - LAYER_ITEM_PADDING * 2.0,
+                        ),
+                    );
+                    let text_rect = egui::Rect::from_min_max(
+                        egui::pos2(
+                            thumbnail_rect.right() + LAYER_ITEM_PADDING,
+                            row_rect.top() + LAYER_ITEM_PADDING,
+                        ),
+                        egui::pos2(
+                            visibility_rect.left() - LAYER_ITEM_PADDING,
+                            row_rect.bottom() - LAYER_ITEM_PADDING,
+                        ),
+                    );
+
+                    let thumbnail_response = ui.interact(
+                        thumbnail_rect,
+                        ui.scope_id()
+                            .with(("paint-r-layer-thumbnail", layer_id.get())),
+                        egui::Sense::hover(),
+                    );
+                    thumbnail_response.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::Role::Image,
+                            true,
+                            format!("Layer {index} thumbnail: {name}"),
+                        )
+                    });
+                    paint_checkerboard(ui.painter(), thumbnail_rect);
+                    if let Some(thumbnail) = self.layer_thumbnails.get(&layer_id) {
+                        egui::Image::from_texture(&thumbnail.texture).paint_at(ui, thumbnail_rect);
+                    }
+                    ui.painter().rect_stroke(
+                        thumbnail_rect,
+                        2,
+                        egui::Stroke::new(1.0, egui::Color32::from_gray(70)),
+                        egui::StrokeKind::Inside,
+                    );
+
+                    let mut text_ui = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(text_rect)
+                            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                    );
+                    text_ui.spacing_mut().item_spacing.y = 0.0;
+                    text_ui.set_clip_rect(text_rect.intersect(ui.clip_rect()));
+                    let active_label = text_ui
+                        .selectable_label(active, name.clone())
+                        .accessible_name(format!("Active layer {index}: {name}"));
+                    text_ui.label(
+                        egui::RichText::new(format!(
+                            "{}% · {}",
+                            u16::from(opacity) * 100 / 255,
+                            blend_mode_label(blend_mode)
+                        ))
+                        .size(11.0)
+                        .color(egui::Color32::from_gray(185)),
+                    );
+
+                    let visibility_label = format!("Layer {index} visible");
+                    let (_, toggled) = visibility_button_at(
+                        ui,
+                        &self.icons,
+                        visibility_rect,
+                        visible,
+                        &visibility_label,
+                    );
+                    if toggled {
+                        pending = Some(Command::SetLayerVisibility {
+                            index,
+                            visible: !visible,
                         });
+                    }
+
+                    let pointer_y = ui.input(|input| input.pointer.interact_pos().map(|pos| pos.y));
+                    if row_response.drag_started() {
+                        if let Some(pointer_y) = pointer_y {
+                            drag_started = Some((layer_id, index, pointer_y));
+                        }
+                    } else if row_response.dragged() {
+                        drag_pointer_y = pointer_y;
+                    }
+                    if row_response.drag_stopped() {
+                        drop_pointer_y = pointer_y;
+                    }
+                    if row_response.double_clicked() || active_label.double_clicked() {
+                        self.open_layer_properties(index);
+                    } else if row_response.clicked() || active_label.clicked() {
+                        pending = Some(Command::SetActiveLayer { index });
+                    }
+
+                    rows.push(LayerRowGeometry {
+                        index,
+                        rect: row_rect,
+                        thumbnail: thumbnail_rect,
+                        visibility: visibility_rect,
                     });
                 }
             });
+
+        if let Some((layer_id, from_index, pointer_y)) = drag_started {
+            self.layer_drag = Some(LayerDragState {
+                layer_id,
+                from_index,
+                pointer_y,
+            });
+        }
+        if let Some(pointer_y) = drag_pointer_y
+            && let Some(drag) = &mut self.layer_drag
+        {
+            drag.pointer_y = pointer_y;
+        }
+        if let Some(pointer_y) = drop_pointer_y {
+            self.layer_drop_pointer_y = Some(pointer_y);
+        }
+
+        let viewport = output.inner_rect;
+        let offset_y = output.state.clamped_offset().y;
+        let content_height = count as f32 * LAYER_ITEM_HEIGHT;
+        let scrollbar = (content_height > viewport.height() + 0.5).then(|| {
+            egui::Rect::from_min_max(
+                egui::pos2(viewport.right(), viewport.top()),
+                egui::pos2(outer.right(), viewport.bottom()),
+            )
+        });
+        let insertion_slot = |pointer_y: f32| {
+            (((pointer_y - viewport.top() + offset_y) / LAYER_ITEM_HEIGHT)
+                .round()
+                .clamp(0.0, count as f32)) as usize
+        };
+        let insertion_indicator = self.layer_drag.map(|drag| {
+            let slot = insertion_slot(drag.pointer_y);
+            let y = viewport.top() - offset_y + slot as f32 * LAYER_ITEM_HEIGHT;
+            egui::Rect::from_min_max(
+                egui::pos2(viewport.left() + LAYER_ITEM_PADDING, y - 1.0),
+                egui::pos2(viewport.right() - LAYER_ITEM_PADDING, y + 1.0),
+            )
+        });
+
+        if let Some(pointer_y) = self.layer_drop_pointer_y.take()
+            && let Some(drag) = self.layer_drag.take()
+        {
+            let slot = insertion_slot(pointer_y);
+            let insertion_layer = count - slot;
+            let mut target = if drag.from_index < insertion_layer {
+                insertion_layer - 1
+            } else {
+                insertion_layer
+            };
+            target = target.min(count.saturating_sub(1));
+            if target != drag.from_index {
+                pending = Some(Command::MoveLayer {
+                    index: drag.from_index,
+                    offset: target as i32 - drag.from_index as i32,
+                });
+            }
+        }
+
+        if let Some(indicator) = insertion_indicator {
+            ui.painter().with_clip_rect(viewport).rect_filled(
+                indicator,
+                1,
+                egui::Color32::from_rgb(100, 178, 235),
+            );
+        }
+
+        self.layer_list_geometry = Some(LayerListGeometry {
+            item_height: LAYER_ITEM_HEIGHT,
+            thumbnail_size: LAYER_THUMBNAIL_SIZE,
+            padding: LAYER_ITEM_PADDING,
+            outer,
+            viewport,
+            scrollbar,
+            rows,
+            insertion_indicator,
+        });
+
         if let Some(command) = pending {
-            self.execute(command, "Layer properties updated");
+            let message = if matches!(command, Command::MoveLayer { .. }) {
+                "Moved layer"
+            } else if matches!(command, Command::SetActiveLayer { .. }) {
+                "Selected layer"
+            } else {
+                "Layer properties updated"
+            };
+            self.execute(command, message);
         }
     }
 
@@ -2577,16 +2865,19 @@ impl PaintApp {
         if !self.layer_properties_open {
             return;
         }
-        let Some(layer) = self
-            .session
-            .document()
-            .layers()
-            .get(self.layer_properties_index)
-        else {
+        let Some(layer_id) = self.layer_properties_layer else {
             self.layer_properties_open = false;
             return;
         };
-        let name = layer.name().to_owned();
+        let Some(index) = self.session.document().layer_index(layer_id) else {
+            self.layer_properties_open = false;
+            return;
+        };
+        self.layer_properties_index = index;
+        let (name, blend_mode) = {
+            let layer = &self.session.document().layers()[index];
+            (layer.name().to_owned(), layer.blend_mode())
+        };
         let mut open = self.layer_properties_open;
         let mut apply = false;
         let mut close = false;
@@ -2598,9 +2889,18 @@ impl PaintApp {
             .show(context, |ui| {
                 ui.label(format!("Layer: {name}"));
                 ui.separator();
+                let name_label = ui.label("Layer name");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.layer_properties_name)
+                        .desired_width(f32::INFINITY),
+                )
+                .labelled_by(name_label.id);
+                if let Some(error) = &self.layer_properties_name_error {
+                    ui.colored_label(egui::Color32::LIGHT_RED, error);
+                }
                 layer_opacity_slider(ui, &mut self.layer_properties_opacity);
                 ui.checkbox(&mut self.layer_properties_visible, "Visible");
-                ui.label("Blend Mode: Normal");
+                ui.label(format!("Blend Mode: {}", blend_mode_label(blend_mode)));
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Apply").clicked() {
@@ -2612,21 +2912,42 @@ impl PaintApp {
                 });
             });
         if apply {
-            let index = self.layer_properties_index;
-            self.execute(
-                Command::SetLayerOpacity {
-                    index,
-                    opacity: self.layer_properties_opacity,
-                },
-                "Layer properties updated",
-            );
-            self.execute(
-                Command::SetLayerVisibility {
-                    index,
-                    visible: self.layer_properties_visible,
-                },
-                "Layer properties updated",
-            );
+            let trimmed = self.layer_properties_name.trim().to_owned();
+            let maximum = self.session.limits().max_layer_name_bytes;
+            if trimmed.is_empty() {
+                self.layer_properties_name_error = Some("Layer name cannot be empty".to_owned());
+            } else if trimmed.len() > maximum {
+                self.layer_properties_name_error = Some(format!(
+                    "Layer name is {} bytes; the maximum is {maximum}",
+                    trimmed.len()
+                ));
+            } else {
+                self.layer_properties_name_error = None;
+                let index = self.layer_properties_index;
+                if trimmed != name {
+                    self.execute(
+                        Command::RenameLayer {
+                            index,
+                            name: trimmed,
+                        },
+                        "Layer renamed",
+                    );
+                }
+                self.execute(
+                    Command::SetLayerOpacity {
+                        index,
+                        opacity: self.layer_properties_opacity,
+                    },
+                    "Layer properties updated",
+                );
+                self.execute(
+                    Command::SetLayerVisibility {
+                        index,
+                        visible: self.layer_properties_visible,
+                    },
+                    "Layer properties updated",
+                );
+            }
         }
         if close {
             open = false;
@@ -4433,6 +4754,15 @@ fn open_png_preview(
     Ok(DialogPreview { label, texture })
 }
 
+fn blend_mode_label(mode: paint_document::BlendMode) -> &'static str {
+    match mode {
+        paint_document::BlendMode::Normal => "Normal",
+        paint_document::BlendMode::Multiply => "Multiply",
+        paint_document::BlendMode::Screen => "Screen",
+        paint_document::BlendMode::Overlay => "Overlay",
+    }
+}
+
 fn layer_opacity_slider(ui: &mut egui::Ui, value: &mut u8) -> egui::Response {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(170.0, 20.0), egui::Sense::click_and_drag());
@@ -4515,6 +4845,7 @@ fn history_label(command: &Command) -> Option<String> {
         Command::DuplicateLayer { .. } => Some("Duplicate Layer".to_owned()),
         Command::MergeLayerDown { .. } => Some("Merge Layer Down".to_owned()),
         Command::MoveLayer { .. } => Some("Move Layer".to_owned()),
+        Command::RenameLayer { name, .. } => Some(format!("Rename Layer: {name}")),
         Command::SetLayerVisibility { index, visible } => {
             Some(format!("Layer {index} visibility: {visible}"))
         }

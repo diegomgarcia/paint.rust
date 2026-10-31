@@ -13,7 +13,7 @@ mod menu;
 pub mod native;
 mod selection;
 
-pub use app::PaintApp;
+pub use app::{LayerListGeometry, LayerRowGeometry, PaintApp};
 
 /// Converts hue in degrees, saturation, value, and alpha into canonical BGRA.
 pub fn color_from_hsv(hue_degrees: f32, saturation: f32, value: f32, alpha: u8) -> Bgra {

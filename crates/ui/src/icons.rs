@@ -168,22 +168,28 @@ pub(crate) fn icon_button_at(
     response.on_hover_text(label)
 }
 
-pub(crate) fn visibility_button(
+pub(crate) fn visibility_button_at(
     ui: &mut Ui,
     icons: &IconTextures,
+    rect: egui::Rect,
     visible: bool,
     label: &str,
 ) -> (Response, bool) {
-    let (rect, response) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
+    let response = ui.interact(
+        rect,
+        ui.scope_id().with(("paint-r-layer-visibility", label)),
+        Sense::click(),
+    );
     response.widget_info(|| WidgetInfo::selected(Role::CheckBox, true, visible, label));
     if ui.is_rect_visible(rect) {
+        let icon_rect = egui::Rect::from_center_size(rect.center(), vec2(18.0, 18.0));
         egui::Image::from_texture(icons.get(if visible { Icon::Eye } else { Icon::EyeOff }))
             .tint(if visible {
                 Color32::WHITE
             } else {
                 Color32::from_gray(140)
             })
-            .paint_at(ui, rect.shrink(1.0));
+            .paint_at(ui, icon_rect.shrink(1.0));
     }
     let toggled = response.clicked()
         || (response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Space)));
