@@ -1,5 +1,6 @@
 #![doc = "Single-writer application sessions, traces, snapshots, and inverse-based history."]
 
+mod clipboard;
 mod command;
 mod effect;
 mod error;
@@ -8,6 +9,7 @@ mod session;
 mod snapshot;
 mod trace;
 
+pub use clipboard::ClipboardContent;
 pub use command::{CanvasAnchor, Command};
 pub use effect::{Effect, EffectCategory};
 pub use error::{ExpectationError, ExpectationField, ResourceLimitError, SessionError, TraceError};

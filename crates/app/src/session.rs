@@ -7,7 +7,8 @@ use paint_raster::MagicWandSampling;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    CanvasAnchor, Command, Effect, ResourceLimitError, SemanticSnapshot, SessionError, snapshot,
+    CanvasAnchor, ClipboardContent, Command, Effect, ResourceLimitError, SemanticSnapshot,
+    SessionError, snapshot,
 };
 
 /// Bounds applied to externally supplied traces and session operations.
@@ -660,6 +661,102 @@ impl AppSession {
         };
         self.commit_new(candidate, inverse);
         Ok(true)
+    }
+
+    /// Captures the selected pixels of the active layer as app-level clipboard content.
+    ///
+    /// A non-empty selection is rasterized to its clipped bounds, with transparent pixels outside
+    /// a mask selection. Without a selection the whole active layer is copied. Copying never edits
+    /// the document, dirties it, or enters content history.
+    pub fn copy_selection(&self) -> Result<Option<ClipboardContent>, SessionError> {
+        let selection = self
+            .document
+            .selection_model()
+            .filter(|selection| !selection.is_empty());
+        let Some(selection) = selection else {
+            let bounds = self.document.canvas_rect();
+            let surface = self.document.active_layer().surface().clone();
+            return ClipboardContent::new(surface, bounds).map(Some);
+        };
+        let Some(bounds) = selection.bounds().clip_to(self.document.size()) else {
+            return Ok(None);
+        };
+        let size = Size::new(bounds.width(), bounds.height())
+            .map_err(|_| SessionError::DocumentInvariant("invalid clipboard size"))?;
+        let mut surface = Surface::new(size)?;
+        let layer = self.document.active_layer();
+        for y in 0..bounds.height() {
+            for x in 0..bounds.width() {
+                let canvas_x = bounds.left() + i64::from(x);
+                let canvas_y = bounds.top() + i64::from(y);
+                if !selection.contains_xy(canvas_x, canvas_y) {
+                    continue;
+                }
+                let point = Point::new(
+                    (bounds.left() as u32).saturating_add(x),
+                    (bounds.top() as u32).saturating_add(y),
+                );
+                surface.set_pixel(Point::new(x, y), *layer.surface().pixel(point)?)?;
+            }
+        }
+        let mask = selection
+            .mask()
+            .map(|mask| mask.clipped_to(self.document.size()))
+            .transpose()?
+            .flatten();
+        Ok(Some(ClipboardContent::with_mask(surface, bounds, mask)?))
+    }
+
+    /// Cuts the selected pixels of the active layer as one undoable content mutation.
+    ///
+    /// The selection is copied first, then erased and cleared. This matches Paint.NET's Cut,
+    /// which resets the selection after erasing; undo restores both the pixels and the selection.
+    /// Cut requires a non-empty selection; without one it is a no-op and Copy remains available
+    /// for copying the whole layer.
+    pub fn cut_selection(&mut self) -> Result<Option<ClipboardContent>, SessionError> {
+        let Some(selection) = self
+            .document
+            .selection_model()
+            .cloned()
+            .filter(|selection| !selection.is_empty())
+        else {
+            return Ok(None);
+        };
+        let Some(content) = self.copy_selection()? else {
+            return Ok(None);
+        };
+        let patch = match paint_raster::fill(
+            &self.document,
+            self.document.active_layer_id(),
+            Bgra::TRANSPARENT,
+        )? {
+            Some(patch) => patch,
+            // An all-transparent selection changes no pixel, but Cut still clears the selection
+            // and remains one undo step; an equal before/after patch carries that history entry.
+            None => {
+                let rect = content.bounds();
+                let layer = self.document.active_layer();
+                let before = layer.surface().read_region(rect)?;
+                let after = before.clone();
+                PixelPatch::new(layer.id(), layer.revision(), rect, before, after)
+                    .map_err(DocumentError::from)?
+            }
+        };
+        let mutation = Mutation::PixelsWithSelection {
+            patch,
+            before_selection: Some(selection),
+            after_selection: None,
+        };
+        self.apply_new_mutation(mutation)?;
+        Ok(Some(content))
+    }
+
+    /// Installs a selection without touching content history, as Paste needs for its floating area.
+    pub fn set_selection_shape(
+        &mut self,
+        selection: Option<Selection>,
+    ) -> Result<bool, SessionError> {
+        Ok(self.document.set_selection_shape(selection)?)
     }
 
     /// Lifts the selected pixels into a floating surface and clears their source area.

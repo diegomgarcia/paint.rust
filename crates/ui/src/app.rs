@@ -4,7 +4,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use paint_app::{
-    AppSession, CanvasAnchor, Command, Effect, MagicWandSampling, ResourceLimits,
+    AppSession, CanvasAnchor, ClipboardContent, Command, Effect, MagicWandSampling, ResourceLimits,
     SelectionCombineMode,
 };
 use paint_core::{Bgra, Point, Rect, Size, Surface};
@@ -105,6 +105,7 @@ struct FloatingSelectionState {
     offset_y: i64,
     base_x: i64,
     base_y: i64,
+    pasted: bool,
 }
 
 /// Original development-preview shell. `AppSession` remains the only document writer.
@@ -193,6 +194,7 @@ pub struct PaintApp {
     layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
     floating_selection: Option<FloatingSelectionState>,
     floating_generation: u64,
+    clipboard: Option<ClipboardContent>,
     layer_list_geometry: Option<LayerListGeometry>,
     layer_drag: Option<LayerDragState>,
     layer_drop_pointer_y: Option<f32>,
@@ -322,6 +324,7 @@ impl PaintApp {
             layer_thumbnails: HashMap::new(),
             floating_selection: None,
             floating_generation: 0,
+            clipboard: None,
             layer_list_geometry: None,
             layer_drag: None,
             layer_drop_pointer_y: None,
@@ -558,6 +561,20 @@ impl PaintApp {
     #[doc(hidden)]
     pub fn history_entries(&self) -> &[String] {
         &self.history_entries
+    }
+
+    /// Bounds of the last Edit → Copy / Cut content, or `None` when the clipboard is empty.
+    #[doc(hidden)]
+    pub fn clipboard_bounds(&self) -> Option<Rect> {
+        self.clipboard.as_ref().map(ClipboardContent::bounds)
+    }
+
+    /// Canvas bounds of the floating selection that Paste or Move is previewing.
+    #[doc(hidden)]
+    pub fn floating_selection_bounds(&self) -> Option<Rect> {
+        self.floating_selection
+            .as_ref()
+            .map(|floating| floating.floating.bounds)
     }
 
     const fn active_color(&self) -> Bgra {
@@ -1232,6 +1249,133 @@ impl PaintApp {
         }
     }
 
+    fn has_selection(&self) -> bool {
+        self.session
+            .document()
+            .selection_model()
+            .is_some_and(|selection| !selection.is_empty())
+    }
+
+    fn publish_clipboard(&mut self, context: &egui::Context, content: ClipboardContent) {
+        if let Some(image) = color_image_from_surface(content.surface()) {
+            context.copy_image(image);
+        }
+        self.clipboard = Some(content);
+    }
+
+    fn copy_to_clipboard(&mut self, context: &egui::Context) -> bool {
+        self.finish_active_preview();
+        self.finalize_floating_selection();
+        let selected = self.has_selection();
+        match self.session.copy_selection() {
+            Ok(Some(content)) => {
+                self.publish_clipboard(context, content);
+                self.status = if selected {
+                    "Copied the selected pixels".to_owned()
+                } else {
+                    "Copied the whole active layer".to_owned()
+                };
+                true
+            }
+            Ok(None) => {
+                self.status =
+                    "Could not copy: the selection does not overlap the canvas".to_owned();
+                false
+            }
+            Err(error) => {
+                self.status = format!("Copy failed: {error}");
+                false
+            }
+        }
+    }
+
+    fn cut_to_clipboard(&mut self, context: &egui::Context) -> bool {
+        self.finish_active_preview();
+        self.finalize_floating_selection();
+        if !self.has_selection() {
+            self.status = "Cut requires a selection; Copy can copy the whole layer".to_owned();
+            return false;
+        }
+        match self.session.cut_selection() {
+            Ok(Some(content)) => {
+                self.publish_clipboard(context, content);
+                self.history_entries.push("Cut".to_owned());
+                self.redo_entries.clear();
+                self.texture_dirty = true;
+                self.status = "Cut the selected pixels and cleared the selection".to_owned();
+                true
+            }
+            Ok(None) => {
+                self.status = "Could not cut: the selection does not overlap the canvas".to_owned();
+                false
+            }
+            Err(error) => {
+                self.status = format!("Cut failed: {error}");
+                false
+            }
+        }
+    }
+
+    fn paste_clipboard(&mut self, context: &egui::Context) -> bool {
+        self.finish_active_preview();
+        self.finalize_floating_selection();
+        let mut content = self.clipboard.clone();
+        if content.is_none()
+            && let Some(surface) = external_clipboard_surface(context)
+        {
+            let bounds = Rect::from_size(surface.size());
+            match ClipboardContent::new(surface, bounds) {
+                Ok(imported) => content = Some(imported),
+                Err(error) => {
+                    self.status = format!("Could not import the clipboard image: {error}");
+                    return false;
+                }
+            }
+        }
+        let Some(content) = content else {
+            self.status = "The clipboard does not contain an image".to_owned();
+            return false;
+        };
+        let (dest_x, dest_y) = content.destination(self.session.document().size());
+        let selection = match content.selection_at(dest_x, dest_y) {
+            Ok(selection) => selection,
+            Err(error) => {
+                self.status = format!("Could not prepare the paste: {error}");
+                return false;
+            }
+        };
+        if let Err(error) = self.session.set_selection_shape(selection) {
+            self.status = format!("Could not prepare the paste selection: {error}");
+            return false;
+        }
+        self.floating_generation += 1;
+        let surface = content.surface().clone();
+        let bounds = content.bounds();
+        let texture = surface_thumbnail_texture(
+            context,
+            format!("paint-r-floating-{}", self.floating_generation),
+            &surface,
+            surface.width() as f32,
+            surface.height() as f32,
+        );
+        let offset_x = dest_x - bounds.left();
+        let offset_y = dest_y - bounds.top();
+        self.clipboard = Some(content);
+        self.floating_selection = Some(FloatingSelectionState {
+            floating: paint_app::FloatingSelection { surface, bounds },
+            texture,
+            offset_x,
+            offset_y,
+            base_x: offset_x,
+            base_y: offset_y,
+            pasted: true,
+        });
+        self.active_tool = Tool::Move;
+        self.texture_dirty = true;
+        self.status = "Pasted pixels; drag to place them or press Finish".to_owned();
+        true
+    }
+
     fn lift_floating_selection(&mut self, context: &egui::Context) -> bool {
         if self.floating_selection.is_some() {
             return true;
@@ -1253,6 +1397,7 @@ impl PaintApp {
                     offset_y: 0,
                     base_x: 0,
                     base_y: 0,
+                    pasted: false,
                 });
                 self.history_entries
                     .push("Lifted selected pixels".to_owned());
@@ -1275,18 +1420,26 @@ impl PaintApp {
         };
         let dest_x = floating.floating.bounds.left() + floating.offset_x;
         let dest_y = floating.floating.bounds.top() + floating.offset_y;
+        let label = if floating.pasted {
+            "Paste"
+        } else {
+            "Moved selected pixels"
+        };
         match self
             .session
             .stamp_floating(&floating.floating.surface, dest_x, dest_y)
         {
             Ok(changed) => {
                 if changed {
-                    self.history_entries
-                        .push("Moved selected pixels".to_owned());
+                    self.history_entries.push(label.to_owned());
                     self.redo_entries.clear();
                 }
                 self.texture_dirty = true;
-                self.status = "Placed the moved pixels".to_owned();
+                self.status = if floating.pasted {
+                    "Placed the pasted pixels".to_owned()
+                } else {
+                    "Placed the moved pixels".to_owned()
+                };
             }
             Err(error) => self.status = format!("Could not place the moved pixels: {error}"),
         }
@@ -1387,6 +1540,21 @@ impl PaintApp {
                 NativeCommand::Redo => {
                     self.execute(Command::Redo, "Redid the next edit");
                 }
+                NativeCommand::Cut => {
+                    if !context.text_edit_focused() {
+                        self.cut_to_clipboard(context);
+                    }
+                }
+                NativeCommand::Copy => {
+                    if !context.text_edit_focused() {
+                        self.copy_to_clipboard(context);
+                    }
+                }
+                NativeCommand::Paste => {
+                    if !context.text_edit_focused() {
+                        self.paste_clipboard(context);
+                    }
+                }
                 NativeCommand::Deselect => {
                     self.execute(Command::ClearSelection, "Selection cleared");
                 }
@@ -1483,7 +1651,9 @@ impl PaintApp {
             can_save: self.can_save(),
             can_undo: self.session.can_undo(),
             can_redo: self.session.can_redo(),
-            has_selection: self.session.document().selection().is_some(),
+            has_selection: self.has_selection(),
+            has_clipboard: self.clipboard.is_some(),
+            text_focus: context.text_edit_focused(),
             tools_visible: self.tools_visible,
             colors_visible: self.colors_visible,
             layers_visible: self.layers_visible,
@@ -1549,6 +1719,31 @@ impl PaintApp {
                         .clicked()
                     {
                         self.execute(Command::Redo, "Redid the next edit");
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui
+                        .add_enabled(self.has_selection(), egui::Button::new("Cut"))
+                        .on_hover_text("Copy the selected pixels and erase them")
+                        .clicked()
+                    {
+                        self.cut_to_clipboard(ui.ctx());
+                        ui.close();
+                    }
+                    if ui
+                        .button("Copy")
+                        .on_hover_text("Copy the selection, or the whole active layer without one")
+                        .clicked()
+                    {
+                        self.copy_to_clipboard(ui.ctx());
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(self.clipboard.is_some(), egui::Button::new("Paste"))
+                        .on_hover_text("Paste clipboard pixels as a floating selection")
+                        .clicked()
+                    {
+                        self.paste_clipboard(ui.ctx());
                         ui.close();
                     }
                     ui.separator();
@@ -5066,6 +5261,28 @@ impl PaintApp {
         }
         let command = egui::Modifiers::COMMAND;
         let command_shift = command | egui::Modifiers::SHIFT;
+        let command_alt = command | egui::Modifiers::ALT;
+
+        // Paint.NET reserves these for Copy Merged and Paste Into New Layer/Image, which are not
+        // implemented here; consume them so a plain Copy/Paste does not run instead.
+        if shortcut_pressed(context, command_shift, egui::Key::C)
+            || shortcut_pressed(context, command_shift, egui::Key::V)
+            || shortcut_pressed(context, command_alt, egui::Key::V)
+        {
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::C) {
+            self.copy_to_clipboard(context);
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::X) {
+            self.cut_to_clipboard(context);
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::V) {
+            self.paste_clipboard(context);
+            return;
+        }
 
         if shortcut_pressed(context, command, egui::Key::Q)
             || shortcut_pressed(context, command, egui::Key::W)
@@ -6282,6 +6499,32 @@ fn focus_first_menu_item_on_keyboard_open(ui: &egui::Ui, response: &egui::Respon
 
 fn shortcut_pressed(context: &egui::Context, modifiers: egui::Modifiers, key: egui::Key) -> bool {
     context.input_mut(|input| input.consume_key(modifiers, key))
+}
+
+fn color_image_from_surface(surface: &Surface) -> Option<egui::ColorImage> {
+    let rgba = surface.to_rgba_bytes().ok()?;
+    Some(egui::ColorImage::from_rgba_unmultiplied(
+        [surface.width() as usize, surface.height() as usize],
+        &rgba,
+    ))
+}
+
+/// Converts an image pasted from another application into clipboard-local surface content.
+fn external_clipboard_surface(context: &egui::Context) -> Option<Surface> {
+    let image = context.input(|input| {
+        input.events.iter().find_map(|event| match event {
+            egui::Event::PasteImage(image) => Some(image.clone()),
+            _ => None,
+        })
+    })?;
+    let [width, height] = image.size;
+    let size = Size::new(u32::try_from(width).ok()?, u32::try_from(height).ok()?).ok()?;
+    let pixels = image
+        .pixels
+        .iter()
+        .map(|pixel| Bgra::from_rgba_bytes(pixel.to_srgba_unmultiplied()))
+        .collect();
+    Surface::from_pixels(size, pixels).ok()
 }
 
 fn canvas_point_at(position: egui::Pos2, rect: egui::Rect, zoom: f32, size: Size) -> Option<Point> {

@@ -48,6 +48,28 @@ Effects menus. `HistoryForm`, `LayersForm`, and `ToolsForm` are separate floatin
 Paint.R currently exposes functional subsets; Image/Effects and full floating snap/dock
 behavior remain future work.
 
+### Edit menu clipboard
+
+`CopyToClipboardActionBase` clips the active layer through
+`Selection.GetCachedClippingMask()`. An empty selection's clipping mask is the whole canvas
+(`Selection.CreateLazyClippingMask`), so Copy copies the whole active layer when there is no
+selection. `CutAction` runs `CopyToClipboardAction` and then `EraseSelectionFunction`, and
+`EraseSelectionFunction.OnPostRender` calls `Selection.Reset()`: Paint.NET clears the
+selection after Cut. `PasteImageAction` calls `MoveTool.BeginPaste`, which installs the
+clipboard mask as the selection and floats the pixels at their original bounds while
+shifting them into view when they are off-canvas.
+
+Paint.R matches these semantics with an app-level clipboard. Copy stores the clipped
+selection surface plus bounds and mask shape, or the whole active layer without a selection,
+and sends the same image through egui's OS image clipboard API. Cut requires a non-empty
+selection, copies it, erases only the selected pixels, clears the selection, and records one
+selection-aware undo entry that restores both the pixels and the selection. Paste floats the
+clipboard at its original bounds (or the canvas origin when fully off-canvas), installs the
+pasted selection, switches to Move Selected Pixels, and commits movement plus placement as
+one undo entry on Finish. Cmd/Ctrl+C/X/V are ignored while a text field has focus;
+Cmd/Ctrl+Shift+C, Cmd/Ctrl+Shift+V, and Cmd/Ctrl+Alt+V remain reserved for the unimplemented
+Copy Merged and Paste Into New Layer/Image actions.
+
 ## Reproduction
 
 REA was run inside the VM through the DeepSeek Harness bundled Node and pnpm:

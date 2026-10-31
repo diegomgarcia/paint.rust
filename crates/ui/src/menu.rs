@@ -20,6 +20,9 @@ pub(crate) enum NativeCommand {
     Quit,
     Undo,
     Redo,
+    Cut,
+    Copy,
+    Paste,
     Deselect,
     ZoomIn,
     ZoomOut,
@@ -58,6 +61,9 @@ impl NativeCommand {
             "file.quit" => Self::Quit,
             "edit.undo" => Self::Undo,
             "edit.redo" => Self::Redo,
+            "edit.cut" => Self::Cut,
+            "edit.copy" => Self::Copy,
+            "edit.paste" => Self::Paste,
             "edit.deselect" => Self::Deselect,
             "view.zoom_in" => Self::ZoomIn,
             "view.zoom_out" => Self::ZoomOut,
@@ -93,6 +99,8 @@ pub(crate) struct NativeMenuState {
     pub can_undo: bool,
     pub can_redo: bool,
     pub has_selection: bool,
+    pub has_clipboard: bool,
+    pub text_focus: bool,
     pub tools_visible: bool,
     pub colors_visible: bool,
     pub layers_visible: bool,
@@ -106,6 +114,9 @@ pub(crate) struct NativeMenu {
     save: MenuItem,
     undo: MenuItem,
     redo: MenuItem,
+    cut: MenuItem,
+    copy: MenuItem,
+    paste: MenuItem,
     deselect: MenuItem,
     tools: CheckMenuItem,
     colors: CheckMenuItem,
@@ -189,14 +200,41 @@ impl NativeMenu {
         let edit = Submenu::new("Edit", true);
         let undo = MenuItem::with_id("edit.undo", "Undo", false, None);
         let redo = MenuItem::with_id("edit.redo", "Redo", false, None);
+        let cut = MenuItem::with_id(
+            "edit.cut",
+            "Cut",
+            false,
+            Some(Accelerator::new(Modifiers::META, Code::KeyX)),
+        );
+        let copy = MenuItem::with_id(
+            "edit.copy",
+            "Copy",
+            false,
+            Some(Accelerator::new(Modifiers::META, Code::KeyC)),
+        );
+        let paste = MenuItem::with_id(
+            "edit.paste",
+            "Paste",
+            false,
+            Some(Accelerator::new(Modifiers::META, Code::KeyV)),
+        );
         let deselect = MenuItem::with_id(
             "edit.deselect",
             "Deselect",
             false,
             Some(Accelerator::new(Modifiers::META, Code::KeyD)),
         );
-        edit.append_items(&[&undo, &redo, &PredefinedMenuItem::separator(), &deselect])
-            .ok()?;
+        edit.append_items(&[
+            &undo,
+            &redo,
+            &PredefinedMenuItem::separator(),
+            &cut,
+            &copy,
+            &paste,
+            &PredefinedMenuItem::separator(),
+            &deselect,
+        ])
+        .ok()?;
 
         let view = Submenu::new("View", true);
         let zoom_in = MenuItem::with_id("view.zoom_in", "Zoom In", true, None);
@@ -386,6 +424,9 @@ impl NativeMenu {
             save,
             undo,
             redo,
+            cut,
+            copy,
+            paste,
             deselect,
             tools,
             colors,
@@ -407,6 +448,13 @@ impl NativeMenu {
         self.save.set_enabled(state.can_save);
         self.undo.set_enabled(state.can_undo);
         self.redo.set_enabled(state.can_redo);
+        // A focused text field keeps the native Edit shortcuts; disabling a menu item lets macOS
+        // forward Cmd+C/X/V to egui's TextEdit instead of consuming it as a menu equivalent.
+        self.cut
+            .set_enabled(!state.text_focus && state.has_selection);
+        self.copy.set_enabled(!state.text_focus);
+        self.paste
+            .set_enabled(!state.text_focus && state.has_clipboard);
         self.deselect.set_enabled(state.has_selection);
         self.tools.set_checked(state.tools_visible);
         self.colors.set_checked(state.colors_visible);
@@ -433,6 +481,9 @@ mod tests {
             ("file.quit", Quit),
             ("edit.undo", Undo),
             ("edit.redo", Redo),
+            ("edit.cut", Cut),
+            ("edit.copy", Copy),
+            ("edit.paste", Paste),
             ("edit.deselect", Deselect),
             ("view.zoom_in", ZoomIn),
             ("view.zoom_out", ZoomOut),
