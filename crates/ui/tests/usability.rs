@@ -3474,3 +3474,55 @@ fn lasso_union_keeps_the_previous_rectangle_selection() {
     assert!(mask.contains(Point::new(25, 5)), "lasso region missing");
     assert!(!mask.contains(Point::new(16, 5)), "gap selected");
 }
+
+#[test]
+fn rectangle_union_after_lasso_keeps_both_shapes() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Lasso Select");
+    trace_lasso(
+        &mut harness,
+        &[
+            egui::vec2(40.0, 40.0),
+            egui::vec2(90.0, 40.0),
+            egui::vec2(90.0, 90.0),
+            egui::vec2(40.0, 90.0),
+        ],
+    );
+    click(&mut harness, "Rectangle Select");
+    click(&mut harness, "Union");
+    drag_canvas(
+        &mut harness,
+        egui::vec2(120.0, 40.0),
+        egui::vec2(170.0, 90.0),
+    );
+    let mask = harness
+        .state()
+        .session()
+        .document()
+        .selection_mask()
+        .expect("union mask")
+        .clone();
+    assert!(mask.contains(Point::new(60, 60)), "lasso lost");
+    assert!(mask.contains(Point::new(140, 60)), "rectangle missing");
+}
+
+#[test]
+fn command_d_deselects_everything() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(2.0, 2.0), egui::vec2(20.0, 20.0));
+    assert!(harness.state().session().document().selection().is_some());
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::D);
+    harness.run();
+    assert!(harness.state().session().document().selection().is_none());
+    assert!(
+        harness
+            .state()
+            .session()
+            .document()
+            .selection_mask()
+            .is_none()
+    );
+}

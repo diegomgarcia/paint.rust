@@ -4317,7 +4317,7 @@ impl PaintApp {
                                         (end.x + 1) as f32 * zoom,
                                         (end.y + 1) as f32 * zoom,
                                     );
-                                let marquee = egui::Rect::from_min_max(start_pos, end_pos);
+                                let marquee = egui::Rect::from_two_pos(start_pos, end_pos);
                                 if self.active_tool == Tool::Select {
                                     ui.painter().rect_filled(
                                         marquee,
@@ -5023,6 +5023,12 @@ impl PaintApp {
         if shortcut_pressed(context, command, egui::Key::F) {
             let color = self.fill_color;
             self.execute(Command::Fill(color), "Filled with the chosen BGRA color");
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::D) {
+            if self.session.document().selection().is_some() {
+                self.execute(Command::ClearSelection, "Selection cleared");
+            }
             return;
         }
         if shortcut_pressed(context, command, egui::Key::Z) {

@@ -121,7 +121,12 @@ impl NativeMenu {
         let edit = Submenu::new("Edit", true);
         let undo = MenuItem::with_id("edit.undo", "Undo", false, None);
         let redo = MenuItem::with_id("edit.redo", "Redo", false, None);
-        let deselect = MenuItem::with_id("edit.deselect", "Deselect", false, None);
+        let deselect = MenuItem::with_id(
+            "edit.deselect",
+            "Deselect",
+            false,
+            Some(Accelerator::new(Modifiers::META, Code::KeyD)),
+        );
         edit.append_items(&[&undo, &redo, &PredefinedMenuItem::separator(), &deselect])
             .ok()?;
 
