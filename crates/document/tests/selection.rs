@@ -514,3 +514,21 @@ fn mask_algebra_crosses_word_and_signed_boundaries() {
     assert!(xor.contains_xy(129, 1));
     assert!(!xor.contains_xy(0, 0));
 }
+
+#[test]
+fn selection_row_runs_match_the_packed_mask_across_word_boundaries() {
+    let mut mask = SelectionMask::empty(Rect::new(-5, 3, 130, 4).expect("bounds")).expect("mask");
+    for (start, end) in [(0, 3), (63, 70), (127, 130)] {
+        for x in start..end {
+            mask.set_xy(x - 5, 3, true).expect("set pixel");
+        }
+    }
+    let runs = mask.row_runs(3);
+    assert_eq!(runs, vec![(-5, -2), (58, 65), (122, 125)]);
+    assert!(mask.row_runs(4).is_empty());
+    for (start, end) in runs {
+        for x in start..end {
+            assert!(mask.contains_xy(x, 3));
+        }
+    }
+}

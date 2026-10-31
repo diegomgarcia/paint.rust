@@ -470,6 +470,58 @@ impl SelectionMask {
             .is_some_and(|(word, bit)| self.words[word] & bit != 0)
     }
 
+    /// Returns the contiguous selected x-ranges in one row, in ascending order.
+    ///
+    /// This scans the packed words instead of probing each pixel, which keeps UI boundary
+    /// tracing and selection tinting fast for large masks.
+    pub fn row_runs(&self, y: i64) -> Vec<(i64, i64)> {
+        if y < self.bounds.top() || y >= self.bounds.bottom() {
+            return Vec::new();
+        }
+        let Ok(row) = usize::try_from(y - self.bounds.top()) else {
+            return Vec::new();
+        };
+        let Ok(width) = usize::try_from(self.bounds.width()) else {
+            return Vec::new();
+        };
+        let base = row * self.row_words;
+        let left = self.bounds.left();
+        let mut runs = Vec::new();
+        let mut x = 0usize;
+        while x < width {
+            let word_index = x / 64;
+            let bit = x % 64;
+            let word = self.words[base + word_index] & (u64::MAX << bit);
+            if word == 0 {
+                x = (word_index + 1) * 64;
+                continue;
+            }
+            let start = word_index * 64 + word.trailing_zeros() as usize;
+            let mut end = start;
+            loop {
+                let index = end / 64;
+                if index >= self.row_words {
+                    end = width;
+                    break;
+                }
+                let offset = end % 64;
+                let word = self.words[base + index] >> offset;
+                if word == 0 {
+                    break;
+                }
+                let ones = word.trailing_ones() as usize;
+                end += ones;
+                if ones < 64 - offset || end >= width {
+                    break;
+                }
+            }
+            end = end.min(width);
+            runs.push((left + start as i64, left + end as i64));
+            x = end;
+        }
+        runs
+    }
+
     pub fn set_xy(&mut self, x: i64, y: i64, selected: bool) -> Result<(), SelectionError> {
         let (word, bit) = self.locate(x, y).ok_or(SelectionError::OutOfBounds {
             x,

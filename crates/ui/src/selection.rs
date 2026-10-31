@@ -43,23 +43,12 @@ pub(crate) fn paint_selection(
     };
 
     let bounds = mask.bounds();
-    // Tint one rectangle per contiguous selected run in each row. A lasso is typically a
-    // handful of runs per scanline, so this stays cheap without uploading a mask texture.
+    // One run per contiguous selected span, not one probe per pixel.
     for y in bounds.top()..bounds.bottom() {
-        let mut x = bounds.left();
-        while x < bounds.right() {
-            while x < bounds.right() && !mask.contains_xy(x, y) {
-                x += 1;
-            }
-            let start = x;
-            while x < bounds.right() && mask.contains_xy(x, y) {
-                x += 1;
-            }
-            if x > start {
-                let min = map(start as f32, y as f32);
-                let max = map(x as f32, (y + 1) as f32);
-                painter.rect_filled(Rect::from_min_max(min, max), 0, selection_tint());
-            }
+        for (start, end) in mask.row_runs(y) {
+            let min = map(start as f32, y as f32);
+            let max = map(end as f32, (y + 1) as f32);
+            painter.rect_filled(Rect::from_min_max(min, max), 0, selection_tint());
         }
     }
 
@@ -84,57 +73,68 @@ pub(crate) fn paint_selection(
         ));
     };
 
-    // Horizontal edges: group adjacent selected pixels whose neighbor above/below is outside.
+    // Horizontal boundary segments are the parts of a row run not covered by the row above/below.
     for y in bounds.top()..bounds.bottom() {
-        for (neighbor_y, at_bottom) in [(y - 1, false), (y + 1, true)] {
-            let mut x = bounds.left();
-            while x < bounds.right() {
-                let edge = mask.contains_xy(x, y) && !mask.contains_xy(x, neighbor_y);
-                if !edge {
-                    x += 1;
-                    continue;
-                }
-                let start = x;
-                while x < bounds.right()
-                    && mask.contains_xy(x, y)
-                    && !mask.contains_xy(x, neighbor_y)
-                {
-                    x += 1;
-                }
-                let screen_y = if at_bottom { y + 1 } else { y };
+        let runs = mask.row_runs(y);
+        for (neighbor_y, edge_y) in [(y - 1, y), (y + 1, y + 1)] {
+            let neighbor = mask.row_runs(neighbor_y);
+            for (start, end) in subtract_runs(&runs, &neighbor) {
                 dashed(
-                    map(start as f32, screen_y as f32),
-                    map(x as f32, screen_y as f32),
+                    map(start as f32, edge_y as f32),
+                    map(end as f32, edge_y as f32),
                 );
             }
         }
     }
 
-    // Vertical edges: the same grouping along columns.
-    for x in bounds.left()..bounds.right() {
-        for (neighbor_x, at_right) in [(x - 1, false), (x + 1, true)] {
-            let mut y = bounds.top();
-            while y < bounds.bottom() {
-                let edge = mask.contains_xy(x, y) && !mask.contains_xy(neighbor_x, y);
-                if !edge {
-                    y += 1;
-                    continue;
-                }
-                let start = y;
-                while y < bounds.bottom()
-                    && mask.contains_xy(x, y)
-                    && !mask.contains_xy(neighbor_x, y)
-                {
-                    y += 1;
-                }
-                let screen_x = if at_right { x + 1 } else { x };
-                dashed(
-                    map(screen_x as f32, start as f32),
-                    map(screen_x as f32, y as f32),
-                );
+    // Collect one-pixel-high vertical edges by column, then merge consecutive rows into spans.
+    let mut columns: std::collections::BTreeMap<i64, Vec<i64>> = std::collections::BTreeMap::new();
+    for y in bounds.top()..bounds.bottom() {
+        for (start, end) in mask.row_runs(y) {
+            if !mask.contains_xy(start - 1, y) {
+                columns.entry(start).or_default().push(y);
+            }
+            if !mask.contains_xy(end, y) {
+                columns.entry(end).or_default().push(y);
             }
         }
     }
+    for (x, ys) in columns {
+        let mut index = 0;
+        while index < ys.len() {
+            let start = ys[index];
+            let mut end = start;
+            while index + 1 < ys.len() && ys[index + 1] == end + 1 {
+                index += 1;
+                end = ys[index];
+            }
+            dashed(map(x as f32, start as f32), map(x as f32, (end + 1) as f32));
+            index += 1;
+        }
+    }
+}
+
+/// Parts of `base` not covered by `remove`; both inputs are sorted, non-overlapping spans.
+fn subtract_runs(base: &[(i64, i64)], remove: &[(i64, i64)]) -> Vec<(i64, i64)> {
+    let mut result = Vec::new();
+    for &(mut start, end) in base {
+        for &(remove_start, remove_end) in remove {
+            if remove_end <= start || remove_start >= end {
+                continue;
+            }
+            if remove_start > start {
+                result.push((start, remove_start.min(end)));
+            }
+            start = start.max(remove_end);
+            if start >= end {
+                break;
+            }
+        }
+        if start < end {
+            result.push((start, end));
+        }
+    }
+    result
 }
 
 fn paint_rect_dashes(painter: &Painter, rect: Rect, phase: f32) {
