@@ -58,6 +58,22 @@ pub enum Effect {
     },
     /// Per-channel selection-driven 0..=255 stretch.
     AutoLevel,
+    /// Composite and per-channel input/output points plus gamma.
+    Levels(paint_raster::LevelsSettings),
+    /// Per-channel quantization to 2..=64 evenly spaced values.
+    Posterize {
+        levels: u8,
+    },
+    /// Weighted Rec. 601-style desaturation; all three weights are percentages.
+    BlackAndWhite {
+        red_weight: u8,
+        green_weight: u8,
+        blue_weight: u8,
+    },
+    /// Rec. 601 luminance threshold: selected pixels become black or white.
+    Threshold {
+        level: u8,
+    },
     /// Separable Gaussian blur with a radius in pixels.
     GaussianBlur {
         radius: u32,
@@ -86,6 +102,10 @@ impl Effect {
             Self::BrightnessContrast { .. } => "Brightness / Contrast",
             Self::HueSaturation { .. } => "Hue / Saturation",
             Self::AutoLevel => "Auto-Level",
+            Self::Levels(_) => "Levels",
+            Self::Posterize { .. } => "Posterize",
+            Self::BlackAndWhite { .. } => "Black and White",
+            Self::Threshold { .. } => "Threshold",
             Self::GaussianBlur { .. } => "Gaussian Blur",
             Self::MotionBlur { .. } => "Motion Blur",
             Self::Sharpen { .. } => "Sharpen",
@@ -95,10 +115,15 @@ impl Effect {
 
     pub const fn category(self) -> EffectCategory {
         match self {
-            Self::Grayscale | Self::Sepia => EffectCategory::Photo,
-            Self::BrightnessContrast { .. } | Self::HueSaturation { .. } | Self::AutoLevel => {
-                EffectCategory::Adjustment
-            }
+            Self::Grayscale => EffectCategory::Photo,
+            Self::Sepia => EffectCategory::Adjustment,
+            Self::BrightnessContrast { .. }
+            | Self::HueSaturation { .. }
+            | Self::AutoLevel
+            | Self::Levels(_)
+            | Self::Posterize { .. }
+            | Self::BlackAndWhite { .. }
+            | Self::Threshold { .. } => EffectCategory::Adjustment,
             Self::GaussianBlur { .. } | Self::MotionBlur { .. } => EffectCategory::Blurs,
             Self::Sharpen { .. } => EffectCategory::Photo,
             Self::AddNoise { .. } => EffectCategory::Noise,
@@ -120,7 +145,11 @@ impl Effect {
             | Self::Sepia
             | Self::BrightnessContrast { .. }
             | Self::HueSaturation { .. }
-            | Self::AutoLevel => self.name().to_owned(),
+            | Self::AutoLevel
+            | Self::Levels(_)
+            | Self::Posterize { .. }
+            | Self::BlackAndWhite { .. }
+            | Self::Threshold { .. } => self.name().to_owned(),
         }
     }
 }
@@ -132,7 +161,7 @@ mod tests {
     #[test]
     fn implemented_effects_use_paint_net_categories_and_specific_history_labels() {
         assert_eq!(Effect::Grayscale.category(), EffectCategory::Photo);
-        assert_eq!(Effect::Sepia.category(), EffectCategory::Photo);
+        assert_eq!(Effect::Sepia.category(), EffectCategory::Adjustment);
         assert_eq!(
             Effect::BrightnessContrast {
                 brightness: 10,
@@ -151,6 +180,27 @@ mod tests {
             EffectCategory::Adjustment
         );
         assert_eq!(Effect::AutoLevel.category(), EffectCategory::Adjustment);
+        assert_eq!(
+            Effect::Levels(paint_raster::LevelsSettings::IDENTITY).category(),
+            EffectCategory::Adjustment
+        );
+        assert_eq!(
+            Effect::Posterize { levels: 4 }.category(),
+            EffectCategory::Adjustment
+        );
+        assert_eq!(
+            Effect::BlackAndWhite {
+                red_weight: 30,
+                green_weight: 59,
+                blue_weight: 11
+            }
+            .category(),
+            EffectCategory::Adjustment
+        );
+        assert_eq!(
+            Effect::Threshold { level: 128 }.category(),
+            EffectCategory::Adjustment
+        );
         assert_eq!(
             Effect::GaussianBlur { radius: 4 }.category(),
             EffectCategory::Blurs
@@ -194,6 +244,24 @@ mod tests {
             "Hue / Saturation"
         );
         assert_eq!(Effect::AutoLevel.history_label(), "Auto-Level");
+        assert_eq!(
+            Effect::Levels(paint_raster::LevelsSettings::IDENTITY).history_label(),
+            "Levels"
+        );
+        assert_eq!(Effect::Posterize { levels: 4 }.history_label(), "Posterize");
+        assert_eq!(
+            Effect::BlackAndWhite {
+                red_weight: 30,
+                green_weight: 59,
+                blue_weight: 11
+            }
+            .history_label(),
+            "Black and White"
+        );
+        assert_eq!(
+            Effect::Threshold { level: 128 }.history_label(),
+            "Threshold"
+        );
         assert_eq!(
             Effect::GaussianBlur { radius: 4 }.history_label(),
             "Gaussian Blur (radius 4)"

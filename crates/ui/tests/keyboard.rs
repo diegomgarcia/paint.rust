@@ -221,12 +221,23 @@ fn tab_enter_space_and_dirty_new_are_keyboard_usable() {
     let focused_label = harness
         .query_by(|node| node.is_focused())
         .and_then(|node| node.accesskit_node().label());
-    let invert = harness.get_by_role_and_label(Role::Button, "Invert Colors");
+    let auto_level = harness.get_by_role_and_label(Role::Button, "Auto-Level…");
     assert!(
-        invert.is_focused(),
+        auto_level.is_focused(),
         "focused widget after opening Adjustments: {focused_label:?}"
     );
     press(&mut harness, Key::Space);
+    harness.get_by_role_and_label(Role::Button, "Apply");
+    press(&mut harness, Key::Escape);
+
+    harness
+        .get_by_role_and_label(Role::Button, "Adjustments")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::Button, "Invert Colors")
+        .click();
+    harness.run();
     assert_composed(&harness, Bgra::BLACK);
     assert!(harness.state().session().dirty());
     assert!(harness.state().session().can_undo());

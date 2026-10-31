@@ -1,8 +1,9 @@
 use paint_core::{Bgra, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId};
 use paint_raster::{
-    MAX_MOTION_BLUR_DISTANCE, MAX_NOISE_INTENSITY, MAX_SHARPEN_AMOUNT, add_noise, auto_level,
-    brightness_contrast, gaussian_blur, grayscale, hue_saturation, motion_blur, sepia, sharpen,
+    LevelsChannel, LevelsSettings, MAX_MOTION_BLUR_DISTANCE, MAX_NOISE_INTENSITY,
+    MAX_SHARPEN_AMOUNT, add_noise, auto_level, black_and_white, brightness_contrast, gaussian_blur,
+    grayscale, hue_saturation, levels, motion_blur, posterize, sepia, sharpen, threshold,
 };
 
 fn size(width: u32, height: u32) -> Size {
@@ -823,4 +824,398 @@ fn add_noise_zero_intensity_is_a_noop_and_above_the_limit_is_rejected() {
         ),
         "unexpected error: {error:?}"
     );
+}
+
+#[test]
+fn levels_identity_settings_are_an_atomic_noop() {
+    let document = document_from_pixels(2, 1, vec![Bgra::new(10, 20, 30, 40); 2]);
+    assert_eq!(
+        levels(&document, LayerId::new(1), LevelsSettings::IDENTITY),
+        Ok(None)
+    );
+}
+
+#[test]
+fn levels_clips_input_points_stretches_the_midtones_and_remaps_output_points() {
+    let document = document_from_pixels(
+        6,
+        1,
+        [0u8, 63, 64, 128, 192, 255]
+            .into_iter()
+            .map(|value| Bgra::new(value, value, value, 255))
+            .collect(),
+    );
+    let clipped = LevelsSettings::new(
+        LevelsChannel::new(64, 192, 100, 0, 255),
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+    );
+    let patch = levels(&document, LayerId::new(1), clipped)
+        .expect("levels")
+        .expect("visible change");
+    let values: Vec<u8> = patch.after().iter().map(|pixel| pixel.r).collect();
+    assert_eq!(values, [0, 0, 0, 128, 255, 255]);
+    assert!(patch.after().iter().all(|pixel| pixel.a == 255));
+
+    let gamma = LevelsSettings::new(
+        LevelsChannel::new(0, 255, 200, 0, 255),
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+    );
+    let patch = levels(&document, LayerId::new(1), gamma)
+        .expect("gamma levels")
+        .expect("visible change");
+    assert_eq!(patch.after()[0].r, 0);
+    assert_eq!(patch.after()[3].r, 64, "0.5^2 of the range rounds to 64");
+    assert_eq!(patch.after()[5].r, 255);
+
+    let output = LevelsSettings::new(
+        LevelsChannel::new(0, 255, 100, 32, 224),
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+    );
+    let patch = levels(&document, LayerId::new(1), output)
+        .expect("output levels")
+        .expect("visible change");
+    let values: Vec<u8> = patch.after().iter().map(|pixel| pixel.r).collect();
+    assert_eq!(values, [32, 79, 80, 128, 177, 224]);
+}
+
+#[test]
+fn levels_channel_normalizes_inverted_points_and_clamps_gamma() {
+    assert_eq!(LevelsChannel::new(200, 100, 0, 0, 255).input_black, 100);
+    assert_eq!(LevelsChannel::new(10, 20, 0, 240, 100).output_black, 100);
+    assert_eq!(LevelsChannel::new(0, 255, 0, 0, 255).gamma_hundredths, 10);
+    assert_eq!(
+        LevelsChannel::new(0, 255, u16::MAX, 0, 255).gamma_hundredths,
+        1000
+    );
+
+    let document = document_from_pixels(
+        2,
+        1,
+        vec![Bgra::new(99, 99, 99, 255), Bgra::new(100, 100, 100, 255)],
+    );
+    let settings = LevelsSettings::new(
+        LevelsChannel::new(200, 100, 100, 0, 255),
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+    );
+    let patch = levels(&document, LayerId::new(1), settings)
+        .expect("degenerate levels")
+        .expect("visible change");
+    let values: Vec<u8> = patch.after().iter().map(|pixel| pixel.r).collect();
+    assert_eq!(values, [0, 255]);
+}
+
+#[test]
+fn levels_applies_the_composite_channel_before_the_per_channel_pass() {
+    let document = document_from_pixels(1, 1, vec![Bgra::new(0, 0, 0, 77)]);
+    let settings = LevelsSettings::new(
+        LevelsChannel::new(0, 255, 100, 100, 255),
+        LevelsChannel::new(100, 255, 100, 0, 255),
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+    );
+    let patch = levels(&document, LayerId::new(1), settings)
+        .expect("levels")
+        .expect("visible change");
+    assert_eq!(
+        patch.after(),
+        &[Bgra::new(100, 100, 0, 77)],
+        "the red channel must refine the composite output, not the source"
+    );
+}
+
+#[test]
+fn levels_clips_to_the_selection_and_preserves_alpha() {
+    let original = vec![
+        Bgra::new(10, 20, 30, 0),
+        Bgra::new(40, 50, 60, 17),
+        Bgra::new(70, 80, 90, 128),
+        Bgra::new(100, 110, 120, 255),
+    ];
+    let mut document = document_from_pixels(4, 1, original.clone());
+    let selection = Rect::new(1, 0, 3, 1).unwrap();
+    document.set_selection(Some(selection)).unwrap();
+
+    let settings = LevelsSettings::new(
+        LevelsChannel::new(0, 255, 100, 50, 255),
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+    );
+    let patch = levels(&document, LayerId::new(1), settings)
+        .expect("levels")
+        .expect("selected pixels change");
+    assert_eq!(patch.rect(), selection);
+    assert_eq!(patch.before(), &original[1..3]);
+    assert_eq!(
+        patch.after(),
+        &[Bgra::new(82, 90, 98, 17), Bgra::new(106, 114, 122, 128)]
+    );
+
+    document.apply_patch(&patch).unwrap();
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], original[0]);
+    assert_eq!(pixels[3], original[3]);
+}
+
+#[test]
+fn posterize_quantizes_each_channel_to_the_requested_level_count() {
+    let values = [0u8, 64, 127, 128, 191, 192, 255];
+    let document = document_from_pixels(
+        values.len() as u32,
+        1,
+        values
+            .iter()
+            .map(|value| Bgra::new(*value, *value, *value, 200))
+            .collect(),
+    );
+    let patch = posterize(&document, LayerId::new(1), 2)
+        .expect("posterize")
+        .expect("visible change");
+    let channels: Vec<[u8; 3]> = patch
+        .after()
+        .iter()
+        .map(|pixel| [pixel.r, pixel.g, pixel.b])
+        .collect();
+    assert_eq!(
+        channels,
+        [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+            [255, 255, 255],
+            [255, 255, 255],
+            [255, 255, 255],
+            [255, 255, 255],
+        ]
+    );
+
+    let patch = posterize(&document, LayerId::new(1), 3)
+        .expect("three-level posterize")
+        .expect("visible change");
+    let red: Vec<u8> = patch.after().iter().map(|pixel| pixel.r).collect();
+    assert_eq!(red, [0, 128, 128, 128, 128, 255, 255]);
+    assert!(patch.after().iter().all(|pixel| pixel.a == 200));
+}
+
+#[test]
+fn posterize_clamps_levels_and_returns_none_for_an_already_quantized_selection() {
+    let document = document_from_pixels(
+        3,
+        1,
+        vec![
+            Bgra::new(0, 0, 0, 255),
+            Bgra::new(200, 200, 200, 255),
+            Bgra::new(255, 255, 255, 255),
+        ],
+    );
+    let below = posterize(&document, LayerId::new(1), 1)
+        .expect("clamped low")
+        .expect("visible change");
+    assert_eq!(
+        below.after(),
+        &[
+            Bgra::new(0, 0, 0, 255),
+            Bgra::new(255, 255, 255, 255),
+            Bgra::new(255, 255, 255, 255),
+        ]
+    );
+
+    let already = document_from_pixels(
+        2,
+        1,
+        vec![Bgra::new(0, 255, 0, 255), Bgra::new(255, 0, 255, 255)],
+    );
+    assert_eq!(posterize(&already, LayerId::new(1), 2), Ok(None));
+    assert_eq!(posterize(&already, LayerId::new(1), 255), Ok(None));
+
+    let ramp = document_from_pixels(
+        2,
+        1,
+        vec![Bgra::new(10, 10, 10, 255), Bgra::new(200, 200, 200, 255)],
+    );
+    let at_64 = posterize(&ramp, LayerId::new(1), 64)
+        .expect("64 levels")
+        .expect("visible change");
+    let at_above = posterize(&ramp, LayerId::new(1), 255)
+        .expect("clamped high")
+        .expect("visible change");
+    assert_eq!(
+        at_64.after(),
+        at_above.after(),
+        "levels above 64 must clamp to 64"
+    );
+}
+
+#[test]
+fn posterize_clips_to_the_selection_and_keeps_the_patch_rect() {
+    let original = vec![
+        Bgra::new(10, 20, 30, 255),
+        Bgra::new(40, 50, 60, 255),
+        Bgra::new(70, 80, 90, 255),
+        Bgra::new(100, 110, 120, 255),
+    ];
+    let mut document = document_from_pixels(4, 1, original.clone());
+    let selection = Rect::new(1, 0, 3, 1).unwrap();
+    document.set_selection(Some(selection)).unwrap();
+    let patch = posterize(&document, LayerId::new(1), 2)
+        .expect("posterize")
+        .expect("selected pixels change");
+    assert_eq!(patch.rect(), selection);
+    assert_eq!(patch.before(), &original[1..3]);
+    assert_eq!(
+        patch.after(),
+        &[Bgra::new(0, 0, 0, 255), Bgra::new(0, 0, 0, 255)]
+    );
+    document.apply_patch(&patch).unwrap();
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], original[0]);
+    assert_eq!(pixels[3], original[3]);
+}
+
+#[test]
+fn black_and_white_uses_the_configured_channel_weight_average() {
+    let document = document_from_pixels(
+        3,
+        1,
+        vec![
+            Bgra::new(0, 0, 255, 255),
+            Bgra::new(0, 255, 0, 128),
+            Bgra::new(255, 0, 0, 0),
+        ],
+    );
+    let patch = black_and_white(&document, LayerId::new(1), 30, 59, 11)
+        .expect("black and white")
+        .expect("visible change");
+    assert_eq!(
+        patch.after(),
+        &[
+            Bgra::new(77, 77, 77, 255),
+            Bgra::new(150, 150, 150, 128),
+            Bgra::new(28, 28, 28, 0),
+        ]
+    );
+
+    let red_only = black_and_white(&document, LayerId::new(1), 100, 0, 0)
+        .expect("red-only weights")
+        .expect("visible change");
+    assert_eq!(
+        red_only.after(),
+        &[
+            Bgra::new(255, 255, 255, 255),
+            Bgra::new(0, 0, 0, 128),
+            Bgra::new(0, 0, 0, 0),
+        ]
+    );
+}
+
+#[test]
+fn black_and_white_zero_weights_are_a_noop_and_neutral_pixels_are_unchanged() {
+    let color = document_from_pixels(1, 1, vec![Bgra::new(10, 200, 30, 255)]);
+    assert_eq!(black_and_white(&color, LayerId::new(1), 0, 0, 0), Ok(None));
+    let neutral = document_from_pixels(2, 1, vec![Bgra::new(40, 40, 40, 255); 2]);
+    assert_eq!(
+        black_and_white(&neutral, LayerId::new(1), 30, 59, 11),
+        Ok(None)
+    );
+}
+
+#[test]
+fn black_and_white_clips_to_the_selection_and_preserves_alpha() {
+    let original = vec![
+        Bgra::new(0, 0, 255, 0),
+        Bgra::new(0, 255, 0, 17),
+        Bgra::new(255, 0, 0, 128),
+        Bgra::new(255, 255, 255, 255),
+    ];
+    let mut document = document_from_pixels(4, 1, original.clone());
+    let selection = Rect::new(1, 0, 3, 1).unwrap();
+    document.set_selection(Some(selection)).unwrap();
+    let patch = black_and_white(&document, LayerId::new(1), 30, 59, 11)
+        .expect("black and white")
+        .expect("selected pixels change");
+    assert_eq!(patch.rect(), selection);
+    assert_eq!(patch.before(), &original[1..3]);
+    assert_eq!(
+        patch.after(),
+        &[Bgra::new(150, 150, 150, 17), Bgra::new(28, 28, 28, 128),]
+    );
+    document.apply_patch(&patch).unwrap();
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], original[0]);
+    assert_eq!(pixels[3], original[3]);
+}
+
+#[test]
+fn threshold_compares_rounded_rec601_luminance_and_preserves_alpha() {
+    let document = document_from_pixels(
+        4,
+        1,
+        vec![
+            Bgra::new(0, 0, 255, 255),
+            Bgra::new(0, 255, 0, 128),
+            Bgra::new(255, 0, 0, 0),
+            Bgra::new(128, 128, 128, 255),
+        ],
+    );
+    let patch = threshold(&document, LayerId::new(1), 128)
+        .expect("threshold")
+        .expect("visible change");
+    assert_eq!(
+        patch.after(),
+        &[
+            Bgra::new(0, 0, 0, 255),
+            Bgra::new(255, 255, 255, 128),
+            Bgra::new(0, 0, 0, 0),
+            Bgra::new(255, 255, 255, 255),
+        ]
+    );
+
+    let at_luminance = threshold(&document, LayerId::new(1), 76)
+        .expect("threshold at the luminance")
+        .expect("visible change");
+    assert_eq!(at_luminance.after()[0], Bgra::new(255, 255, 255, 255));
+}
+
+#[test]
+fn threshold_noops_on_an_already_black_and_white_selection() {
+    let document = document_from_pixels(
+        2,
+        1,
+        vec![Bgra::new(0, 0, 0, 255), Bgra::new(255, 255, 255, 255)],
+    );
+    assert_eq!(threshold(&document, LayerId::new(1), 128), Ok(None));
+}
+
+#[test]
+fn threshold_clips_to_the_selection_and_keeps_outside_pixels() {
+    let original = vec![
+        Bgra::new(0, 0, 0, 255),
+        Bgra::new(255, 255, 255, 255),
+        Bgra::new(0, 0, 255, 255),
+        Bgra::new(0, 255, 0, 128),
+    ];
+    let mut document = document_from_pixels(4, 1, original.clone());
+    let selection = Rect::new(1, 0, 3, 1).unwrap();
+    document.set_selection(Some(selection)).unwrap();
+    let patch = threshold(&document, LayerId::new(1), 100)
+        .expect("threshold")
+        .expect("selected pixels change");
+    assert_eq!(patch.rect(), selection);
+    assert_eq!(patch.before(), &original[1..3]);
+    assert_eq!(
+        patch.after(),
+        &[Bgra::new(255, 255, 255, 255), Bgra::new(0, 0, 0, 255)]
+    );
+    document.apply_patch(&patch).unwrap();
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], original[0]);
+    assert_eq!(pixels[3], original[3]);
 }

@@ -11,12 +11,16 @@ use thiserror::Error;
 
 pub use compose::{compose, normal_over};
 pub use effects::{
-    MAX_ADJUSTMENT_VALUE, MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA, MAX_MOTION_BLUR_DISTANCE,
-    MAX_NOISE_INTENSITY, MAX_SHARPEN_AMOUNT, MIN_ADJUSTMENT_VALUE, MIN_HUE_DELTA, add_noise,
-    add_noise_active, auto_level, auto_level_active, brightness_contrast,
+    DEFAULT_LEVELS_GAMMA_HUNDREDTHS, LevelsChannel, LevelsSettings, MAX_ADJUSTMENT_VALUE,
+    MAX_BLACK_AND_WHITE_WEIGHT, MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA,
+    MAX_LEVELS_GAMMA_HUNDREDTHS, MAX_MOTION_BLUR_DISTANCE, MAX_NOISE_INTENSITY,
+    MAX_POSTERIZE_LEVELS, MAX_SHARPEN_AMOUNT, MIN_ADJUSTMENT_VALUE, MIN_HUE_DELTA,
+    MIN_LEVELS_GAMMA_HUNDREDTHS, MIN_POSTERIZE_LEVELS, add_noise, add_noise_active, auto_level,
+    auto_level_active, black_and_white, black_and_white_active, brightness_contrast,
     brightness_contrast_active, gaussian_blur, gaussian_blur_active, grayscale, grayscale_active,
-    hue_saturation, hue_saturation_active, motion_blur, motion_blur_active, sepia, sepia_active,
-    sharpen, sharpen_active,
+    hue_saturation, hue_saturation_active, levels, levels_active, motion_blur, motion_blur_active,
+    posterize, posterize_active, sepia, sepia_active, sharpen, sharpen_active, threshold,
+    threshold_active,
 };
 pub use operations::{
     BrushOptions, GradientOptions, GradientRepeat, GradientType, LineCap, LineDash, LineStyle,

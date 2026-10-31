@@ -33,6 +33,172 @@ const FIXED_POINT_ONE: u32 = 1 << FIXED_POINT_SHIFT;
 const FIXED_POINT_SCALE: u64 = FIXED_POINT_ONE as u64;
 const FIXED_POINT_ROUND_U32: u32 = FIXED_POINT_ONE / 2;
 
+/// Smallest accepted Posterize level count.
+pub const MIN_POSTERIZE_LEVELS: u8 = 2;
+/// Largest accepted Posterize level count.
+pub const MAX_POSTERIZE_LEVELS: u8 = 64;
+/// Largest accepted Black and White channel weight, as a percentage of the luminance sum.
+pub const MAX_BLACK_AND_WHITE_WEIGHT: u8 = 100;
+/// Smallest accepted Levels gamma, expressed in hundredths (`0.10`).
+pub const MIN_LEVELS_GAMMA_HUNDREDTHS: u16 = 10;
+/// Largest accepted Levels gamma, expressed in hundredths (`10.00`).
+pub const MAX_LEVELS_GAMMA_HUNDREDTHS: u16 = 1000;
+/// Default Levels gamma in hundredths (`1.00`).
+pub const DEFAULT_LEVELS_GAMMA_HUNDREDTHS: u16 = 100;
+
+/// One channel's Levels transfer function.
+///
+/// Input points clip and stretch the 0..=255 source range, `gamma_hundredths` bends the
+/// normalized midtones (the same `normalized^gamma` curve Paint.NET's Levels kernel uses),
+/// and the output points remap the stretched signal to the final 0..=255 range.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct LevelsChannel {
+    /// Input black point in `0..=255`; source values below it clip to the output black point.
+    pub input_black: u8,
+    /// Input white point in `0..=255`; source values at or above it clip to the output white point.
+    pub input_white: u8,
+    /// Gamma in hundredths, clamped to [`MIN_LEVELS_GAMMA_HUNDREDTHS`]..=[`MAX_LEVELS_GAMMA_HUNDREDTHS`].
+    pub gamma_hundredths: u16,
+    /// Output black point in `0..=255`.
+    pub output_black: u8,
+    /// Output white point in `0..=255`.
+    pub output_white: u8,
+}
+
+impl LevelsChannel {
+    /// The identity transfer function: no clipping, gamma 1.00, and a full output range.
+    pub const IDENTITY: Self = Self {
+        input_black: 0,
+        input_white: 255,
+        gamma_hundredths: DEFAULT_LEVELS_GAMMA_HUNDREDTHS,
+        output_black: 0,
+        output_white: 255,
+    };
+
+    /// Builds a channel with ordered points and a clamped gamma.
+    ///
+    /// When `input_black` is above `input_white` it is lowered to `input_white`, and when
+    /// `output_black` is above `output_white` it is lowered to `output_white`.
+    pub const fn new(
+        input_black: u8,
+        input_white: u8,
+        gamma_hundredths: u16,
+        output_black: u8,
+        output_white: u8,
+    ) -> Self {
+        Self {
+            input_black: if input_black > input_white {
+                input_white
+            } else {
+                input_black
+            },
+            input_white,
+            gamma_hundredths: if gamma_hundredths < MIN_LEVELS_GAMMA_HUNDREDTHS {
+                MIN_LEVELS_GAMMA_HUNDREDTHS
+            } else if gamma_hundredths > MAX_LEVELS_GAMMA_HUNDREDTHS {
+                MAX_LEVELS_GAMMA_HUNDREDTHS
+            } else {
+                gamma_hundredths
+            },
+            output_black: if output_black > output_white {
+                output_white
+            } else {
+                output_black
+            },
+            output_white,
+        }
+    }
+
+    /// The effective gamma value in `0.10..=10.00`.
+    pub fn gamma(self) -> f64 {
+        f64::from(self.gamma_hundredths) / 100.0
+    }
+
+    /// Whether this channel leaves every input value unchanged.
+    pub const fn is_identity(self) -> bool {
+        self.input_black == 0
+            && self.input_white == 255
+            && self.gamma_hundredths == DEFAULT_LEVELS_GAMMA_HUNDREDTHS
+            && self.output_black == 0
+            && self.output_white == 255
+    }
+
+    fn apply(self, value: u8) -> u8 {
+        let value = i32::from(value);
+        let input_black = i32::from(self.input_black);
+        if value < input_black {
+            return self.output_black;
+        }
+        let input_white = i32::from(self.input_white);
+        if value >= input_white {
+            return self.output_white;
+        }
+        let normalized = f64::from(value - input_black) / f64::from(input_white - input_black);
+        let corrected = normalized.powf(self.gamma());
+        let output_black = f64::from(self.output_black);
+        let output_white = f64::from(self.output_white);
+        (output_black + (output_white - output_black) * corrected)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    }
+}
+
+/// The complete Levels configuration: an RGB composite pass followed by per-channel passes.
+///
+/// The composite channel is applied to all three RGB channels first, then the red, green, and
+/// blue channels are applied to their matching channel. This matches Paint.NET's Levels
+/// behavior, where the RGB tab is the composite and the channel tabs refine one component.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct LevelsSettings {
+    /// Composite transfer function applied to every RGB channel first.
+    pub rgb: LevelsChannel,
+    /// Red channel transfer function applied after the composite pass.
+    pub red: LevelsChannel,
+    /// Green channel transfer function applied after the composite pass.
+    pub green: LevelsChannel,
+    /// Blue channel transfer function applied after the composite pass.
+    pub blue: LevelsChannel,
+}
+
+impl LevelsSettings {
+    /// Fully neutral Levels settings; applying them is a no-op.
+    pub const IDENTITY: Self = Self {
+        rgb: LevelsChannel::IDENTITY,
+        red: LevelsChannel::IDENTITY,
+        green: LevelsChannel::IDENTITY,
+        blue: LevelsChannel::IDENTITY,
+    };
+
+    /// Builds settings for one composite channel and three per-channel refinements.
+    pub const fn new(
+        rgb: LevelsChannel,
+        red: LevelsChannel,
+        green: LevelsChannel,
+        blue: LevelsChannel,
+    ) -> Self {
+        Self {
+            rgb,
+            red,
+            green,
+            blue,
+        }
+    }
+
+    /// Whether every channel is the identity transfer function.
+    pub const fn is_identity(self) -> bool {
+        self.rgb.is_identity()
+            && self.red.is_identity()
+            && self.green.is_identity()
+            && self.blue.is_identity()
+    }
+}
+
+impl Default for LevelsSettings {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
+}
+
 /// Converts the active layer's selection (or whole canvas) to Rec. 601 luminance.
 pub fn grayscale_active(document: &Document) -> Result<Option<PixelPatch>, RasterError> {
     grayscale(document, document.active_layer_id())
@@ -201,6 +367,115 @@ pub fn auto_level(
         before,
         after,
     )?))
+}
+
+/// Applies Levels to the active layer's selection.
+pub fn levels_active(
+    document: &Document,
+    settings: LevelsSettings,
+) -> Result<Option<PixelPatch>, RasterError> {
+    levels(document, document.active_layer_id(), settings)
+}
+
+/// Applies a real Levels transfer function to the given layer's selection.
+///
+/// The composite [`LevelsSettings::rgb`] channel runs first, then the red, green, and blue
+/// channels each refine their own component. Points are ordered and gamma is clamped when the
+/// settings are applied, so an out-of-range token cannot divide by zero. Alpha is preserved
+/// exactly. Identity settings and selections with no selected pixel return `Ok(None)`.
+pub fn levels(
+    document: &Document,
+    layer_id: LayerId,
+    settings: LevelsSettings,
+) -> Result<Option<PixelPatch>, RasterError> {
+    if settings.is_identity() {
+        return Ok(None);
+    }
+    map_selection(document, layer_id, |pixel| levels_pixel(pixel, settings))
+}
+
+/// Applies Posterize to the active layer's selection.
+pub fn posterize_active(
+    document: &Document,
+    levels: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    posterize(document, document.active_layer_id(), levels)
+}
+
+/// Quantizes each RGB channel of the given layer's selection to `levels` evenly spaced values.
+///
+/// `levels` is clamped to [`MIN_POSTERIZE_LEVELS`]..=[`MAX_POSTERIZE_LEVELS`]. The endpoints are
+/// preserved: zero maps to zero and 255 maps to 255. Alpha is preserved exactly. A selection
+/// that is already quantized returns `Ok(None)`.
+pub fn posterize(
+    document: &Document,
+    layer_id: LayerId,
+    levels: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let levels = levels.clamp(MIN_POSTERIZE_LEVELS, MAX_POSTERIZE_LEVELS);
+    map_selection(document, layer_id, |pixel| posterize_pixel(pixel, levels))
+}
+
+/// Converts the active layer's selection to weighted black and white.
+pub fn black_and_white_active(
+    document: &Document,
+    red_weight: u8,
+    green_weight: u8,
+    blue_weight: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    black_and_white(
+        document,
+        document.active_layer_id(),
+        red_weight,
+        green_weight,
+        blue_weight,
+    )
+}
+
+/// Converts the given layer's selection to weighted black and white.
+///
+/// Each output component is the weighted average
+/// `(R*red + G*green + B*blue) / (red + green + blue)`, rounded half away from zero. Weights are
+/// clamped to `0..=`[`MAX_BLACK_AND_WHITE_WEIGHT`]. Alpha is preserved exactly. When every weight
+/// is zero the effect is an atomic no-op so the preview never divides by zero. Already neutral
+/// pixels return `Ok(None)`.
+pub fn black_and_white(
+    document: &Document,
+    layer_id: LayerId,
+    red_weight: u8,
+    green_weight: u8,
+    blue_weight: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let weights = BlackAndWhiteWeights {
+        red: red_weight.min(MAX_BLACK_AND_WHITE_WEIGHT),
+        green: green_weight.min(MAX_BLACK_AND_WHITE_WEIGHT),
+        blue: blue_weight.min(MAX_BLACK_AND_WHITE_WEIGHT),
+    };
+    if weights.total() == 0 {
+        return Ok(None);
+    }
+    map_selection(document, layer_id, |pixel| {
+        black_and_white_pixel(pixel, weights)
+    })
+}
+
+/// Applies Threshold to the active layer's selection.
+pub fn threshold_active(document: &Document, level: u8) -> Result<Option<PixelPatch>, RasterError> {
+    threshold(document, document.active_layer_id(), level)
+}
+
+/// Thresholds the given layer's selection at a Rec. 601 luminance level.
+///
+/// Each selected pixel's rounded Rec. 601 luminance is compared with `level`: luminance greater
+/// than or equal to the level becomes opaque white and lower luminance becomes opaque black,
+/// where "opaque" here means the pixel's original alpha is preserved (the RGB is black or white).
+/// The effect is an atomic no-op when no selected pixel changes.
+pub fn threshold(
+    document: &Document,
+    layer_id: LayerId,
+    level: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    map_selection(document, layer_id, |pixel| threshold_pixel(pixel, level))
 }
 
 /// Applies a deterministic separable Gaussian blur to the active layer's selection.
@@ -575,11 +850,79 @@ where
     )?))
 }
 
-fn grayscale_pixel(pixel: Bgra) -> Bgra {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct BlackAndWhiteWeights {
+    red: u8,
+    green: u8,
+    blue: u8,
+}
+
+impl BlackAndWhiteWeights {
+    fn total(self) -> u32 {
+        u32::from(self.red) + u32::from(self.green) + u32::from(self.blue)
+    }
+}
+
+fn levels_pixel(pixel: Bgra, settings: LevelsSettings) -> Bgra {
+    let composite = [
+        settings.rgb.apply(pixel.r),
+        settings.rgb.apply(pixel.g),
+        settings.rgb.apply(pixel.b),
+    ];
+    Bgra::new(
+        settings.blue.apply(composite[2]),
+        settings.green.apply(composite[1]),
+        settings.red.apply(composite[0]),
+        pixel.a,
+    )
+}
+
+fn posterize_pixel(pixel: Bgra, levels: u8) -> Bgra {
+    let channel = |value: u8| posterize_channel(value, levels);
+    Bgra::new(
+        channel(pixel.b),
+        channel(pixel.g),
+        channel(pixel.r),
+        pixel.a,
+    )
+}
+
+fn posterize_channel(value: u8, levels: u8) -> u8 {
+    let levels = u32::from(levels);
+    debug_assert!((2..=64).contains(&levels));
+    let last = levels - 1;
+    let index = (u32::from(value) * last + 127) / 255;
+    ((index * 255 + last / 2) / last) as u8
+}
+
+fn black_and_white_pixel(pixel: Bgra, weights: BlackAndWhiteWeights) -> Bgra {
+    let total = weights.total();
+    debug_assert!(total > 0);
+    let weighted = u32::from(pixel.r) * u32::from(weights.red)
+        + u32::from(pixel.g) * u32::from(weights.green)
+        + u32::from(pixel.b) * u32::from(weights.blue);
+    let luminance = ((weighted + total / 2) / total) as u8;
+    Bgra::new(luminance, luminance, luminance, pixel.a)
+}
+
+fn threshold_pixel(pixel: Bgra, level: u8) -> Bgra {
+    let luminance = rec601_luminance(pixel);
+    if luminance >= level {
+        Bgra::new(255, 255, 255, pixel.a)
+    } else {
+        Bgra::new(0, 0, 0, pixel.a)
+    }
+}
+
+fn rec601_luminance(pixel: Bgra) -> u8 {
     // Rec. 601 weights in 16-bit fixed point: 0.299 R, 0.587 G, 0.114 B.
     let luminance =
         19_595 * u32::from(pixel.r) + 38_470 * u32::from(pixel.g) + 7_471 * u32::from(pixel.b);
-    let luminance = ((luminance + 32_768) >> 16) as u8;
+    ((luminance + 32_768) >> 16) as u8
+}
+
+fn grayscale_pixel(pixel: Bgra) -> Bgra {
+    let luminance = rec601_luminance(pixel);
     Bgra::new(luminance, luminance, luminance, pixel.a)
 }
 

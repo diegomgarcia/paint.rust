@@ -915,6 +915,22 @@ impl AppSession {
                 lightness,
             } => paint_raster::hue_saturation(&self.document, layer_id, hue, saturation, lightness),
             Effect::AutoLevel => paint_raster::auto_level(&self.document, layer_id),
+            Effect::Levels(settings) => paint_raster::levels(&self.document, layer_id, settings),
+            Effect::Posterize { levels } => {
+                paint_raster::posterize(&self.document, layer_id, levels)
+            }
+            Effect::BlackAndWhite {
+                red_weight,
+                green_weight,
+                blue_weight,
+            } => paint_raster::black_and_white(
+                &self.document,
+                layer_id,
+                red_weight,
+                green_weight,
+                blue_weight,
+            ),
+            Effect::Threshold { level } => paint_raster::threshold(&self.document, layer_id, level),
             Effect::GaussianBlur { radius } => {
                 paint_raster::gaussian_blur(&self.document, layer_id, radius)
             }

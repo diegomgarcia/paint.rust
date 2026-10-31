@@ -3,7 +3,10 @@ use paint_app::{
 };
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId, SelectionCombineMode};
-use paint_raster::{MAX_MOTION_BLUR_DISTANCE, MAX_NOISE_INTENSITY, MAX_SHARPEN_AMOUNT};
+use paint_raster::{
+    LevelsChannel, LevelsSettings, MAX_MOTION_BLUR_DISTANCE, MAX_NOISE_INTENSITY,
+    MAX_SHARPEN_AMOUNT,
+};
 
 fn select_rect(rect: Rect) -> Command {
     Command::SelectRect {
@@ -1044,6 +1047,155 @@ fn adjustment_effect_commands_are_single_undoable_mutations_and_noops_are_atomic
     );
     assert!(!single_selected.dirty());
     assert!(!single_selected.can_undo());
+}
+
+#[test]
+fn levels_effect_is_selection_aware_and_one_undoable_mutation() {
+    let mut session = session_from_pixels(2, 1, vec![Bgra::WHITE, Bgra::new(0, 0, 255, 255)]);
+    assert!(
+        session
+            .execute(select_rect(Rect::new(0, 0, 1, 1).unwrap()))
+            .unwrap()
+    );
+    let settings = LevelsSettings::new(
+        LevelsChannel::new(0, 255, 100, 0, 100),
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+        LevelsChannel::IDENTITY,
+    );
+
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::Levels(settings)))
+            .expect("levels")
+    );
+    assert!(session.dirty());
+    assert_eq!(pixel(&session, 0, 0), Bgra::new(100, 100, 100, 255));
+    assert_eq!(
+        pixel(&session, 1, 0),
+        Bgra::new(0, 0, 255, 255),
+        "pixels outside the selection must be untouched"
+    );
+    assert!(session.undo().unwrap());
+    assert_eq!(pixel(&session, 0, 0), Bgra::WHITE);
+    assert!(!session.dirty());
+    assert!(session.redo().unwrap());
+    assert_eq!(pixel(&session, 0, 0), Bgra::new(100, 100, 100, 255));
+    assert!(session.undo().unwrap());
+
+    assert!(
+        !session
+            .execute(Command::ApplyEffect(Effect::Levels(
+                LevelsSettings::IDENTITY
+            )))
+            .expect("identity levels")
+    );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+}
+
+#[test]
+fn posterize_and_threshold_effects_are_single_undoable_mutations() {
+    let mut session = session_from_pixels(
+        2,
+        1,
+        vec![Bgra::new(100, 100, 100, 255), Bgra::new(200, 200, 200, 255)],
+    );
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::Posterize { levels: 2 }))
+            .expect("posterize")
+    );
+    assert_eq!(pixel(&session, 0, 0), Bgra::BLACK);
+    assert_eq!(pixel(&session, 1, 0), Bgra::WHITE);
+    assert!(session.undo().unwrap());
+    assert!(!session.dirty());
+    assert!(session.redo().unwrap());
+    assert_eq!(pixel(&session, 1, 0), Bgra::WHITE);
+    assert!(session.undo().unwrap());
+
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::Threshold { level: 128 }))
+            .expect("threshold")
+    );
+    assert_eq!(pixel(&session, 0, 0), Bgra::BLACK);
+    assert_eq!(pixel(&session, 1, 0), Bgra::WHITE);
+    assert!(session.undo().unwrap());
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(200, 200, 200, 255));
+
+    let mut quantized = session_from_pixels(2, 1, vec![Bgra::BLACK, Bgra::WHITE]);
+    assert!(
+        !quantized
+            .execute(Command::ApplyEffect(Effect::Posterize { levels: 1 }))
+            .expect("clamped posterize")
+    );
+    assert!(!quantized.dirty());
+    assert!(!quantized.can_undo());
+}
+
+#[test]
+fn black_and_white_effect_uses_weights_and_noops_are_atomic() {
+    let mut session = session_from_pixels(
+        2,
+        1,
+        vec![Bgra::new(0, 0, 255, 255), Bgra::new(0, 255, 0, 255)],
+    );
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::BlackAndWhite {
+                red_weight: 100,
+                green_weight: 0,
+                blue_weight: 0,
+            }))
+            .expect("black and white")
+    );
+    assert_eq!(pixel(&session, 0, 0), Bgra::WHITE);
+    assert_eq!(pixel(&session, 1, 0), Bgra::BLACK);
+    assert!(session.undo().unwrap());
+
+    assert!(
+        !session
+            .execute(Command::ApplyEffect(Effect::BlackAndWhite {
+                red_weight: 0,
+                green_weight: 0,
+                blue_weight: 0,
+            }))
+            .expect("zero weights")
+    );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+}
+
+#[test]
+fn effect_preview_cancel_restores_pixels_and_never_enters_history() {
+    let mut session = session_from_pixels(1, 1, vec![Bgra::new(100, 100, 100, 255)]);
+    session.begin_preview();
+    assert!(
+        session
+            .preview_effect(Effect::Levels(LevelsSettings::new(
+                LevelsChannel::new(0, 255, 100, 0, 200),
+                LevelsChannel::IDENTITY,
+                LevelsChannel::IDENTITY,
+                LevelsChannel::IDENTITY,
+            )))
+            .expect("levels preview")
+    );
+    assert_eq!(pixel(&session, 0, 0), Bgra::new(78, 78, 78, 255));
+    assert!(!session.can_undo());
+
+    assert!(
+        session
+            .preview_effect(Effect::Threshold { level: 128 })
+            .expect("threshold preview")
+    );
+    assert_eq!(pixel(&session, 0, 0), Bgra::BLACK);
+    assert!(!session.can_undo());
+
+    session.cancel_preview();
+    assert_eq!(pixel(&session, 0, 0), Bgra::new(100, 100, 100, 255));
+    assert!(!session.can_undo());
+    assert!(!session.dirty());
 }
 
 #[test]

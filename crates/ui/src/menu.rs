@@ -41,6 +41,10 @@ pub(crate) enum NativeCommand {
     BrightnessContrast,
     HueSaturation,
     AutoLevel,
+    BlackAndWhite,
+    Levels,
+    Posterize,
+    Threshold,
     ToggleTools,
     ToggleColors,
     ToggleLayers,
@@ -82,6 +86,10 @@ impl NativeCommand {
             "adjust.brightness_contrast" => Self::BrightnessContrast,
             "adjust.hue_saturation" => Self::HueSaturation,
             "adjust.auto_level" => Self::AutoLevel,
+            "adjust.black_and_white" => Self::BlackAndWhite,
+            "adjust.levels" => Self::Levels,
+            "adjust.posterize" => Self::Posterize,
+            "adjust.threshold" => Self::Threshold,
             "window.tools" => Self::ToggleTools,
             "window.colors" => Self::ToggleColors,
             "window.layers" => Self::ToggleLayers,
@@ -262,24 +270,55 @@ impl NativeMenu {
         let flip_v = MenuItem::with_id("layers.flip_v", "Flip Active Layer Vertically", true, None);
         layers.append_items(&[&flip_h, &flip_v]).ok()?;
 
+        // Paint.NET sorts Adjustment effects alphabetically by display name.
         let adjustments = Submenu::new("Adjustments", true);
-        let invert = MenuItem::with_id("adjust.invert", "Invert Colors", true, None);
+        let auto_level = MenuItem::with_id("adjust.auto_level", "Auto-Level…", true, None);
+        let black_and_white =
+            MenuItem::with_id("adjust.black_and_white", "Black and White…", true, None);
         let brightness_contrast = MenuItem::with_id(
             "adjust.brightness_contrast",
             "Brightness / Contrast…",
             true,
             None,
         );
+        let curves = MenuItem::with_id("adjust.curves", "Curves…", false, None);
+        let exposure = MenuItem::with_id("adjust.exposure", "Exposure…", false, None);
+        let highlights_shadows = MenuItem::with_id(
+            "adjust.highlights_shadows",
+            "Highlights and Shadows…",
+            false,
+            None,
+        );
         let hue_saturation =
             MenuItem::with_id("adjust.hue_saturation", "Hue / Saturation…", true, None);
-        let auto_level = MenuItem::with_id("adjust.auto_level", "Auto-Level…", true, None);
+        let invert_alpha = MenuItem::with_id("adjust.invert_alpha", "Invert Alpha", false, None);
+        let invert = MenuItem::with_id("adjust.invert", "Invert Colors", true, None);
+        let levels = MenuItem::with_id("adjust.levels", "Levels…", true, None);
+        let posterize = MenuItem::with_id("adjust.posterize", "Posterize…", true, None);
+        let sepia = MenuItem::with_id("effects.sepia", "Sepia", true, None);
+        let temperature_tint = MenuItem::with_id(
+            "adjust.temperature_tint",
+            "Temperature and Tint…",
+            false,
+            None,
+        );
+        let threshold = MenuItem::with_id("adjust.threshold", "Threshold…", true, None);
         adjustments
             .append_items(&[
-                &invert,
-                &PredefinedMenuItem::separator(),
-                &brightness_contrast,
-                &hue_saturation,
                 &auto_level,
+                &black_and_white,
+                &brightness_contrast,
+                &curves,
+                &exposure,
+                &highlights_shadows,
+                &hue_saturation,
+                &invert_alpha,
+                &invert,
+                &levels,
+                &posterize,
+                &sepia,
+                &temperature_tint,
+                &threshold,
             ])
             .ok()?;
 
@@ -328,7 +367,6 @@ impl NativeMenu {
 
         let photo = Submenu::new("Photo", true);
         let grayscale = MenuItem::with_id("effects.grayscale", "Grayscale", true, None);
-        let sepia = MenuItem::with_id("effects.sepia", "Sepia", true, None);
         let glow = MenuItem::with_id("effects.photo.glow", "Glow", false, None);
         let sharpen = MenuItem::with_id("effects.photo.sharpen", "Sharpen…", true, None);
         let soft_portrait = MenuItem::with_id(
@@ -341,7 +379,6 @@ impl NativeMenu {
         photo
             .append_items(&[
                 &grayscale,
-                &sepia,
                 &PredefinedMenuItem::separator(),
                 &glow,
                 &sharpen,
@@ -502,6 +539,10 @@ mod tests {
             ("adjust.brightness_contrast", BrightnessContrast),
             ("adjust.hue_saturation", HueSaturation),
             ("adjust.auto_level", AutoLevel),
+            ("adjust.black_and_white", BlackAndWhite),
+            ("adjust.levels", Levels),
+            ("adjust.posterize", Posterize),
+            ("adjust.threshold", Threshold),
             ("window.tools", ToggleTools),
             ("window.colors", ToggleColors),
             ("window.layers", ToggleLayers),

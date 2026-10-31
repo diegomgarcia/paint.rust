@@ -10,10 +10,12 @@ use paint_app::{
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{BlendMode, Document, LayerId};
 use paint_raster::{
-    BrushOptions, GradientOptions, GradientRepeat, GradientType, LineCap, LineDash, LineStyle,
-    MAX_ADJUSTMENT_VALUE, MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA, MAX_MOTION_BLUR_DISTANCE,
-    MAX_NOISE_INTENSITY, MAX_SHARPEN_AMOUNT, MIN_ADJUSTMENT_VALUE, MIN_HUE_DELTA, ShapeStyle,
-    TextFontFamily, TextStyle,
+    BrushOptions, GradientOptions, GradientRepeat, GradientType, LevelsChannel, LevelsSettings,
+    LineCap, LineDash, LineStyle, MAX_ADJUSTMENT_VALUE, MAX_BLACK_AND_WHITE_WEIGHT,
+    MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA, MAX_LEVELS_GAMMA_HUNDREDTHS, MAX_MOTION_BLUR_DISTANCE,
+    MAX_NOISE_INTENSITY, MAX_POSTERIZE_LEVELS, MAX_SHARPEN_AMOUNT, MIN_ADJUSTMENT_VALUE,
+    MIN_HUE_DELTA, MIN_LEVELS_GAMMA_HUNDREDTHS, MIN_POSTERIZE_LEVELS, ShapeStyle, TextFontFamily,
+    TextStyle,
 };
 
 use crate::checkerboard::paint_checkerboard;
@@ -40,6 +42,11 @@ const DEFAULT_MOTION_BLUR_DISTANCE: u32 = 10;
 const DEFAULT_SHARPEN_AMOUNT: u32 = 2;
 const DEFAULT_NOISE_INTENSITY: u32 = 64;
 const DEFAULT_NOISE_SEED: u64 = 1;
+const DEFAULT_POSTERIZE_LEVELS: u8 = 16;
+const DEFAULT_THRESHOLD_LEVEL: u8 = 128;
+const DEFAULT_BLACK_AND_WHITE_RED: u8 = 30;
+const DEFAULT_BLACK_AND_WHITE_GREEN: u8 = 59;
+const DEFAULT_BLACK_AND_WHITE_BLUE: u8 = 11;
 const MAX_PREVIEW_FILE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_PREVIEW_DECODED_BYTES: usize = 64 * 1024 * 1024;
 const PREVIEW_WIDTH: f32 = 180.0;
@@ -1693,6 +1700,29 @@ impl PaintApp {
                 NativeCommand::AutoLevel => {
                     self.open_effect_dialog(EffectDialog::AutoLevel);
                 }
+                NativeCommand::BlackAndWhite => {
+                    self.open_effect_dialog(EffectDialog::BlackAndWhite {
+                        red_weight: DEFAULT_BLACK_AND_WHITE_RED,
+                        green_weight: DEFAULT_BLACK_AND_WHITE_GREEN,
+                        blue_weight: DEFAULT_BLACK_AND_WHITE_BLUE,
+                    });
+                }
+                NativeCommand::Levels => {
+                    self.open_effect_dialog(EffectDialog::Levels {
+                        channel: LevelsChannelKind::Rgb,
+                        settings: LevelsSettings::IDENTITY,
+                    });
+                }
+                NativeCommand::Posterize => {
+                    self.open_effect_dialog(EffectDialog::Posterize {
+                        levels: DEFAULT_POSTERIZE_LEVELS,
+                    });
+                }
+                NativeCommand::Threshold => {
+                    self.open_effect_dialog(EffectDialog::Threshold {
+                        level: DEFAULT_THRESHOLD_LEVEL,
+                    });
+                }
                 NativeCommand::ToggleTools => self.tools_visible = !self.tools_visible,
                 NativeCommand::ToggleColors => self.colors_visible = !self.colors_visible,
                 NativeCommand::ToggleLayers => self.layers_visible = !self.layers_visible,
@@ -2063,13 +2093,21 @@ impl PaintApp {
                     }
                 });
                 ui.menu_button("Adjustments", |ui| {
-                    let invert_response = ui.button("Invert Colors");
-                    focus_first_menu_item_on_keyboard_open(ui, &invert_response);
-                    if invert_response.clicked() {
-                        self.execute(Command::Invert, "Inverted colors on the active layer");
+                    // Paint.NET orders Adjustment effects alphabetically by display name.
+                    let auto_level = ui.button("Auto-Level…");
+                    focus_first_menu_item_on_keyboard_open(ui, &auto_level);
+                    if auto_level.clicked() {
+                        self.open_effect_dialog(EffectDialog::AutoLevel);
                         ui.close();
                     }
-                    ui.separator();
+                    if ui.button("Black and White…").clicked() {
+                        self.open_effect_dialog(EffectDialog::BlackAndWhite {
+                            red_weight: DEFAULT_BLACK_AND_WHITE_RED,
+                            green_weight: DEFAULT_BLACK_AND_WHITE_GREEN,
+                            blue_weight: DEFAULT_BLACK_AND_WHITE_BLUE,
+                        });
+                        ui.close();
+                    }
                     if ui.button("Brightness / Contrast…").clicked() {
                         self.open_effect_dialog(EffectDialog::BrightnessContrast {
                             brightness: 0,
@@ -2077,6 +2115,9 @@ impl PaintApp {
                         });
                         ui.close();
                     }
+                    disabled_effect_item(ui, "Curves…");
+                    disabled_effect_item(ui, "Exposure…");
+                    disabled_effect_item(ui, "Highlights and Shadows…");
                     if ui.button("Hue / Saturation…").clicked() {
                         self.open_effect_dialog(EffectDialog::HueSaturation {
                             hue: 0,
@@ -2085,8 +2126,36 @@ impl PaintApp {
                         });
                         ui.close();
                     }
-                    if ui.button("Auto-Level…").clicked() {
-                        self.open_effect_dialog(EffectDialog::AutoLevel);
+                    disabled_effect_item(ui, "Invert Alpha");
+                    if ui.button("Invert Colors").clicked() {
+                        self.execute(Command::Invert, "Inverted colors on the active layer");
+                        ui.close();
+                    }
+                    if ui.button("Levels…").clicked() {
+                        self.open_effect_dialog(EffectDialog::Levels {
+                            channel: LevelsChannelKind::Rgb,
+                            settings: LevelsSettings::IDENTITY,
+                        });
+                        ui.close();
+                    }
+                    if ui.button("Posterize…").clicked() {
+                        self.open_effect_dialog(EffectDialog::Posterize {
+                            levels: DEFAULT_POSTERIZE_LEVELS,
+                        });
+                        ui.close();
+                    }
+                    if ui.button("Sepia").clicked() {
+                        self.execute(
+                            Command::ApplyEffect(Effect::Sepia),
+                            "Applied Sepia to the selection",
+                        );
+                        ui.close();
+                    }
+                    disabled_effect_item(ui, "Temperature and Tint…");
+                    if ui.button("Threshold…").clicked() {
+                        self.open_effect_dialog(EffectDialog::Threshold {
+                            level: DEFAULT_THRESHOLD_LEVEL,
+                        });
                         ui.close();
                     }
                 });
@@ -2141,13 +2210,6 @@ impl PaintApp {
                             self.execute(
                                 Command::ApplyEffect(Effect::Grayscale),
                                 "Applied Grayscale to the selection",
-                            );
-                            ui.close();
-                        }
-                        if ui.button("Sepia").clicked() {
-                            self.execute(
-                                Command::ApplyEffect(Effect::Sepia),
-                                "Applied Sepia to the selection",
                             );
                             ui.close();
                         }
@@ -5849,6 +5911,39 @@ impl SizeFields {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LevelsChannelKind {
+    Rgb,
+    Red,
+    Green,
+    Blue,
+}
+
+impl LevelsChannelKind {
+    const ALL: [Self; 4] = [Self::Rgb, Self::Red, Self::Green, Self::Blue];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Rgb => "RGB",
+            Self::Red => "Red",
+            Self::Green => "Green",
+            Self::Blue => "Blue",
+        }
+    }
+}
+
+fn levels_channel_mut(
+    settings: &mut LevelsSettings,
+    channel: LevelsChannelKind,
+) -> &mut LevelsChannel {
+    match channel {
+        LevelsChannelKind::Rgb => &mut settings.rgb,
+        LevelsChannelKind::Red => &mut settings.red,
+        LevelsChannelKind::Green => &mut settings.green,
+        LevelsChannelKind::Blue => &mut settings.blue,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum EffectDialog {
     BrightnessContrast {
         brightness: i32,
@@ -5860,6 +5955,21 @@ enum EffectDialog {
         lightness: i32,
     },
     AutoLevel,
+    Levels {
+        channel: LevelsChannelKind,
+        settings: LevelsSettings,
+    },
+    Posterize {
+        levels: u8,
+    },
+    BlackAndWhite {
+        red_weight: u8,
+        green_weight: u8,
+        blue_weight: u8,
+    },
+    Threshold {
+        level: u8,
+    },
     MotionBlur {
         angle: i32,
         distance: u32,
@@ -5879,6 +5989,10 @@ impl EffectDialog {
             Self::BrightnessContrast { .. } => "Brightness / Contrast",
             Self::HueSaturation { .. } => "Hue / Saturation",
             Self::AutoLevel => "Auto-Level",
+            Self::Levels { .. } => "Levels",
+            Self::Posterize { .. } => "Posterize",
+            Self::BlackAndWhite { .. } => "Black and White",
+            Self::Threshold { .. } => "Threshold",
             Self::MotionBlur { .. } => "Motion Blur",
             Self::Sharpen { .. } => "Sharpen",
             Self::AddNoise { .. } => "Add Noise",
@@ -5904,6 +6018,18 @@ impl EffectDialog {
                 lightness,
             },
             Self::AutoLevel => Effect::AutoLevel,
+            Self::Levels { settings, .. } => Effect::Levels(settings),
+            Self::Posterize { levels } => Effect::Posterize { levels },
+            Self::BlackAndWhite {
+                red_weight,
+                green_weight,
+                blue_weight,
+            } => Effect::BlackAndWhite {
+                red_weight,
+                green_weight,
+                blue_weight,
+            },
+            Self::Threshold { level } => Effect::Threshold { level },
             Self::MotionBlur { angle, distance } => Effect::MotionBlur { angle, distance },
             Self::Sharpen { amount } => Effect::Sharpen { amount },
             Self::AddNoise { intensity, seed } => Effect::AddNoise { intensity, seed },
@@ -5947,6 +6073,91 @@ impl EffectDialog {
             Self::AutoLevel => {
                 ui.label("Stretch each RGB channel from the selected pixels to 0-255.");
                 ui.label("A flat selection leaves the image unchanged.");
+            }
+            Self::Levels { channel, settings } => {
+                ui.label(
+                    "Clip and stretch input tones, bend the midtones with gamma, then remap the \
+                     output range.",
+                );
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label("Channel");
+                    for kind in LevelsChannelKind::ALL {
+                        ui.radio_value(channel, kind, kind.label());
+                    }
+                });
+                ui.separator();
+                let levels = levels_channel_mut(settings, *channel);
+                ui.add(
+                    egui::Slider::new(&mut levels.input_black, 0..=levels.input_white)
+                        .text("Input black"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut levels.input_white, levels.input_black..=255)
+                        .text("Input white"),
+                );
+                ui.add(
+                    egui::Slider::new(
+                        &mut levels.gamma_hundredths,
+                        MIN_LEVELS_GAMMA_HUNDREDTHS..=MAX_LEVELS_GAMMA_HUNDREDTHS,
+                    )
+                    .text("Gamma")
+                    .custom_formatter(|value, _| format!("{:.2}", value / 100.0)),
+                );
+                ui.add(
+                    egui::Slider::new(&mut levels.output_black, 0..=levels.output_white)
+                        .text("Output black"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut levels.output_white, levels.output_black..=255)
+                        .text("Output white"),
+                );
+                ui.label(
+                    "RGB applies to every channel first; Red, Green, and Blue refine one channel.",
+                );
+            }
+            Self::Posterize { levels } => {
+                ui.label("Quantize each RGB channel to evenly spaced tonal levels.");
+                ui.separator();
+                ui.add(
+                    egui::Slider::new(levels, MIN_POSTERIZE_LEVELS..=MAX_POSTERIZE_LEVELS)
+                        .text("Levels"),
+                );
+                ui.label("2 levels produces pure black and white; 64 is nearly continuous.");
+            }
+            Self::BlackAndWhite {
+                red_weight,
+                green_weight,
+                blue_weight,
+            } => {
+                ui.label(
+                    "Convert the selection to black and white with adjustable channel weights.",
+                );
+                ui.separator();
+                ui.add(
+                    egui::Slider::new(red_weight, 0..=MAX_BLACK_AND_WHITE_WEIGHT)
+                        .text("Red weight"),
+                );
+                ui.add(
+                    egui::Slider::new(green_weight, 0..=MAX_BLACK_AND_WHITE_WEIGHT)
+                        .text("Green weight"),
+                );
+                ui.add(
+                    egui::Slider::new(blue_weight, 0..=MAX_BLACK_AND_WHITE_WEIGHT)
+                        .text("Blue weight"),
+                );
+                ui.label(
+                    "Weights are percentages of the luminance sum; setting all three to zero is \
+                     a no-op.",
+                );
+            }
+            Self::Threshold { level } => {
+                ui.label(
+                    "Map Rec. 601 luminance at or above the level to white, and below it to black.",
+                );
+                ui.separator();
+                ui.add(egui::Slider::new(level, 0..=255).text("Threshold"));
+                ui.label("Alpha is preserved; only the RGB channels become black or white.");
             }
             Self::MotionBlur { angle, distance } => {
                 ui.label("Blur the selection along a direction by sampling a line of pixels.");

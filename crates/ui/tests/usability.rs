@@ -135,6 +135,39 @@ fn write_input_png(path: &Path) -> Surface {
     source
 }
 
+/// A four-pixel tone ramp used by the adjustment-dialog usability tests.
+fn write_adjustment_png(path: &Path) -> Surface {
+    let source = Surface::from_pixels(
+        Size::new(4, 1).expect("test size"),
+        vec![
+            Bgra::new(10, 10, 10, 255),
+            Bgra::new(60, 60, 60, 128),
+            Bgra::new(190, 190, 190, 255),
+            Bgra::new(255, 0, 0, 0),
+        ],
+    )
+    .expect("test surface");
+    paint_image_io::write_png_atomic(path, &source).expect("write test PNG");
+    source
+}
+
+fn open_png(harness: &mut Harness<'_, PaintApp>, path: &Path) {
+    menu_item(harness, "File", "Open PNG…");
+    enter_path(harness, path);
+    click(harness, "Open PNG");
+}
+
+fn pixels(harness: &Harness<'_, PaintApp>) -> Vec<Bgra> {
+    harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixels()
+        .to_vec()
+}
+
 fn request_close(harness: &mut Harness<'_, PaintApp>) -> Vec<egui::ViewportCommand> {
     harness
         .input_mut()
@@ -2197,8 +2230,8 @@ fn effects_menu_uses_paint_net_groups_and_applies_real_effects_undoably() {
     harness.get_by_role_and_label(Role::Button, "Invert Colors");
 
     click(&mut harness, "Photo");
-    harness.get_by_role_and_label(Role::Button, "Grayscale");
-    click(&mut harness, "Sepia");
+    click(&mut harness, "Grayscale");
+    menu_item(&mut harness, "Adjustments", "Sepia");
     assert!(harness.state().session().can_undo());
     assert_eq!(
         harness
@@ -2280,14 +2313,63 @@ fn adjustments_menu_exposes_and_applies_brightness_contrast_with_live_preview_an
     let mut harness = app();
     click(&mut harness, "Adjustments");
     for label in [
-        "Invert Colors",
+        "Auto-Level…",
+        "Black and White…",
         "Brightness / Contrast…",
         "Hue / Saturation…",
-        "Auto-Level…",
+        "Invert Colors",
+        "Levels…",
+        "Posterize…",
+        "Sepia",
+        "Threshold…",
     ] {
         assert!(
             !button_is_disabled(&harness, label),
             "{label} should be an enabled adjustment"
+        );
+    }
+    for label in [
+        "Curves…",
+        "Exposure…",
+        "Highlights and Shadows…",
+        "Invert Alpha",
+        "Temperature and Tint…",
+    ] {
+        assert!(
+            button_is_disabled(&harness, label),
+            "{label} should be an explicitly disabled parity gap"
+        );
+    }
+    let paint_net_order = [
+        "Auto-Level…",
+        "Black and White…",
+        "Brightness / Contrast…",
+        "Curves…",
+        "Exposure…",
+        "Highlights and Shadows…",
+        "Hue / Saturation…",
+        "Invert Alpha",
+        "Invert Colors",
+        "Levels…",
+        "Posterize…",
+        "Sepia",
+        "Temperature and Tint…",
+        "Threshold…",
+    ];
+    for pair in paint_net_order.windows(2) {
+        let first = harness
+            .get_by_role_and_label(Role::Button, pair[0])
+            .rect()
+            .top();
+        let second = harness
+            .get_by_role_and_label(Role::Button, pair[1])
+            .rect()
+            .top();
+        assert!(
+            first < second,
+            "{} must appear above {} in the Paint.NET adjustment order",
+            pair[0],
+            pair[1]
         );
     }
     click(&mut harness, "Brightness / Contrast…");
@@ -2474,6 +2556,249 @@ fn auto_level_dialog_stretches_the_open_image_and_can_be_cancelled() {
     );
     assert!(harness.state().session().can_redo());
     assert_eq!(harness.state().history_entries(), ["Open PNG"]);
+}
+
+#[test]
+fn levels_dialog_previews_applies_per_channel_and_escape_cancels() {
+    let temporary = TempDir::new().expect("temporary directory");
+    let input = temporary.path().join("levels.png");
+    let source = write_adjustment_png(&input);
+    let mut harness = app();
+    open_png(&mut harness, &input);
+    let history_length = harness.state().history_entries().len();
+
+    menu_item(&mut harness, "Adjustments", "Levels…");
+    for label in [
+        "Input black",
+        "Input white",
+        "Gamma",
+        "Output black",
+        "Output white",
+    ] {
+        harness.get_by_role_and_label(Role::Slider, label);
+    }
+    for channel in ["RGB", "Red", "Green", "Blue"] {
+        harness.get_by_role_and_label(Role::RadioButton, channel);
+    }
+
+    set_slider(&mut harness, "Gamma", 200.0);
+    assert_ne!(
+        pixels(&harness),
+        source.pixels(),
+        "the Gamma slider must change the live preview"
+    );
+    set_slider(&mut harness, "Gamma", 100.0);
+    assert_eq!(
+        pixels(&harness),
+        source.pixels(),
+        "returning gamma to 1.00 must restore the identity preview"
+    );
+
+    set_slider(&mut harness, "Output white", 100.0);
+    assert_eq!(
+        pixels(&harness),
+        [
+            Bgra::new(4, 4, 4, 255),
+            Bgra::new(24, 24, 24, 128),
+            Bgra::new(75, 75, 75, 255),
+            Bgra::new(100, 0, 0, 0),
+        ],
+        "the RGB channel must update the canvas live"
+    );
+    assert!(
+        !harness.state().session().can_undo(),
+        "a live Levels preview must not enter history"
+    );
+    assert_eq!(harness.state().history_entries().len(), history_length);
+
+    click(&mut harness, "Cancel");
+    assert_eq!(pixels(&harness), source.pixels());
+    assert_eq!(harness.state().history_entries().len(), history_length);
+
+    menu_item(&mut harness, "Adjustments", "Levels…");
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Red")
+        .click();
+    harness.run();
+    set_slider(&mut harness, "Output white", 100.0);
+    assert_eq!(
+        pixels(&harness),
+        [
+            Bgra::new(10, 10, 4, 255),
+            Bgra::new(60, 60, 24, 128),
+            Bgra::new(190, 190, 75, 255),
+            Bgra::new(255, 0, 0, 0),
+        ],
+        "the Red channel must change only red"
+    );
+    click(&mut harness, "Apply");
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Levels")
+    );
+    click(&mut harness, "Undo");
+    assert_eq!(pixels(&harness), source.pixels());
+
+    menu_item(&mut harness, "Adjustments", "Levels…");
+    set_slider(&mut harness, "Output white", 50.0);
+    assert_ne!(pixels(&harness), source.pixels());
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert_eq!(
+        pixels(&harness),
+        source.pixels(),
+        "Escape must restore the pre-dialog pixels"
+    );
+    assert_eq!(harness.state().history_entries().len(), history_length);
+}
+
+#[test]
+fn posterize_dialog_previews_applies_and_cancels() {
+    let temporary = TempDir::new().expect("temporary directory");
+    let input = temporary.path().join("posterize.png");
+    let source = write_adjustment_png(&input);
+    let mut harness = app();
+    open_png(&mut harness, &input);
+    let history_length = harness.state().history_entries().len();
+
+    menu_item(&mut harness, "Adjustments", "Posterize…");
+    harness.get_by_role_and_label(Role::Slider, "Levels");
+    set_slider(&mut harness, "Levels", 2.0);
+    assert_eq!(
+        pixels(&harness),
+        [
+            Bgra::new(0, 0, 0, 255),
+            Bgra::new(0, 0, 0, 128),
+            Bgra::new(255, 255, 255, 255),
+            Bgra::new(255, 0, 0, 0),
+        ],
+        "two-level posterize should update the canvas live"
+    );
+    assert!(!harness.state().session().can_undo());
+    click(&mut harness, "Apply");
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Posterize")
+    );
+    click(&mut harness, "Undo");
+    assert_eq!(pixels(&harness), source.pixels());
+
+    menu_item(&mut harness, "Adjustments", "Posterize…");
+    set_slider(&mut harness, "Levels", 2.0);
+    click(&mut harness, "Cancel");
+    assert_eq!(pixels(&harness), source.pixels());
+    assert_eq!(harness.state().history_entries().len(), history_length);
+    assert!(harness.state().session().can_redo());
+}
+
+#[test]
+fn black_and_white_dialog_uses_channel_weights_and_reports_noop_reapplication() {
+    let temporary = TempDir::new().expect("temporary directory");
+    let input = temporary.path().join("black-and-white.png");
+    let source = write_adjustment_png(&input);
+    let mut harness = app();
+    open_png(&mut harness, &input);
+    let history_length = harness.state().history_entries().len();
+
+    menu_item(&mut harness, "Adjustments", "Black and White…");
+    for label in ["Red weight", "Green weight", "Blue weight"] {
+        harness.get_by_role_and_label(Role::Slider, label);
+    }
+    set_slider(&mut harness, "Red weight", 0.0);
+    set_slider(&mut harness, "Green weight", 0.0);
+    set_slider(&mut harness, "Blue weight", 100.0);
+    assert_eq!(
+        pixels(&harness),
+        [
+            Bgra::new(10, 10, 10, 255),
+            Bgra::new(60, 60, 60, 128),
+            Bgra::new(190, 190, 190, 255),
+            Bgra::new(255, 255, 255, 0),
+        ],
+        "a blue-only weight must use the blue channel"
+    );
+    click(&mut harness, "Apply");
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Black and White")
+    );
+    click(&mut harness, "Undo");
+    assert_eq!(pixels(&harness), source.pixels());
+
+    menu_item(&mut harness, "Adjustments", "Black and White…");
+    click(&mut harness, "Apply");
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Black and White")
+    );
+    let after_default = pixels(&harness);
+    assert!(
+        after_default
+            .iter()
+            .all(|pixel| pixel.r == pixel.g && pixel.g == pixel.b),
+        "the default weighted conversion must produce neutral pixels"
+    );
+    assert_eq!(
+        after_default[3],
+        Bgra::new(28, 28, 28, 0),
+        "the default weights use the documented 30/59/11 percentages"
+    );
+
+    menu_item(&mut harness, "Adjustments", "Black and White…");
+    click(&mut harness, "Apply");
+    assert_eq!(
+        harness.state().history_entries().len(),
+        history_length + 1,
+        "reapplying Black and White to neutral pixels must not add a history entry"
+    );
+    assert_eq!(pixels(&harness), after_default);
+}
+
+#[test]
+fn threshold_dialog_applies_cancels_and_escape_restores() {
+    let temporary = TempDir::new().expect("temporary directory");
+    let input = temporary.path().join("threshold.png");
+    let source = write_adjustment_png(&input);
+    let mut harness = app();
+    open_png(&mut harness, &input);
+    let history_length = harness.state().history_entries().len();
+
+    menu_item(&mut harness, "Adjustments", "Threshold…");
+    harness.get_by_role_and_label(Role::Slider, "Threshold");
+    assert_eq!(
+        pixels(&harness),
+        [
+            Bgra::new(0, 0, 0, 255),
+            Bgra::new(0, 0, 0, 128),
+            Bgra::new(255, 255, 255, 255),
+            Bgra::new(0, 0, 0, 0),
+        ],
+        "the default level must threshold the preview at 128"
+    );
+    assert!(!harness.state().session().can_undo());
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert_eq!(pixels(&harness), source.pixels());
+    assert_eq!(harness.state().history_entries().len(), history_length);
+
+    menu_item(&mut harness, "Adjustments", "Threshold…");
+    set_slider(&mut harness, "Threshold", 200.0);
+    click(&mut harness, "Apply");
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Threshold")
+    );
+    assert_eq!(
+        pixels(&harness),
+        [
+            Bgra::new(0, 0, 0, 255),
+            Bgra::new(0, 0, 0, 128),
+            Bgra::new(0, 0, 0, 255),
+            Bgra::new(0, 0, 0, 0),
+        ]
+    );
+    click(&mut harness, "Undo");
+    assert_eq!(pixels(&harness), source.pixels());
 }
 
 fn alt_click_canvas_at(harness: &mut Harness<'_, PaintApp>, offset: egui::Vec2) {
