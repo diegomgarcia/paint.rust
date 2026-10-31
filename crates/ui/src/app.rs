@@ -4644,57 +4644,20 @@ impl PaintApp {
                                     self.active_tool,
                                     Tool::Move | Tool::MoveSelection
                                 ) {
-                                    if let Some(floating) = &self.floating_selection {
-                                        let min = rect.min
-                                            + egui::vec2(
-                                                (floating.floating.bounds.left()
-                                                    + floating.offset_x)
-                                                    as f32
-                                                    * zoom,
-                                                (floating.floating.bounds.top() + floating.offset_y)
-                                                    as f32
-                                                    * zoom,
-                                            );
-                                        let max = rect.min
-                                            + egui::vec2(
-                                                (floating.floating.bounds.right()
-                                                    + floating.offset_x)
-                                                    as f32
-                                                    * zoom,
-                                                (floating.floating.bounds.bottom()
-                                                    + floating.offset_y)
-                                                    as f32
-                                                    * zoom,
-                                            );
-                                        let preview = egui::Rect::from_min_max(min, max);
-                                        ui.painter().rect_filled(
-                                            preview,
-                                            0,
-                                            egui::Color32::from_white_alpha(20),
-                                        );
-                                        paint_selection_outline(ui.painter(), preview, phase);
-                                    } else if let Some(selection) =
-                                        self.session.document().selection()
+                                    let dx = i64::from(end.x) - i64::from(start.x);
+                                    let dy = i64::from(end.y) - i64::from(start.y);
+                                    if let Some(selection) =
+                                        self.session.document().selection_model()
+                                        && let Ok(translated) = selection.translated(dx, dy)
                                     {
-                                        let dx = i64::from(end.x) - i64::from(start.x);
-                                        let dy = i64::from(end.y) - i64::from(start.y);
-                                        let min = rect.min
-                                            + egui::vec2(
-                                                (selection.left() + dx) as f32 * zoom,
-                                                (selection.top() + dy) as f32 * zoom,
-                                            );
-                                        let max = rect.min
-                                            + egui::vec2(
-                                                (selection.right() + dx) as f32 * zoom,
-                                                (selection.bottom() + dy) as f32 * zoom,
-                                            );
-                                        let preview = egui::Rect::from_min_max(min, max);
-                                        ui.painter().rect_filled(
-                                            preview,
-                                            0,
-                                            egui::Color32::from_white_alpha(20),
+                                        // Move the real mask/rectangle, not a bounding square.
+                                        paint_selection(
+                                            ui.painter(),
+                                            rect,
+                                            zoom,
+                                            &translated,
+                                            phase,
                                         );
-                                        paint_selection_outline(ui.painter(), preview, phase);
                                     }
                                 } else if self.active_tool == Tool::Shapes {
                                     ui.painter().rect_filled(
