@@ -1543,6 +1543,7 @@ fn moving_selected_pixels_also_moves_the_selection_outline() {
 #[test]
 fn moving_pixels_lifts_once_and_reuses_the_floating_selection() {
     let mut harness = app();
+    dock_tools(&mut harness);
     click(&mut harness, "Rectangle Select");
     drag_canvas(&mut harness, egui::vec2(6.0, 6.0), egui::vec2(26.0, 18.0));
     click(&mut harness, "Move Selected Pixels");

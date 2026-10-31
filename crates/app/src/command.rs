@@ -1,6 +1,8 @@
 use paint_core::{Bgra, Point, Rect, Size};
 use paint_document::SelectionCombineMode;
-use paint_raster::{BrushOptions, GradientOptions, MagicWandSampling, ShapeStyle, TextStyle};
+use paint_raster::{
+    BrushOptions, GradientOptions, LineStyle, MagicWandSampling, ShapeStyle, TextStyle,
+};
 
 use crate::Effect;
 
@@ -102,6 +104,12 @@ pub enum Command {
         points: Vec<Point>,
         brush: BrushOptions,
         color: Option<Bgra>,
+    },
+    /// Paints a straight line with real end caps and an optional dash pattern.
+    StrokeLine {
+        label: &'static str,
+        points: Vec<Point>,
+        style: LineStyle,
     },
     /// Fills the contiguous region around a canvas point.
     FloodFill {

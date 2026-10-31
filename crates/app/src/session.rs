@@ -136,6 +136,11 @@ impl AppSession {
                 brush,
                 color,
             } => self.stroke(&points, brush, color),
+            Command::StrokeLine {
+                label: _,
+                points,
+                style,
+            } => self.stroke_line(&points, style),
             Command::FloodFill {
                 point,
                 color,
@@ -464,6 +469,23 @@ impl AppSession {
             points,
             brush,
             color,
+        )?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn stroke_line(
+        &mut self,
+        points: &[Point],
+        style: paint_raster::LineStyle,
+    ) -> Result<bool, SessionError> {
+        let patch = paint_raster::stroke_line(
+            &self.document,
+            self.document.active_layer_id(),
+            points,
+            style,
         )?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),

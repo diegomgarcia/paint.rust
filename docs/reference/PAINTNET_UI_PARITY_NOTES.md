@@ -92,6 +92,31 @@ defaults the brush to 45 px, keeps Pencil fixed at one pixel, and makes Recolor 
 stroke. Hardness, spacing, bicubic move sampling, and Finish-style transacted previews
 are recorded as remaining parity work.
 
+### Move / Picker / Line Tool Options (implemented)
+
+The Move, Move Selection, Color Picker, and Line / Curve options use separate grouped
+rows instead of one wrapped row, matching the real multi-row Tool Options strip.
+
+- **Move Selected Pixels** exposes the real `Finish` action, which stamps the floating
+  selection at its dragged destination as one history entry. Paint.R's move is an
+  integer translation only: it does not rotate or scale the floating surface, so a
+  Nearest/Bilinear/Bicubic resampling selector would have no effect on the stamp and is
+  intentionally not exposed. Scaled/rotated moves and their resampling selector remain
+  parity work.
+- **Move Selection** exposes numeric `Offset X` / `Offset Y` fields with `Apply offset`
+  and `Cancel offset`. Apply uses the existing undo-free `TranslateSelection` command;
+  Cancel resets the pending fields without touching the selection.
+- **Color Picker** exposes Click behavior (`Do not switch`, `Switch to previous tool`),
+  Sampling (`Layer`, `Composed image`), and Sample size (`1 px`, `3×3 average`,
+  `5×5 average`). Layer sampling reads only the active layer; composed sampling reads the
+  composed image. Average samples use premultiplied-alpha averaging and clip the square to
+  the canvas. With `Do not switch`, the picker stays active for repeated samples.
+- **Line / Curve** exposes Start cap and End cap (`None`, `Rounded`, `Arrow`) and Dash
+  style (`Solid`, `Dash`, `Dot`). Caps and dashes are rasterized into real pixels:
+  rounded caps extend half a line width past an endpoint, arrows draw chevrons, and Dash
+  / Dot use width-scaled 3:1 and 1:1 GDI-style patterns. The stroke is clipped to the
+  active selection and commits as one undoable history entry.
+
 ### Compact toolbox measurements
 
 - Real `ToolsForm` window bounds: approximately `67×292` px at the captured 100% DPI.

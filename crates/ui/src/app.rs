@@ -7,11 +7,11 @@ use paint_app::{
     AppSession, CanvasAnchor, Command, Effect, MagicWandSampling, ResourceLimits,
     SelectionCombineMode,
 };
-use paint_core::{Bgra, Point, Rect, Size};
+use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{BlendMode, Document, LayerId};
 use paint_raster::{
-    BrushOptions, GradientOptions, GradientRepeat, GradientType, MAX_GAUSSIAN_BLUR_RADIUS,
-    ShapeStyle, TextFontFamily, TextStyle,
+    BrushOptions, GradientOptions, GradientRepeat, GradientType, LineCap, LineDash, LineStyle,
+    MAX_GAUSSIAN_BLUR_RADIUS, ShapeStyle, TextFontFamily, TextStyle,
 };
 
 use crate::checkerboard::paint_checkerboard;
@@ -116,6 +116,7 @@ pub struct PaintApp {
     panels_floating: bool,
     picking_color: bool,
     active_tool: Tool,
+    previous_tool_before_picker: Option<Tool>,
     shape_mode: ShapeMode,
     shape_style: ShapeStyle,
     shape_border_width: u32,
@@ -124,6 +125,14 @@ pub struct PaintApp {
     brush_spacing: u8,
     gradient_type: GradientType,
     gradient_repeat: GradientRepeat,
+    line_start_cap: LineCap,
+    line_end_cap: LineCap,
+    line_dash: LineDash,
+    picker_click_behavior: PickerClickBehavior,
+    picker_sample_source: PickerSampleSource,
+    picker_sample_size: PickerSampleSize,
+    move_selection_dx: i32,
+    move_selection_dy: i32,
     clone_hardness: u8,
     clone_source: Option<Point>,
     clone_offset: Option<(i64, i64)>,
@@ -230,6 +239,7 @@ impl PaintApp {
             panels_floating,
             picking_color: false,
             active_tool: Tool::Select,
+            previous_tool_before_picker: None,
             shape_mode: ShapeMode::Rectangle,
             shape_style: ShapeStyle::Outline,
             shape_border_width: 2,
@@ -238,6 +248,14 @@ impl PaintApp {
             brush_spacing: 15,
             gradient_type: GradientType::Linear,
             gradient_repeat: GradientRepeat::None,
+            line_start_cap: LineCap::Flat,
+            line_end_cap: LineCap::Flat,
+            line_dash: LineDash::Solid,
+            picker_click_behavior: PickerClickBehavior::NoToolSwitch,
+            picker_sample_source: PickerSampleSource::Image,
+            picker_sample_size: PickerSampleSize::Point,
+            move_selection_dx: 0,
+            move_selection_dy: 0,
             clone_hardness: 80,
             clone_source: None,
             clone_offset: None,
@@ -1922,6 +1940,9 @@ impl PaintApp {
                 .clicked()
                 {
                     if self.active_tool != $tool {
+                        if $tool == Tool::Picker {
+                            self.previous_tool_before_picker = Some(self.active_tool);
+                        }
                         if self.active_tool == Tool::Text {
                             self.commit_text_preview();
                         }
@@ -2046,6 +2067,14 @@ impl PaintApp {
     fn tool_options_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::top("paint-r-tool-options").show(ui, |ui| {
             ui.add_space(2.0);
+            if matches!(
+                self.active_tool,
+                Tool::Move | Tool::MoveSelection | Tool::Picker | Tool::Line
+            ) {
+                self.grouped_tool_options(ui);
+                ui.add_space(2.0);
+                return;
+            }
             ui.horizontal_wrapped(|ui| {
                 ui.strong("Tool Options");
                 ui.separator();
@@ -2107,21 +2136,6 @@ impl PaintApp {
                         }
                         self.selection_status(ui);
                     }
-                    Tool::MoveSelection => {
-                        ui.label("Move Selection");
-                        if let Some(selection) = self.session.document().selection() {
-                            ui.label(format!(
-                                "({}, {})..({}, {})",
-                                selection.left(),
-                                selection.top(),
-                                selection.right(),
-                                selection.bottom()
-                            ));
-                        } else {
-                            ui.label("No selection");
-                        }
-                        ui.label("Drag the selection on the canvas to move it");
-                    }
                     Tool::Zoom => {
                         ui.label("Zoom");
                         ui.label(format!("{}%", (self.zoom * 100.0).round() as u32));
@@ -2163,12 +2177,11 @@ impl PaintApp {
                         ui.label("Normal");
                         ui.label("Click the canvas to fill");
                     }
-                    Tool::Pencil | Tool::Brush | Tool::Eraser | Tool::Line => {
+                    Tool::Pencil | Tool::Brush | Tool::Eraser => {
                         ui.label(match self.active_tool {
                             Tool::Pencil => "Pencil",
                             Tool::Brush => "Paintbrush",
-                            Tool::Eraser => "Eraser",
-                            _ => "Line / Curve",
+                            _ => "Eraser",
                         });
                         ui.separator();
                         if self.active_tool == Tool::Pencil {
@@ -2341,17 +2354,215 @@ impl PaintApp {
                         ui.label("Pan");
                         ui.label("Drag to move the canvas view");
                     }
-                    Tool::Move => {
-                        ui.label("Move Selected Pixels");
-                        ui.label("Drag to move the selection, or the active layer without one");
-                    }
-                    Tool::Picker => {
-                        ui.label("Color Picker");
-                        ui.label("Click the canvas to sample the composed color");
-                    }
+                    Tool::Move | Tool::MoveSelection | Tool::Picker | Tool::Line => {}
                 }
             });
             ui.add_space(2.0);
+        });
+    }
+
+    /// Tool Options for tools whose controls need separate rows instead of one wrapped row.
+    fn grouped_tool_options(&mut self, ui: &mut egui::Ui) {
+        let title = match self.active_tool {
+            Tool::Move => "Move Selected Pixels",
+            Tool::MoveSelection => "Move Selection",
+            Tool::Picker => "Color Picker",
+            Tool::Line => "Line / Curve",
+            _ => return,
+        };
+        ui.horizontal(|ui| {
+            ui.strong("Tool Options");
+            ui.separator();
+            ui.label(title);
+        });
+        match self.active_tool {
+            Tool::Move => self.move_tool_options(ui),
+            Tool::MoveSelection => self.move_selection_tool_options(ui),
+            Tool::Picker => self.picker_tool_options(ui),
+            Tool::Line => self.line_tool_options(ui),
+            _ => {}
+        }
+    }
+
+    fn move_tool_options(&mut self, ui: &mut egui::Ui) {
+        tool_option_row(ui, |ui| {
+            ui.label("Drag to move the selection, or the active layer without one");
+        });
+        tool_option_row(ui, |ui| {
+            let floating = self.floating_selection.is_some();
+            if ui
+                .add_enabled(floating, egui::Button::new("Finish"))
+                .on_hover_text("Place the floating selection")
+                .clicked()
+            {
+                self.finalize_floating_selection();
+            }
+            if floating {
+                ui.label("Floating pixels are placed by Finish or when the tool changes");
+            } else {
+                // Integer translation never resamples, so a Nearest/Bilinear/Bicubic
+                // selector would have no effect until scaled moves exist.
+                ui.label("Sampling: Nearest (integer moves do not resample)");
+            }
+        });
+    }
+
+    fn move_selection_tool_options(&mut self, ui: &mut egui::Ui) {
+        tool_option_row(ui, |ui| {
+            if let Some(selection) = self.session.document().selection() {
+                ui.label(format!(
+                    "({}, {})..({}, {})",
+                    selection.left(),
+                    selection.top(),
+                    selection.right(),
+                    selection.bottom()
+                ));
+            } else {
+                ui.label("No selection");
+            }
+        });
+        tool_option_row(ui, |ui| {
+            let x_label = ui.label("Offset X");
+            ui.add(
+                egui::DragValue::new(&mut self.move_selection_dx)
+                    .range(-16_384..=16_384)
+                    .speed(1.0),
+            )
+            .labelled_by(x_label.id);
+            let y_label = ui.label("Offset Y");
+            ui.add(
+                egui::DragValue::new(&mut self.move_selection_dy)
+                    .range(-16_384..=16_384)
+                    .speed(1.0),
+            )
+            .labelled_by(y_label.id);
+            let has_selection = self.session.document().selection().is_some();
+            if ui
+                .add_enabled(has_selection, egui::Button::new("Apply offset"))
+                .clicked()
+            {
+                let (dx, dy) = (self.move_selection_dx, self.move_selection_dy);
+                if dx == 0 && dy == 0 {
+                    self.status = "Selection offset is zero; nothing to apply".to_owned();
+                } else {
+                    self.execute(
+                        Command::TranslateSelection { dx, dy },
+                        "Moved the selection",
+                    );
+                }
+                self.move_selection_dx = 0;
+                self.move_selection_dy = 0;
+            }
+            let pending = self.move_selection_dx != 0 || self.move_selection_dy != 0;
+            if ui
+                .add_enabled(pending, egui::Button::new("Cancel offset"))
+                .clicked()
+            {
+                self.move_selection_dx = 0;
+                self.move_selection_dy = 0;
+                self.status = "Canceled the pending selection offset".to_owned();
+            }
+        });
+        tool_option_row(ui, |ui| {
+            ui.label("Drag the selection on the canvas to move it");
+        });
+    }
+
+    fn picker_tool_options(&mut self, ui: &mut egui::Ui) {
+        tool_option_row(ui, |ui| {
+            ui.label("Click behavior");
+            ui.selectable_value(
+                &mut self.picker_click_behavior,
+                PickerClickBehavior::NoToolSwitch,
+                "Do not switch",
+            );
+            ui.selectable_value(
+                &mut self.picker_click_behavior,
+                PickerClickBehavior::SwitchToPreviousTool,
+                "Switch to previous tool",
+            );
+        });
+        tool_option_row(ui, |ui| {
+            ui.label("Sampling");
+            ui.selectable_value(
+                &mut self.picker_sample_source,
+                PickerSampleSource::Layer,
+                "Layer",
+            );
+            ui.selectable_value(
+                &mut self.picker_sample_source,
+                PickerSampleSource::Image,
+                "Composed image",
+            );
+        });
+        tool_option_row(ui, |ui| {
+            ui.label("Sample size");
+            for size in [
+                PickerSampleSize::Point,
+                PickerSampleSize::Average3x3,
+                PickerSampleSize::Average5x5,
+            ] {
+                ui.selectable_value(&mut self.picker_sample_size, size, size.label());
+            }
+        });
+        tool_option_row(ui, |ui| {
+            ui.label("Click the canvas to sample the primary color");
+        });
+    }
+
+    fn line_tool_options(&mut self, ui: &mut egui::Ui) {
+        tool_option_row(ui, |ui| {
+            let width_label = ui.label("Width");
+            ui.add(
+                egui::DragValue::new(&mut self.brush_size)
+                    .range(1..=64)
+                    .suffix(" px"),
+            )
+            .labelled_by(width_label.id);
+            let color = self.fill_color;
+            ui.colored_label(
+                egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+                "Primary color",
+            );
+        });
+        tool_option_row(ui, |ui| {
+            ui.label("Start cap");
+            for (text, cap, accessible) in [
+                ("None", LineCap::Flat, "Start cap: None"),
+                ("Rounded", LineCap::Rounded, "Start cap: Rounded"),
+                ("Arrow", LineCap::Arrow, "Start cap: Arrow"),
+            ] {
+                if option_selectable(ui, self.line_start_cap == cap, text, accessible) {
+                    self.line_start_cap = cap;
+                }
+            }
+        });
+        tool_option_row(ui, |ui| {
+            ui.label("Dash style");
+            for (text, dash, accessible) in [
+                ("Solid", LineDash::Solid, "Dash style: Solid"),
+                ("Dash", LineDash::Dash, "Dash style: Dash"),
+                ("Dot", LineDash::Dot, "Dash style: Dot"),
+            ] {
+                if option_selectable(ui, self.line_dash == dash, text, accessible) {
+                    self.line_dash = dash;
+                }
+            }
+        });
+        tool_option_row(ui, |ui| {
+            ui.label("End cap");
+            for (text, cap, accessible) in [
+                ("None", LineCap::Flat, "End cap: None"),
+                ("Rounded", LineCap::Rounded, "End cap: Rounded"),
+                ("Arrow", LineCap::Arrow, "End cap: Arrow"),
+            ] {
+                if option_selectable(ui, self.line_end_cap == cap, text, accessible) {
+                    self.line_end_cap = cap;
+                }
+            }
+        });
+        tool_option_row(ui, |ui| {
+            ui.label("Drag on the canvas to draw a line; the active selection clips it");
         });
     }
 
@@ -4053,11 +4264,16 @@ impl PaintApp {
                                         ))
                                     }
                                     Tool::Line => Some((
-                                        Command::Stroke {
+                                        Command::StrokeLine {
                                             label: "Line / Curve",
                                             points: vec![start, end],
-                                            brush: BrushOptions::new(size, 100, 15),
-                                            color: Some(color),
+                                            style: LineStyle {
+                                                width: size,
+                                                color: Some(color),
+                                                start_cap: self.line_start_cap,
+                                                end_cap: self.line_end_cap,
+                                                dash: self.line_dash,
+                                            },
                                         },
                                         "Drew a line".to_owned(),
                                     )),
@@ -4283,24 +4499,63 @@ impl PaintApp {
     }
 
     fn pick_color_at(&mut self, point: Point) {
-        match self.session.compose() {
-            Ok(surface) => {
-                let Ok(color) = surface.pixel(point) else {
-                    self.status = "The picked canvas position is outside the document".to_owned();
-                    return;
-                };
-                self.fill_color = *color;
-                self.active_color_slot = ColorSlot::Primary;
-                self.hex_input = format_hex_color(*color);
-                self.hex_error = None;
-                self.picking_color = false;
-                self.status = format!(
-                    "Picked #{:02X}{:02X}{:02X} at ({}, {})",
-                    color.r, color.g, color.b, point.x, point.y
-                );
+        let color = match self.sample_color(point) {
+            Ok(color) => color,
+            Err(message) => {
+                self.status = message;
+                return;
             }
-            Err(error) => self.status = format!("Could not sample the canvas: {error}"),
+        };
+        self.fill_color = color;
+        self.active_color_slot = ColorSlot::Primary;
+        self.hex_input = format_hex_color(color);
+        self.hex_error = None;
+        let source = match self.picker_sample_source {
+            PickerSampleSource::Layer => "active layer",
+            PickerSampleSource::Image => "composed image",
+        };
+        let size = self.picker_sample_size.label();
+        if self.picker_click_behavior == PickerClickBehavior::SwitchToPreviousTool
+            && let Some(previous) = self.previous_tool_before_picker
+        {
+            self.active_tool = previous;
+            self.picking_color = false;
+            self.status = format!(
+                "Picked #{:02X}{:02X}{:02X} at ({}, {}) from the {source} ({size}); switched back",
+                color.r, color.g, color.b, point.x, point.y
+            );
+            return;
         }
+        // Paint.NET keeps the picker active with Do not switch, so repeated samples work.
+        self.picking_color = self.active_tool == Tool::Picker;
+        self.status = format!(
+            "Picked #{:02X}{:02X}{:02X} at ({}, {}) from the {source} ({size})",
+            color.r, color.g, color.b, point.x, point.y
+        );
+    }
+
+    /// Samples one pixel or a clipped square average from the active layer or the composition.
+    fn sample_color(&self, point: Point) -> Result<Bgra, String> {
+        let document = self.session.document();
+        let side = i64::from(self.picker_sample_size.side());
+        let radius = (side - 1) / 2;
+        let left = (i64::from(point.x) - radius).max(0);
+        let top = (i64::from(point.y) - radius).max(0);
+        let right = (i64::from(point.x) + radius + 1).min(i64::from(document.size().width()));
+        let bottom = (i64::from(point.y) + radius + 1).min(i64::from(document.size().height()));
+        let rect = Rect::new(left, top, right, bottom)
+            .map_err(|_| "The picked canvas position is outside the document".to_owned())?;
+        let composed;
+        let surface: &Surface = match self.picker_sample_source {
+            PickerSampleSource::Layer => document.active_layer().surface(),
+            PickerSampleSource::Image => {
+                composed = self.session.compose().map_err(|error| {
+                    format!("Could not compose the canvas for sampling: {error}")
+                })?;
+                &composed
+            }
+        };
+        average_surface_color(surface, rect)
     }
 
     fn path_dialog(&mut self, ui: &mut egui::Ui) {
@@ -4733,6 +4988,46 @@ enum Tool {
     Picker,
     Text,
     CloneStamp,
+}
+
+/// What the color picker does after a click samples a color.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PickerClickBehavior {
+    NoToolSwitch,
+    SwitchToPreviousTool,
+}
+
+/// Which surface the color picker reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PickerSampleSource {
+    Layer,
+    Image,
+}
+
+/// Point or square-average sample used by the color picker.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PickerSampleSize {
+    Point,
+    Average3x3,
+    Average5x5,
+}
+
+impl PickerSampleSize {
+    const fn side(self) -> u32 {
+        match self {
+            Self::Point => 1,
+            Self::Average3x3 => 3,
+            Self::Average5x5 => 5,
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Point => "1 px",
+            Self::Average3x3 => "3×3 average",
+            Self::Average5x5 => "5×5 average",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -5362,7 +5657,9 @@ fn window_close_button(ui: &mut egui::Ui, label: &'static str) -> bool {
 fn history_label(command: &Command) -> Option<String> {
     match command {
         Command::Fill(_) | Command::FloodFill { .. } => Some("Paint Bucket".to_owned()),
-        Command::Stroke { label, .. } => Some((*label).to_owned()),
+        Command::Stroke { label, .. } | Command::StrokeLine { label, .. } => {
+            Some((*label).to_owned())
+        }
         Command::FillRect { .. } => Some("Rectangle".to_owned()),
         Command::FillEllipse { .. } => Some("Ellipse".to_owned()),
         Command::Gradient { .. } => Some("Gradient".to_owned()),
@@ -5419,6 +5716,67 @@ fn labeled_button(ui: &mut egui::Ui, text: &str, label: &'static str) -> egui::R
     let response = ui.button(text);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
     response.on_hover_text(label)
+}
+
+/// Averages straight-alpha BGRA pixels over `rect` using premultiplied alpha, matching
+/// Paint.NET's Color Picker average sample.
+fn average_surface_color(surface: &Surface, rect: Rect) -> Result<Bgra, String> {
+    let mut count = 0_u64;
+    let mut alpha_sum = 0.0_f64;
+    let mut red_sum = 0.0_f64;
+    let mut green_sum = 0.0_f64;
+    let mut blue_sum = 0.0_f64;
+    for y in rect.top()..rect.bottom() {
+        for x in rect.left()..rect.right() {
+            let point = Point::new(
+                u32::try_from(x).map_err(|_| "sample x is outside the document".to_owned())?,
+                u32::try_from(y).map_err(|_| "sample y is outside the document".to_owned())?,
+            );
+            let pixel = *surface
+                .pixel(point)
+                .map_err(|_| "The picked canvas position is outside the document".to_owned())?;
+            let alpha = f64::from(pixel.a);
+            alpha_sum += alpha;
+            red_sum += f64::from(pixel.r) * alpha;
+            green_sum += f64::from(pixel.g) * alpha;
+            blue_sum += f64::from(pixel.b) * alpha;
+            count += 1;
+        }
+    }
+    if count == 0 {
+        return Err("The picked canvas position is outside the document".to_owned());
+    }
+    if alpha_sum == 0.0 {
+        return Ok(Bgra::TRANSPARENT);
+    }
+    let channel = |sum: f64| (sum / alpha_sum).round().clamp(0.0, 255.0) as u8;
+    Ok(Bgra::new(
+        channel(blue_sum),
+        channel(green_sum),
+        channel(red_sum),
+        (alpha_sum / count as f64).round().clamp(0.0, 255.0) as u8,
+    ))
+}
+
+/// One wrapped Tool Options row with a small indent, so grouped tools stay scannable.
+fn tool_option_row(ui: &mut egui::Ui, draw: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal_wrapped(|ui| {
+        ui.add_space(10.0);
+        draw(ui);
+    });
+}
+
+/// A selectable option whose accessible name includes its group, for unambiguous testing.
+fn option_selectable(
+    ui: &mut egui::Ui,
+    selected: bool,
+    text: &str,
+    accessible: &'static str,
+) -> bool {
+    let response = ui.selectable_label(selected, text);
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, accessible));
+    response.clicked()
 }
 
 fn default_session() -> AppSession {

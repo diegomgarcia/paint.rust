@@ -3,6 +3,40 @@ use paint_document::{Document, DocumentError, Layer, LayerId, PixelPatch, Select
 
 use crate::RasterError;
 
+/// Endpoint treatment for [`stroke_line`].
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LineCap {
+    /// A squared-off end that stops exactly at the endpoint.
+    #[default]
+    Flat,
+    /// A disc extending past the endpoint by half the line width.
+    Rounded,
+    /// A chevron drawn back from the endpoint.
+    Arrow,
+}
+
+/// Dash pattern for [`stroke_line`].
+///
+/// `Dash` and `Dot` use GDI-style patterns scaled by the line width: `Dash` is three
+/// widths on and one width off, `Dot` is one width on and one width off.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LineDash {
+    #[default]
+    Solid,
+    Dash,
+    Dot,
+}
+
+/// Width, paint, cap, and dash inputs for [`stroke_line`].
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LineStyle {
+    pub width: u32,
+    pub color: Option<Bgra>,
+    pub start_cap: LineCap,
+    pub end_cap: LineCap,
+    pub dash: LineDash,
+}
+
 /// The canvas-clipped area an operation may touch and the optional mask inside it.
 #[derive(Clone, Copy)]
 pub(crate) struct OperationClip<'a> {
@@ -400,6 +434,299 @@ pub fn stroke(
     )?))
 }
 
+/// Paints a straight line with real end caps and a dash pattern.
+///
+/// The shaft is clipped to the active selection mask, like every other raster operation.
+/// `Flat` stops at the endpoints, `Rounded` adds a half-width disc at each end, and
+/// `Arrow` adds a chevron at the requested end. `style.width` is the line width in pixels.
+pub fn stroke_line(
+    document: &Document,
+    layer_id: LayerId,
+    points: &[Point],
+    style: LineStyle,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let Some(clip) = operation_clip(document) else {
+        return Ok(None);
+    };
+    let Some(first) = points.first().copied() else {
+        return Ok(None);
+    };
+    let LineStyle {
+        width,
+        color,
+        start_cap,
+        end_cap,
+        dash,
+    } = style;
+    let width = width.max(1);
+    let half = f64::from(width) / 2.0;
+    let arrow_length = (f64::from(width) * 3.0).max(6.0);
+    let margin = if matches!(start_cap, LineCap::Arrow) || matches!(end_cap, LineCap::Arrow) {
+        arrow_length.max(half).ceil() as i64 + 2
+    } else {
+        half.ceil() as i64 + 2
+    };
+    let mut min_x = i64::from(first.x);
+    let mut min_y = i64::from(first.y);
+    let mut max_x = min_x;
+    let mut max_y = min_y;
+    for point in points {
+        min_x = min_x.min(i64::from(point.x));
+        min_y = min_y.min(i64::from(point.y));
+        max_x = max_x.max(i64::from(point.x));
+        max_y = max_y.max(i64::from(point.y));
+    }
+    let Some(rect) = clip_rect(
+        clip.rect,
+        min_x - margin,
+        min_y - margin,
+        max_x + margin + 1,
+        max_y + margin + 1,
+    )?
+    else {
+        return Ok(None);
+    };
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let target = color.unwrap_or(Bgra::TRANSPARENT);
+    let left = rect.left();
+    let top = rect.top();
+    let rect_width = i64::from(rect.width());
+    let rect_height = i64::from(rect.height());
+
+    let mut segments = Vec::new();
+    let mut total_length = 0.0_f64;
+    let mut previous = first;
+    for point in points.iter().copied().skip(1) {
+        if point == previous {
+            continue;
+        }
+        let ax = f64::from(previous.x) + 0.5;
+        let ay = f64::from(previous.y) + 0.5;
+        let bx = f64::from(point.x) + 0.5;
+        let by = f64::from(point.y) + 0.5;
+        let length = (bx - ax).hypot(by - ay);
+        segments.push(LineSegment {
+            ax,
+            ay,
+            bx,
+            by,
+            start: total_length,
+            length,
+        });
+        total_length += length;
+        previous = point;
+    }
+    let last = previous;
+
+    let mut set = |x: i64, y: i64| {
+        if x < left || x >= left + rect_width || y < top || y >= top + rect_height {
+            return;
+        }
+        if !clip.selects_xy(x, y) {
+            return;
+        }
+        after[((y - top) * rect_width + (x - left)) as usize] = target;
+    };
+
+    if segments.is_empty() {
+        // A zero-length line is a single pixel, matching the existing hard round stroke.
+        set(i64::from(first.x), i64::from(first.y));
+    } else {
+        for row in 0..rect_height {
+            let center_y = (top + row) as f64 + 0.5;
+            for column in 0..rect_width {
+                let center_x = (left + column) as f64 + 0.5;
+                let painted = segments.iter().any(|segment| {
+                    let (distance, t, along) =
+                        segment.distance_and_distance_along(center_x, center_y);
+                    distance <= half && (0.0..=1.0).contains(&t) && dash_on(dash, along, width)
+                });
+                if painted {
+                    set(left + column, top + row);
+                }
+            }
+        }
+    }
+
+    if matches!(start_cap, LineCap::Rounded) {
+        stamp_disc(
+            f64::from(first.x) + 0.5,
+            f64::from(first.y) + 0.5,
+            half,
+            &mut set,
+        );
+    }
+    if matches!(end_cap, LineCap::Rounded) {
+        stamp_disc(
+            f64::from(last.x) + 0.5,
+            f64::from(last.y) + 0.5,
+            half,
+            &mut set,
+        );
+    }
+    if let (LineCap::Arrow, Some(segment)) = (start_cap, segments.first()) {
+        let (dx, dy) = segment.unit_direction();
+        // The start tip points away from the shaft, so its inward direction is +segment.
+        stamp_arrow(
+            (-dx, -dy),
+            f64::from(first.x) + 0.5,
+            f64::from(first.y) + 0.5,
+            arrow_length,
+            half,
+            &mut set,
+        );
+    }
+    if let (LineCap::Arrow, Some(segment)) = (end_cap, segments.last()) {
+        let (dx, dy) = segment.unit_direction();
+        stamp_arrow(
+            (dx, dy),
+            f64::from(last.x) + 0.5,
+            f64::from(last.y) + 0.5,
+            arrow_length,
+            half,
+            &mut set,
+        );
+    }
+
+    if before == after {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+struct LineSegment {
+    ax: f64,
+    ay: f64,
+    bx: f64,
+    by: f64,
+    start: f64,
+    length: f64,
+}
+
+impl LineSegment {
+    fn distance_and_distance_along(&self, x: f64, y: f64) -> (f64, f64, f64) {
+        let dx = self.bx - self.ax;
+        let dy = self.by - self.ay;
+        let length_squared = dx * dx + dy * dy;
+        let t = if length_squared == 0.0 {
+            0.0
+        } else {
+            ((x - self.ax) * dx + (y - self.ay) * dy) / length_squared
+        };
+        let clamped = t.clamp(0.0, 1.0);
+        let nearest_x = self.ax + clamped * dx;
+        let nearest_y = self.ay + clamped * dy;
+        (
+            (x - nearest_x).hypot(y - nearest_y),
+            t,
+            self.start + clamped * self.length,
+        )
+    }
+
+    fn unit_direction(&self) -> (f64, f64) {
+        let dx = self.bx - self.ax;
+        let dy = self.by - self.ay;
+        let length = dx.hypot(dy);
+        if length == 0.0 {
+            (1.0, 0.0)
+        } else {
+            (dx / length, dy / length)
+        }
+    }
+}
+
+fn dash_on(dash: LineDash, distance: f64, width: u32) -> bool {
+    let width = f64::from(width.max(1));
+    let (on, off) = match dash {
+        LineDash::Solid => return true,
+        LineDash::Dash => (3.0 * width, width),
+        LineDash::Dot => (width, width),
+    };
+    distance.rem_euclid(on + off) < on
+}
+
+fn stamp_disc(center_x: f64, center_y: f64, radius: f64, set: &mut impl FnMut(i64, i64)) {
+    let left = (center_x - radius).floor() as i64;
+    let right = (center_x + radius).ceil() as i64;
+    let top = (center_y - radius).floor() as i64;
+    let bottom = (center_y + radius).ceil() as i64;
+    for y in top..=bottom {
+        for x in left..=right {
+            if (x as f64 + 0.5 - center_x).hypot(y as f64 + 0.5 - center_y) <= radius {
+                set(x, y);
+            }
+        }
+    }
+}
+
+fn stamp_arrow(
+    outward: (f64, f64),
+    tip_x: f64,
+    tip_y: f64,
+    length: f64,
+    half_width: f64,
+    set: &mut impl FnMut(i64, i64),
+) {
+    // The head points away from the shaft, so its edges run back into the shaft at +/-30
+    // degrees from the inward direction.
+    let inward = (-outward.0, -outward.1);
+    let angle = std::f64::consts::FRAC_PI_6;
+    for side in [-angle, angle] {
+        let (sin, cos) = side.sin_cos();
+        let dx = inward.0 * cos - inward.1 * sin;
+        let dy = inward.0 * sin + inward.1 * cos;
+        stamp_thick_segment(
+            tip_x,
+            tip_y,
+            tip_x + dx * length,
+            tip_y + dy * length,
+            half_width,
+            set,
+        );
+    }
+}
+
+fn stamp_thick_segment(
+    ax: f64,
+    ay: f64,
+    bx: f64,
+    by: f64,
+    half_width: f64,
+    set: &mut impl FnMut(i64, i64),
+) {
+    let segment = LineSegment {
+        ax,
+        ay,
+        bx,
+        by,
+        start: 0.0,
+        length: (bx - ax).hypot(by - ay),
+    };
+    let left = (ax.min(bx) - half_width).floor() as i64;
+    let right = (ax.max(bx) + half_width).ceil() as i64;
+    let top = (ay.min(by) - half_width).floor() as i64;
+    let bottom = (ay.max(by) + half_width).ceil() as i64;
+    for y in top..=bottom {
+        for x in left..=right {
+            let (distance, t, _) =
+                segment.distance_and_distance_along(x as f64 + 0.5, y as f64 + 0.5);
+            if distance <= half_width && (0.0..=1.0).contains(&t) {
+                set(x, y);
+            }
+        }
+    }
+}
+
+/// Fills an ellipse inscribed in a half-open rectangle, clipped to the selection mask.
 /// How a shape is painted: only its outline, only its interior, or both.
 ///
 /// Paint.NET's `ShapeDrawType` uses the same three values. `Fill` covers the whole inscribed
