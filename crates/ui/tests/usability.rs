@@ -263,6 +263,7 @@ fn rectangle_selection_chosen_bgra_fill_and_clear_selection_are_usable() {
     let mut harness = app();
     click(&mut harness, "Rectangle Select");
     assert_eq!(harness.state().session().document().selection(), None);
+    click(&mut harness, "Selection fields");
     click(&mut harness, "Apply selection");
     assert_eq!(
         harness.state().session().document().selection(),
@@ -331,6 +332,7 @@ fn selection_tools_expose_combine_modes_and_magic_wand_sampling() {
 fn union_combine_mode_paints_a_combined_rectangle_selection() {
     let mut harness = app();
     click(&mut harness, "Rectangle Select");
+    click(&mut harness, "Selection fields");
     replace_field(&mut harness, "Selection left", "0");
     replace_field(&mut harness, "Selection top", "0");
     replace_field(&mut harness, "Selection right", "2");
@@ -428,7 +430,6 @@ fn open_dialog_previews_a_valid_png_without_changing_the_session() {
 #[test]
 fn paint_net_style_layout_exposes_tools_options_colors_and_layers() {
     let harness = app();
-    harness.get_by_role_and_label(Role::Label, "Tool Options");
     harness.get_by_role_and_label(Role::Label, "Colors");
     harness.get_by_role_and_label(Role::Label, "Layers");
     for label in [
@@ -1190,11 +1191,14 @@ fn pan_tool_drags_without_editing_the_document() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Pan");
-    drag_canvas(
-        &mut harness,
-        egui::vec2(300.0, 300.0),
-        egui::vec2(340.0, 320.0),
-    );
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let rect = canvas.rect();
+    harness.drag_at(rect.min + egui::vec2(300.0, 300.0));
+    harness.run_steps(1);
+    harness.hover_at(rect.min + egui::vec2(340.0, 320.0));
+    harness.run_steps(1);
+    harness.drop_at(rect.min + egui::vec2(340.0, 320.0));
+    harness.run_steps(2);
     assert!(!harness.state().session().dirty());
     assert!(!harness.state().session().can_undo());
 }
@@ -1514,6 +1518,7 @@ fn toolbox_has_twenty_aligned_two_column_cells() {
 #[test]
 fn move_selection_drag_translates_the_selection_bounds() {
     let mut harness = app();
+    dock_tools(&mut harness);
     click(&mut harness, "Rectangle Select");
     drag_canvas(&mut harness, egui::vec2(6.0, 6.0), egui::vec2(26.0, 18.0));
     let before = harness
@@ -1539,6 +1544,7 @@ fn move_selection_drag_translates_the_selection_bounds() {
 #[test]
 fn moving_selected_pixels_also_moves_the_selection_outline() {
     let mut harness = app();
+    dock_tools(&mut harness);
     click(&mut harness, "Rectangle Select");
     drag_canvas(&mut harness, egui::vec2(6.0, 6.0), egui::vec2(26.0, 18.0));
     let before = harness
@@ -2510,7 +2516,7 @@ fn text_and_clone_stamp_are_enabled_with_target_specific_options() {
     click(&mut harness, "Clone Stamp");
     harness.get_by_label("Hardness");
     harness.get_by_role_and_label(Role::Button, "Clear clone source");
-    harness.get_by_label_contains("Alt-click the canvas");
+    harness.get_by_label_contains("Alt-click to set source");
 }
 
 #[test]

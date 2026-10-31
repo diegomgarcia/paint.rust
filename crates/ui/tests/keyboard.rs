@@ -282,6 +282,10 @@ fn keyboard_editing_history_and_text_field_shortcut_isolation() {
     assert!(!harness.state().session().can_redo());
 
     press_command(&mut harness, Key::Z);
+    harness
+        .get_by_role_and_label(Role::Button, "Selection fields")
+        .click();
+    harness.run();
     focus(&mut harness, Role::SpinButton, "Selection left");
     press(&mut harness, Key::ArrowDown);
     press(&mut harness, Key::ArrowDown);

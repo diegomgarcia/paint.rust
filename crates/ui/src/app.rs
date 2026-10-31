@@ -150,6 +150,7 @@ pub struct PaintApp {
     fill_tolerance: u8,
     fill_global: bool,
     selection_combine_mode: SelectionCombineMode,
+    selection_fields_open: bool,
     magic_wand_sampling: MagicWandSampling,
     paint_points: Vec<Point>,
     icons: IconTextures,
@@ -275,6 +276,7 @@ impl PaintApp {
             fill_tolerance: 50,
             fill_global: false,
             selection_combine_mode: SelectionCombineMode::Replace,
+            selection_fields_open: false,
             magic_wand_sampling: MagicWandSampling::ActiveLayer,
             paint_points: Vec::new(),
             icons,
@@ -963,7 +965,6 @@ impl PaintApp {
     }
 
     fn text_tool_options(&mut self, ui: &mut egui::Ui) {
-        ui.label("Text");
         egui::ComboBox::from_label("Font family")
             .selected_text(self.text_font_family.label())
             .show_ui(ui, |ui| {
@@ -993,11 +994,6 @@ impl PaintApp {
                 .hint_text("Type text"),
         )
         .labelled_by(content_label.id);
-        if let Some(origin) = self.text_origin {
-            ui.label(format!("Origin: ({}, {})", origin.x, origin.y));
-        } else {
-            ui.label("Click the canvas to set the text origin");
-        }
         self.sync_text_preview();
         if ui
             .add_enabled(self.session.has_preview(), egui::Button::new("Place text"))
@@ -1011,7 +1007,6 @@ impl PaintApp {
     }
 
     fn clone_tool_options(&mut self, ui: &mut egui::Ui) {
-        ui.label("Clone Stamp");
         ui.label("Width");
         ui.add(
             egui::DragValue::new(&mut self.brush_size)
@@ -1031,7 +1026,7 @@ impl PaintApp {
                 ui.label(format!("Offset: ({offset_x}, {offset_y})"));
             }
         } else {
-            ui.label("Alt-click the canvas to set the clone source");
+            ui.label("Alt-click to set source");
         }
         ui.add_enabled_ui(self.clone_source.is_some(), |ui| {
             if ui.button("Clear clone source").clicked() {
@@ -1039,8 +1034,6 @@ impl PaintApp {
                 self.clone_offset = None;
             }
         });
-        ui.label("Samples the active layer before the stroke");
-        ui.label("Drag from any point to clone the source offset");
     }
 
     fn preview_live_clone(&mut self) {
@@ -2060,47 +2053,25 @@ impl PaintApp {
         });
     }
 
-    fn selection_status(&self, ui: &mut egui::Ui) {
-        let Some(selection) = self.session.document().selection_model() else {
-            ui.label("No selection");
-            return;
-        };
-        let bounds = selection.bounds();
-        match selection.mask() {
-            Some(mask) => {
-                ui.label(format!("Mask {} px", mask.selected_count()));
-                ui.label(format!(
-                    "Bounds ({}, {})..({}, {})",
-                    bounds.left(),
-                    bounds.top(),
-                    bounds.right(),
-                    bounds.bottom()
-                ));
-                ui.label("Marching ants show the selection bounds; painting uses the real mask");
-            }
-            None => {
-                ui.label(format!(
-                    "({}, {})..({}, {})",
-                    bounds.left(),
-                    bounds.top(),
-                    bounds.right(),
-                    bounds.bottom()
-                ));
+    fn selection_combine_options(&mut self, ui: &mut egui::Ui) {
+        for mode in SelectionCombineMode::ALL {
+            if selection_mode_button(ui, mode, self.selection_combine_mode == mode).clicked() {
+                self.selection_combine_mode = mode;
+                self.status = format!("Selection mode: {}", mode.label());
             }
         }
-    }
-
-    fn selection_combine_options(&mut self, ui: &mut egui::Ui) {
-        ui.label("Selection Mode");
-        ui.horizontal(|ui| {
-            for mode in SelectionCombineMode::ALL {
-                if selection_mode_button(ui, mode, self.selection_combine_mode == mode).clicked() {
-                    self.selection_combine_mode = mode;
-                    self.status = format!("Selection mode: {}", mode.label());
-                }
+        if selection_fields_button(ui, self.selection_fields_open).clicked() {
+            self.selection_fields_open = !self.selection_fields_open;
+        }
+        if self.selection_fields_open {
+            selection_input(ui, "Selection left", &mut self.selection_input.left);
+            selection_input(ui, "Selection top", &mut self.selection_input.top);
+            selection_input(ui, "Selection right", &mut self.selection_input.right);
+            selection_input(ui, "Selection bottom", &mut self.selection_input.bottom);
+            if ui.button("Apply selection").clicked() {
+                self.select_rectangle();
             }
-        });
-        ui.label("Modifiers: Shift adds, Alt subtracts");
+        }
     }
 
     /// Reads selection modifiers for one canvas gesture, falling back to the tool option mode.
@@ -2126,229 +2097,80 @@ impl PaintApp {
                 ui.add_space(2.0);
                 return;
             }
-            ui.horizontal_wrapped(|ui| {
-                ui.strong("Tool Options");
-                ui.separator();
-                match self.active_tool {
-                    Tool::Select => {
-                        ui.label("Rectangle Select");
-                        self.selection_combine_options(ui);
-                        selection_input(ui, "Selection left", &mut self.selection_input.left);
-                        selection_input(ui, "Selection top", &mut self.selection_input.top);
-                        selection_input(ui, "Selection right", &mut self.selection_input.right);
-                        selection_input(ui, "Selection bottom", &mut self.selection_input.bottom);
-                        if ui.button("Apply selection").clicked() {
-                            self.select_rectangle();
-                        }
-                        if let Some(selection) = self.session.document().selection() {
-                            ui.label(format!(
-                                "({}, {})..({}, {})",
-                                selection.left(),
-                                selection.top(),
-                                selection.right(),
-                                selection.bottom()
-                            ));
-                        } else {
-                            ui.label("No selection");
-                        }
-                    }
-                    Tool::Lasso => {
-                        ui.label("Lasso Select");
-                        self.selection_combine_options(ui);
-                        ui.label("Drag to trace a freehand mask; releasing closes the path");
-                        self.selection_status(ui);
-                    }
-                    Tool::EllipseSelect => {
-                        ui.label("Ellipse Select");
-                        self.selection_combine_options(ui);
-                        ui.label("Drag to select an elliptical pixel mask");
-                        self.selection_status(ui);
-                    }
-                    Tool::MagicWand => {
-                        ui.label("Magic Wand");
-                        self.selection_combine_options(ui);
-                        let tolerance_label = ui.label("Tolerance");
-                        ui.add(
-                            egui::DragValue::new(&mut self.fill_tolerance)
-                                .range(0..=100)
-                                .suffix("%"),
-                        )
-                        .labelled_by(tolerance_label.id);
-                        ui.label("Flood Mode");
-                        ui.selectable_value(&mut self.fill_global, false, "Contiguous");
-                        ui.selectable_value(&mut self.fill_global, true, "Global");
-                        ui.label("Sampling");
-                        for sampling in MagicWandSampling::ALL {
-                            ui.selectable_value(
-                                &mut self.magic_wand_sampling,
-                                sampling,
-                                sampling.label(),
-                            );
-                        }
-                        self.selection_status(ui);
-                    }
-                    Tool::Zoom => {
-                        ui.label("Zoom");
-                        ui.label(format!("{}%", (self.zoom * 100.0).round() as u32));
-                        for (label, zoom) in
-                            [("50%", 0.5), ("100%", 1.0), ("200%", 2.0), ("400%", 4.0)]
-                        {
-                            if labeled_button(ui, label, label).clicked() {
-                                self.zoom = zoom;
-                            }
-                        }
-                        if labeled_button(ui, "Fit", "Fit canvas").clicked() {
-                            self.fit_canvas_requested = true;
-                        }
-                    }
-                    Tool::Fill => {
-                        ui.label("Paint Bucket");
-                        let color = self.fill_color;
-                        ui.colored_label(
-                            egui::Color32::from_rgba_unmultiplied(
-                                color.r, color.g, color.b, color.a,
-                            ),
-                            "Primary color",
-                        );
-                        ui.label("Flood Mode");
-                        ui.selectable_value(&mut self.fill_global, false, "Contiguous");
-                        ui.selectable_value(&mut self.fill_global, true, "Global");
-                        ui.label("Fill");
-                        ui.label("Solid Color");
-                        let tolerance_label = ui.label("Tolerance");
-                        ui.add(
-                            egui::DragValue::new(&mut self.fill_tolerance)
-                                .range(0..=100)
-                                .suffix("%"),
-                        )
-                        .labelled_by(tolerance_label.id);
-                        ui.label("Sampling");
-                        ui.label("Layer");
-                        ui.label("Blend Mode");
-                        ui.label("Normal");
-                        ui.label("Click the canvas to fill");
-                    }
-                    Tool::Pencil | Tool::Brush | Tool::Eraser => {
-                        ui.label(match self.active_tool {
-                            Tool::Pencil => "Pencil",
-                            Tool::Brush => "Paintbrush",
-                            _ => "Eraser",
-                        });
-                        ui.separator();
-                        if self.active_tool == Tool::Pencil {
-                            ui.label("Width is fixed at 1 px");
-                        } else {
-                            let width_label = ui.label("Width");
-                            ui.add(
-                                egui::DragValue::new(&mut self.brush_size)
-                                    .range(1..=64)
-                                    .suffix(" px"),
-                            )
-                            .labelled_by(width_label.id);
-                        }
-                        if matches!(self.active_tool, Tool::Brush | Tool::Eraser) {
-                            ui.separator();
-                            let hardness_label = ui.label("Hardness");
-                            ui.add(
-                                egui::DragValue::new(&mut self.brush_hardness)
-                                    .range(0..=100)
-                                    .suffix("%"),
-                            )
-                            .labelled_by(hardness_label.id);
-                            let spacing_label = ui.label("Spacing");
-                            ui.add(
-                                egui::DragValue::new(&mut self.brush_spacing)
-                                    .range(1..=100)
-                                    .suffix("%"),
-                            )
-                            .labelled_by(spacing_label.id);
-                        }
-                        ui.separator();
-                        if self.active_tool == Tool::Eraser {
-                            ui.label("Erases the active layer to transparency");
-                        } else {
-                            let color = self.fill_color;
-                            ui.colored_label(
-                                egui::Color32::from_rgba_unmultiplied(
-                                    color.r, color.g, color.b, color.a,
-                                ),
-                                "Primary color",
-                            );
-                        }
-                        ui.separator();
-                        ui.label("Drag on the canvas to paint");
-                    }
-                    Tool::Shapes => {
-                        ui.label("Shapes");
-                        ui.separator();
-                        ui.label("Shape type");
+            ui.horizontal_wrapped(|ui| match self.active_tool {
+                Tool::Select => {
+                    self.selection_combine_options(ui);
+                }
+                Tool::Lasso => {
+                    self.selection_combine_options(ui);
+                }
+                Tool::EllipseSelect => {
+                    self.selection_combine_options(ui);
+                }
+                Tool::MagicWand => {
+                    self.selection_combine_options(ui);
+                    ui.separator();
+                    let tolerance_label = ui.label("Tolerance");
+                    ui.add(
+                        egui::DragValue::new(&mut self.fill_tolerance)
+                            .range(0..=100)
+                            .suffix("%"),
+                    )
+                    .labelled_by(tolerance_label.id);
+                    ui.label("Flood Mode");
+                    ui.selectable_value(&mut self.fill_global, false, "Contiguous");
+                    ui.selectable_value(&mut self.fill_global, true, "Global");
+                    ui.label("Sampling");
+                    for sampling in MagicWandSampling::ALL {
                         ui.selectable_value(
-                            &mut self.shape_mode,
-                            ShapeMode::Rectangle,
-                            "Rectangle",
+                            &mut self.magic_wand_sampling,
+                            sampling,
+                            sampling.label(),
                         );
-                        ui.selectable_value(&mut self.shape_mode, ShapeMode::Ellipse, "Ellipse");
-                        ui.separator();
-                        ui.label("Fill style");
-                        ui.selectable_value(&mut self.shape_style, ShapeStyle::Outline, "Outline");
-                        ui.selectable_value(&mut self.shape_style, ShapeStyle::Fill, "Fill");
-                        ui.selectable_value(&mut self.shape_style, ShapeStyle::Both, "Both");
-                        ui.separator();
-                        let border_label = ui.label("Border width");
-                        ui.add(
-                            egui::DragValue::new(&mut self.shape_border_width)
-                                .range(1..=64)
-                                .suffix(" px"),
-                        )
-                        .labelled_by(border_label.id);
-                        ui.separator();
-                        ui.label(match self.shape_mode {
-                            ShapeMode::Rectangle => "Drag to draw a rectangle",
-                            ShapeMode::Ellipse => "Drag to draw an ellipse",
-                        });
                     }
-                    Tool::Gradient => {
-                        ui.label("Gradient");
-                        ui.separator();
-                        ui.label("Gradient type");
-                        for (kind, label) in [
-                            (GradientType::Linear, "Linear"),
-                            (GradientType::Reflected, "Reflected"),
-                            (GradientType::Diamond, "Diamond"),
-                            (GradientType::Radial, "Radial"),
-                            (GradientType::Conical, "Conical"),
-                        ] {
-                            ui.selectable_value(&mut self.gradient_type, kind, label);
+                }
+                Tool::Zoom => {
+                    ui.label("Zoom");
+                    ui.label(format!("{}%", (self.zoom * 100.0).round() as u32));
+                    for (label, zoom) in [("50%", 0.5), ("100%", 1.0), ("200%", 2.0), ("400%", 4.0)]
+                    {
+                        if labeled_button(ui, label, label).clicked() {
+                            self.zoom = zoom;
                         }
-                        ui.separator();
-                        ui.label("Repeat mode");
-                        ui.selectable_value(
-                            &mut self.gradient_repeat,
-                            GradientRepeat::None,
-                            "No Repeat",
-                        );
-                        ui.selectable_value(
-                            &mut self.gradient_repeat,
-                            GradientRepeat::Repeat,
-                            "Repeat",
-                        );
-                        ui.separator();
-                        let (from, to) = (self.fill_color, self.secondary_color);
-                        ui.colored_label(
-                            egui::Color32::from_rgba_unmultiplied(from.r, from.g, from.b, from.a),
-                            "Primary",
-                        );
-                        ui.label("to");
-                        ui.colored_label(
-                            egui::Color32::from_rgba_unmultiplied(to.r, to.g, to.b, to.a),
-                            "Secondary",
-                        );
-                        ui.separator();
-                        ui.label("Drag to set the gradient direction");
                     }
-                    Tool::Recolor => {
-                        ui.label("Recolor");
-                        ui.separator();
+                    if labeled_button(ui, "Fit", "Fit canvas").clicked() {
+                        self.fit_canvas_requested = true;
+                    }
+                }
+                Tool::Fill => {
+                    ui.label("Paint Bucket");
+                    let color = self.fill_color;
+                    ui.colored_label(
+                        egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+                        "Primary color",
+                    );
+                    ui.label("Flood Mode");
+                    ui.selectable_value(&mut self.fill_global, false, "Contiguous");
+                    ui.selectable_value(&mut self.fill_global, true, "Global");
+                    ui.label("Fill");
+                    ui.label("Solid Color");
+                    let tolerance_label = ui.label("Tolerance");
+                    ui.add(
+                        egui::DragValue::new(&mut self.fill_tolerance)
+                            .range(0..=100)
+                            .suffix("%"),
+                    )
+                    .labelled_by(tolerance_label.id);
+                    ui.label("Sampling");
+                    ui.label("Layer");
+                    ui.label("Blend Mode");
+                    ui.label("Normal");
+                    ui.label("Click the canvas to fill");
+                }
+                Tool::Pencil | Tool::Brush | Tool::Eraser => {
+                    if self.active_tool == Tool::Pencil {
+                        ui.label("1 px");
+                    } else {
                         let width_label = ui.label("Width");
                         ui.add(
                             egui::DragValue::new(&mut self.brush_size)
@@ -2356,6 +2178,8 @@ impl PaintApp {
                                 .suffix(" px"),
                         )
                         .labelled_by(width_label.id);
+                    }
+                    if matches!(self.active_tool, Tool::Brush | Tool::Eraser) {
                         ui.separator();
                         let hardness_label = ui.label("Hardness");
                         ui.add(
@@ -2371,42 +2195,123 @@ impl PaintApp {
                                 .suffix("%"),
                         )
                         .labelled_by(spacing_label.id);
-                        ui.separator();
-                        let tolerance_label = ui.label("Tolerance");
-                        ui.add(
-                            egui::DragValue::new(&mut self.recolor_tolerance)
-                                .range(0..=100)
-                                .suffix("%"),
-                        )
-                        .labelled_by(tolerance_label.id);
-                        ui.separator();
-                        let (target, replacement) = (self.secondary_color, self.fill_color);
+                    }
+                    if self.active_tool != Tool::Eraser {
+                        let color = self.fill_color;
                         ui.colored_label(
                             egui::Color32::from_rgba_unmultiplied(
-                                target.r, target.g, target.b, target.a,
+                                color.r, color.g, color.b, color.a,
                             ),
-                            "Target: secondary",
+                            "Primary color",
                         );
-                        ui.colored_label(
-                            egui::Color32::from_rgba_unmultiplied(
-                                replacement.r,
-                                replacement.g,
-                                replacement.b,
-                                replacement.a,
-                            ),
-                            "Replacement: primary",
-                        );
-                        ui.separator();
-                        ui.label("Drag over matching pixels to recolor");
                     }
-                    Tool::Text => self.text_tool_options(ui),
-                    Tool::CloneStamp => self.clone_tool_options(ui),
-                    Tool::Pan => {
-                        ui.label("Pan");
-                        ui.label("Drag to move the canvas view");
-                    }
-                    Tool::Move | Tool::MoveSelection | Tool::Picker | Tool::Line => {}
                 }
+                Tool::Shapes => {
+                    ui.label("Shape type");
+                    ui.selectable_value(&mut self.shape_mode, ShapeMode::Rectangle, "Rectangle");
+                    ui.selectable_value(&mut self.shape_mode, ShapeMode::Ellipse, "Ellipse");
+                    ui.separator();
+                    ui.label("Fill style");
+                    ui.selectable_value(&mut self.shape_style, ShapeStyle::Outline, "Outline");
+                    ui.selectable_value(&mut self.shape_style, ShapeStyle::Fill, "Fill");
+                    ui.selectable_value(&mut self.shape_style, ShapeStyle::Both, "Both");
+                    ui.separator();
+                    let border_label = ui.label("Border width");
+                    ui.add(
+                        egui::DragValue::new(&mut self.shape_border_width)
+                            .range(1..=64)
+                            .suffix(" px"),
+                    )
+                    .labelled_by(border_label.id);
+                }
+                Tool::Gradient => {
+                    ui.label("Gradient type");
+                    for (kind, label) in [
+                        (GradientType::Linear, "Linear"),
+                        (GradientType::Reflected, "Reflected"),
+                        (GradientType::Diamond, "Diamond"),
+                        (GradientType::Radial, "Radial"),
+                        (GradientType::Conical, "Conical"),
+                    ] {
+                        ui.selectable_value(&mut self.gradient_type, kind, label);
+                    }
+                    ui.separator();
+                    ui.label("Repeat mode");
+                    ui.selectable_value(
+                        &mut self.gradient_repeat,
+                        GradientRepeat::None,
+                        "No Repeat",
+                    );
+                    ui.selectable_value(
+                        &mut self.gradient_repeat,
+                        GradientRepeat::Repeat,
+                        "Repeat",
+                    );
+                    ui.separator();
+                    let (from, to) = (self.fill_color, self.secondary_color);
+                    ui.colored_label(
+                        egui::Color32::from_rgba_unmultiplied(from.r, from.g, from.b, from.a),
+                        "Primary",
+                    );
+                    ui.label("to");
+                    ui.colored_label(
+                        egui::Color32::from_rgba_unmultiplied(to.r, to.g, to.b, to.a),
+                        "Secondary",
+                    );
+                }
+                Tool::Recolor => {
+                    let width_label = ui.label("Width");
+                    ui.add(
+                        egui::DragValue::new(&mut self.brush_size)
+                            .range(1..=64)
+                            .suffix(" px"),
+                    )
+                    .labelled_by(width_label.id);
+                    ui.separator();
+                    let hardness_label = ui.label("Hardness");
+                    ui.add(
+                        egui::DragValue::new(&mut self.brush_hardness)
+                            .range(0..=100)
+                            .suffix("%"),
+                    )
+                    .labelled_by(hardness_label.id);
+                    let spacing_label = ui.label("Spacing");
+                    ui.add(
+                        egui::DragValue::new(&mut self.brush_spacing)
+                            .range(1..=100)
+                            .suffix("%"),
+                    )
+                    .labelled_by(spacing_label.id);
+                    ui.separator();
+                    let tolerance_label = ui.label("Tolerance");
+                    ui.add(
+                        egui::DragValue::new(&mut self.recolor_tolerance)
+                            .range(0..=100)
+                            .suffix("%"),
+                    )
+                    .labelled_by(tolerance_label.id);
+                    ui.separator();
+                    let (target, replacement) = (self.secondary_color, self.fill_color);
+                    ui.colored_label(
+                        egui::Color32::from_rgba_unmultiplied(
+                            target.r, target.g, target.b, target.a,
+                        ),
+                        "Target: secondary",
+                    );
+                    ui.colored_label(
+                        egui::Color32::from_rgba_unmultiplied(
+                            replacement.r,
+                            replacement.g,
+                            replacement.b,
+                            replacement.a,
+                        ),
+                        "Replacement: primary",
+                    );
+                }
+                Tool::Text => self.text_tool_options(ui),
+                Tool::CloneStamp => self.clone_tool_options(ui),
+                Tool::Pan => {}
+                Tool::Move | Tool::MoveSelection | Tool::Picker | Tool::Line => {}
             });
             ui.add_space(2.0);
         });
@@ -2414,18 +2319,6 @@ impl PaintApp {
 
     /// Tool Options for tools whose controls need separate rows instead of one wrapped row.
     fn grouped_tool_options(&mut self, ui: &mut egui::Ui) {
-        let title = match self.active_tool {
-            Tool::Move => "Move Selected Pixels",
-            Tool::MoveSelection => "Move Selection",
-            Tool::Picker => "Color Picker",
-            Tool::Line => "Line / Curve",
-            _ => return,
-        };
-        ui.horizontal(|ui| {
-            ui.strong("Tool Options");
-            ui.separator();
-            ui.label(title);
-        });
         match self.active_tool {
             Tool::Move => self.move_tool_options(ui),
             Tool::MoveSelection => self.move_selection_tool_options(ui),
@@ -2436,11 +2329,10 @@ impl PaintApp {
     }
 
     fn move_tool_options(&mut self, ui: &mut egui::Ui) {
+        let floating = self.floating_selection.is_some();
+        // Keep this row present even when nothing is floating: adding/removing it mid-drag
+        // changes the tool strip height and shifts the canvas under the pointer.
         tool_option_row(ui, |ui| {
-            ui.label("Drag to move the selection, or the active layer without one");
-        });
-        tool_option_row(ui, |ui| {
-            let floating = self.floating_selection.is_some();
             if ui
                 .add_enabled(floating, egui::Button::new("Finish"))
                 .on_hover_text("Place the floating selection")
@@ -2448,30 +2340,10 @@ impl PaintApp {
             {
                 self.finalize_floating_selection();
             }
-            if floating {
-                ui.label("Floating pixels are placed by Finish or when the tool changes");
-            } else {
-                // Integer translation never resamples, so a Nearest/Bilinear/Bicubic
-                // selector would have no effect until scaled moves exist.
-                ui.label("Sampling: Nearest (integer moves do not resample)");
-            }
         });
     }
 
     fn move_selection_tool_options(&mut self, ui: &mut egui::Ui) {
-        tool_option_row(ui, |ui| {
-            if let Some(selection) = self.session.document().selection() {
-                ui.label(format!(
-                    "({}, {})..({}, {})",
-                    selection.left(),
-                    selection.top(),
-                    selection.right(),
-                    selection.bottom()
-                ));
-            } else {
-                ui.label("No selection");
-            }
-        });
         tool_option_row(ui, |ui| {
             let x_label = ui.label("Offset X");
             ui.add(
@@ -2514,9 +2386,6 @@ impl PaintApp {
                 self.status = "Canceled the pending selection offset".to_owned();
             }
         });
-        tool_option_row(ui, |ui| {
-            ui.label("Drag the selection on the canvas to move it");
-        });
     }
 
     fn picker_tool_options(&mut self, ui: &mut egui::Ui) {
@@ -2555,9 +2424,6 @@ impl PaintApp {
             ] {
                 ui.selectable_value(&mut self.picker_sample_size, size, size.label());
             }
-        });
-        tool_option_row(ui, |ui| {
-            ui.label("Click the canvas to sample the primary color");
         });
     }
 
@@ -2611,9 +2477,6 @@ impl PaintApp {
                     self.line_end_cap = cap;
                 }
             }
-        });
-        tool_option_row(ui, |ui| {
-            ui.label("Drag on the canvas to draw a line; the active selection clips it");
         });
     }
 
@@ -3947,17 +3810,7 @@ impl PaintApp {
                     } else {
                         ui.label(format!("—, — {}", self.unit.suffix()));
                     }
-                });
-            });
-        });
-    }
-
-    fn canvas_panel(&mut self, ui: &mut egui::Ui) {
-        egui::CentralPanel::default().show(ui, |ui| {
-            let size = self.session.document().size();
-            ui.horizontal(|ui| {
-                ui.heading(format!("Canvas — {}×{}", size.width(), size.height()));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.separator();
                     if labeled_button(ui, "Fit", "Fit canvas").clicked() {
                         self.fit_canvas_requested = true;
                     }
@@ -3970,6 +3823,12 @@ impl PaintApp {
                     }
                 });
             });
+        });
+    }
+
+    fn canvas_panel(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::default().show(ui, |ui| {
+            let size = self.session.document().size();
             if self.fit_canvas_requested {
                 let available = ui.available_size();
                 self.zoom = ((available.x - 24.0).max(32.0) / size.width() as f32)
@@ -3991,7 +3850,6 @@ impl PaintApp {
                 }
                 self.zoom_to_selection_requested = false;
             }
-            ui.label("Actual composed session surface");
             let texture = self.texture.clone();
             let zoom = self.zoom;
             let picking = self.picking_color;
@@ -5811,6 +5669,25 @@ fn open_png_preview(
         PREVIEW_HEIGHT,
     );
     Ok(DialogPreview { label, texture })
+}
+
+fn selection_fields_button(ui: &mut egui::Ui, open: bool) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
+    let visuals = ui.style().interact_selectable(&response, open);
+    if open || response.hovered() {
+        ui.painter().rect_filled(rect, 3, visuals.bg_fill);
+    }
+    let color = ui.visuals().strong_text_color();
+    let center = rect.center();
+    for offset in [-4.0, 0.0, 4.0] {
+        ui.painter()
+            .circle_filled(center + egui::vec2(offset, 0.0), 1.3, color);
+    }
+    let response = response.on_hover_text("Selection fields");
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::Role::Button, true, open, "Selection fields")
+    });
+    response
 }
 
 fn selection_mode_button(
