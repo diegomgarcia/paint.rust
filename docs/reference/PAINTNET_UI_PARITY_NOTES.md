@@ -271,3 +271,15 @@ units, and Layer Properties supports Multiply/Screen/Overlay blend modes that ar
 composited for real. Selection remains replace-only at the trace-wire boundary
 and marching ants still use the mask bounding box; shape `Both` currently paints
 the interior with the primary color instead of the secondary.
+
+
+### Final tool-options/adjustments pass
+
+Color Picker now supports Do-not-switch/previous-tool behavior, Layer/Image
+sampling, and 1/3x3/5x5 averages; Line/Curve has real Flat/Rounded/Arrow caps
+and Solid/Dash/Dot patterns; Move Selected Pixels has a real Finish action. The
+Adjustments menu adds Brightness/Contrast, Hue/Saturation, and Auto-Level with
+live previews and one undo entry. Intentional remaining gaps: no scaled/rotated
+move resampling, mask ants still use bounding boxes, selection combine modes are
+not serialized in the trace wire, and shape Both still uses the primary color
+for its interior.
