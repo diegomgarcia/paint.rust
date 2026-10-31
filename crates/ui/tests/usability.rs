@@ -294,6 +294,90 @@ fn rectangle_selection_chosen_bgra_fill_and_clear_selection_are_usable() {
 }
 
 #[test]
+fn selection_tools_expose_combine_modes_and_magic_wand_sampling() {
+    let mut harness = app();
+    for tool in [
+        "Rectangle Select",
+        "Lasso Select",
+        "Ellipse Select",
+        "Magic Wand",
+    ] {
+        click(&mut harness, tool);
+        for mode in ["Replace", "Union", "Subtract", "Intersect", "Xor"] {
+            harness.get_by_role_and_label(Role::Button, mode);
+        }
+    }
+    harness.get_by_role_and_label(Role::Button, "Active Layer");
+    assert!(
+        harness
+            .get_all_by_role_and_label(Role::Button, "Image")
+            .count()
+            >= 1,
+        "the magic wand offers Image sampling"
+    );
+    harness.get_by_role_and_label(Role::Label, "Sampling");
+    harness.get_by_role_and_label(Role::Label, "Flood Mode");
+    harness.get_by_role_and_label(Role::Label, "Tolerance");
+}
+
+#[test]
+fn union_combine_mode_paints_a_combined_rectangle_selection() {
+    let mut harness = app();
+    click(&mut harness, "Rectangle Select");
+    replace_field(&mut harness, "Selection left", "0");
+    replace_field(&mut harness, "Selection top", "0");
+    replace_field(&mut harness, "Selection right", "2");
+    replace_field(&mut harness, "Selection bottom", "2");
+    click(&mut harness, "Apply selection");
+    assert_eq!(
+        harness.state().session().document().selection(),
+        Some(Rect::new(0, 0, 2, 2).expect("first selection"))
+    );
+
+    click(&mut harness, "Union");
+    replace_field(&mut harness, "Selection right", "4");
+    click(&mut harness, "Apply selection");
+    assert_eq!(
+        harness.state().session().document().selection(),
+        Some(Rect::new(0, 0, 4, 2).expect("combined selection"))
+    );
+    assert!(
+        harness
+            .state()
+            .session()
+            .document()
+            .selection_mask()
+            .is_none()
+    );
+    assert!(!harness.state().session().dirty());
+    assert!(!harness.state().session().can_undo());
+
+    click(&mut harness, "Paint Bucket");
+    click_canvas_at(&mut harness, egui::vec2(0.5, 0.5));
+    let pixels = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixels()
+        .to_vec();
+    assert_eq!(pixels[0], Bgra::BLACK);
+    assert_eq!(pixels[1], Bgra::BLACK);
+    assert_eq!(
+        pixels[3],
+        Bgra::BLACK,
+        "the union covers the second rectangle"
+    );
+    assert_eq!(pixels[800 + 3], Bgra::BLACK);
+    assert_eq!(
+        pixels[2 * 800],
+        Bgra::WHITE,
+        "the unselected row below the union is untouched"
+    );
+}
+
+#[test]
 fn layer_panel_exposes_color_and_layer_previews() {
     let mut harness = app();
 

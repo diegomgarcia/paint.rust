@@ -1,7 +1,14 @@
 use paint_app::{AppSession, Command};
 use paint_core::{Bgra, Point, Rect, Size, Surface};
-use paint_document::{Document, Layer, LayerId};
+use paint_document::{Document, Layer, LayerId, SelectionCombineMode};
 use proptest::prelude::*;
+
+fn select_rect(rect: Rect) -> Command {
+    Command::SelectRect {
+        rect,
+        mode: SelectionCombineMode::Replace,
+    }
+}
 
 fn session(size: Size, color: Bgra) -> AppSession {
     let surface = Surface::filled(size, color).expect("property surface");
@@ -129,7 +136,7 @@ proptest! {
         let mut session = session(size, initial);
         let original = session.document().layers()[0].surface().pixels().to_vec();
 
-        session.execute(Command::SelectRect(selection)).unwrap();
+        session.execute(select_rect(selection)).unwrap();
         let changed = session.execute(Command::Fill(fill)).unwrap();
         let expected_changed = clip.is_some_and(|rect| {
             (0..height).any(|y| (0..width).any(|x| {

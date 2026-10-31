@@ -2,7 +2,14 @@ use paint_app::{
     AppSession, Command, Effect, ResourceLimitError, ResourceLimits, SNAPSHOT_FORMAT, SessionError,
 };
 use paint_core::{Bgra, Point, Rect, Size, Surface};
-use paint_document::{Document, Layer, LayerId};
+use paint_document::{Document, Layer, LayerId, SelectionCombineMode};
+
+fn select_rect(rect: Rect) -> Command {
+    Command::SelectRect {
+        rect,
+        mode: SelectionCombineMode::Replace,
+    }
+}
 
 fn session_with_color(width: u32, height: u32, color: Bgra) -> AppSession {
     let size = Size::new(width, height).expect("nonzero test dimensions");
@@ -34,7 +41,7 @@ fn new_document_is_clean_and_has_empty_history() {
 fn fill_clips_signed_selection_and_survives_repeated_history_cycles() {
     let mut session = session_with_color(3, 3, Bgra::WHITE);
     let selection = Rect::new(-2, -1, 2, 2).expect("valid signed selection");
-    assert!(session.execute(Command::SelectRect(selection)).unwrap());
+    assert!(session.execute(select_rect(selection)).unwrap());
     assert!(!session.dirty());
     assert!(!session.can_undo());
 
@@ -79,10 +86,10 @@ fn ui_commands_do_not_edit_content_or_invalidate_redo() {
     assert!(session.can_redo());
 
     let selection = Rect::new(0, 0, 1, 1).unwrap();
-    assert!(session.execute(Command::SelectRect(selection)).unwrap());
+    assert!(session.execute(select_rect(selection)).unwrap());
     assert!(!session.dirty());
     assert!(session.can_redo());
-    assert!(!session.execute(Command::SelectRect(selection)).unwrap());
+    assert!(!session.execute(select_rect(selection)).unwrap());
     assert!(
         !session
             .execute(Command::SetActiveLayer { index: 0 })
@@ -150,7 +157,7 @@ fn empty_history_and_raster_noops_leave_document_and_stacks_unchanged() {
     assert!(!session.dirty());
 
     let outside = Rect::new(5, 5, 8, 9).unwrap();
-    session.execute(Command::SelectRect(outside)).unwrap();
+    session.execute(select_rect(outside)).unwrap();
     let with_selection = session.document().clone();
     assert!(!session.execute(Command::Invert).unwrap());
     assert!(!session.execute(Command::Fill(Bgra::BLACK)).unwrap());
@@ -258,7 +265,7 @@ fn active_layer_and_selection_changes_do_not_dirty_a_clean_document() {
     );
     assert!(!session.dirty());
     session
-        .execute(Command::SelectRect(Rect::new(0, 0, 1, 1).unwrap()))
+        .execute(select_rect(Rect::new(0, 0, 1, 1).unwrap()))
         .unwrap();
     assert!(!session.dirty());
 }
@@ -440,7 +447,7 @@ fn snapshot_has_exact_protocol_metadata_and_serializable_shape() {
         })
         .unwrap();
     session
-        .execute(Command::SelectRect(Rect::new(-1, 0, 1, 1).unwrap()))
+        .execute(select_rect(Rect::new(-1, 0, 1, 1).unwrap()))
         .unwrap();
 
     let (surface, snapshot) = session.compose_and_snapshot().unwrap();
@@ -627,7 +634,7 @@ fn effect_commands_are_single_undoable_mutations_and_respect_the_selection() {
         ],
     );
     let selection = Rect::new(1, 0, 2, 1).unwrap();
-    session.execute(Command::SelectRect(selection)).unwrap();
+    session.execute(select_rect(selection)).unwrap();
 
     assert!(
         session
@@ -704,9 +711,7 @@ fn zero_radius_blur_is_a_noop_and_invalid_radius_is_rejected_atomically() {
 fn place_text_is_one_undoable_selection_clipped_content_edit() {
     let mut session = session_with_color(160, 80, Bgra::WHITE);
     session
-        .execute(Command::SelectRect(
-            Rect::new(0, 0, 48, 80).expect("selection"),
-        ))
+        .execute(select_rect(Rect::new(0, 0, 48, 80).expect("selection")))
         .unwrap();
     let original = session
         .document()
@@ -787,9 +792,7 @@ fn clone_stamp_is_one_undoable_selection_clipped_content_edit() {
         .pixels()
         .to_vec();
     session
-        .execute(Command::SelectRect(
-            Rect::new(44, 0, 46, 64).expect("selection"),
-        ))
+        .execute(select_rect(Rect::new(44, 0, 46, 64).expect("selection")))
         .unwrap();
     assert!(
         session

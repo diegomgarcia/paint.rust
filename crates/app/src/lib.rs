@@ -11,6 +11,8 @@ mod trace;
 pub use command::{CanvasAnchor, Command};
 pub use effect::{Effect, EffectCategory};
 pub use error::{ExpectationError, ExpectationField, ResourceLimitError, SessionError, TraceError};
+pub use paint_document::SelectionCombineMode;
+pub use paint_raster::MagicWandSampling;
 pub use session::{AppSession, FloatingSelection, ResourceLimits};
 pub use snapshot::{
     LayerSnapshot, SNAPSHOT_FORMAT, SNAPSHOT_VERSION, SelectionSnapshot, SemanticSnapshot,

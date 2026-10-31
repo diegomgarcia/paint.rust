@@ -1,6 +1,13 @@
 use paint_app::{AppSession, CanvasAnchor, Command, ResourceLimits};
 use paint_core::{Bgra, Point, Rect, Size, Surface};
-use paint_document::{Document, Layer, LayerId};
+use paint_document::{Document, Layer, LayerId, SelectionCombineMode};
+
+fn select_rect(rect: Rect) -> Command {
+    Command::SelectRect {
+        rect,
+        mode: SelectionCombineMode::Replace,
+    }
+}
 
 fn size(width: u32, height: u32) -> Size {
     Size::new(width, height).expect("nonzero test size")
@@ -47,7 +54,7 @@ fn pixel(session: &AppSession, layer: usize, x: u32, y: u32) -> Bgra {
 fn crop_to_selection_clips_bounds_and_undo_restores_the_exact_document() {
     let mut session = two_layer_session(3, 2);
     session
-        .execute(Command::SelectRect(
+        .execute(select_rect(
             Rect::new(-2, -1, 2, 2).expect("signed selection"),
         ))
         .unwrap();
@@ -87,7 +94,7 @@ fn crop_without_an_intersecting_selection_is_a_no_op() {
     assert_eq!(session.document().size(), size(3, 2));
 
     session
-        .execute(Command::SelectRect(
+        .execute(select_rect(
             Rect::new(-9, -9, -4, -4).expect("outside selection"),
         ))
         .unwrap();
@@ -100,9 +107,7 @@ fn crop_without_an_intersecting_selection_is_a_no_op() {
 fn crop_of_the_full_canvas_is_a_no_op_that_keeps_the_selection() {
     let mut session = two_layer_session(3, 2);
     session
-        .execute(Command::SelectRect(
-            Rect::new(0, 0, 3, 2).expect("full selection"),
-        ))
+        .execute(select_rect(Rect::new(0, 0, 3, 2).expect("full selection")))
         .unwrap();
     let before = session.document().clone();
     assert!(!session.execute(Command::CropToSelection).unwrap());
@@ -122,9 +127,7 @@ fn resize_image_resamples_every_layer_and_undo_restores_exact_state() {
         Document::from_layers(size(2, 2), vec![background, overlay]).expect("two-layer document");
     let mut session = AppSession::new(document);
     session
-        .execute(Command::SelectRect(
-            Rect::new(0, 0, 1, 1).expect("selection"),
-        ))
+        .execute(select_rect(Rect::new(0, 0, 1, 1).expect("selection")))
         .unwrap();
     let before = session.document().clone();
 
@@ -197,9 +200,7 @@ fn resize_image_rejects_zero_and_over_limit_dimensions_without_mutation() {
 fn canvas_size_anchors_offsets_fills_and_undoes_an_exact_document() {
     let mut session = two_layer_session(2, 2);
     session
-        .execute(Command::SelectRect(
-            Rect::new(0, 0, 2, 2).expect("selection"),
-        ))
+        .execute(select_rect(Rect::new(0, 0, 2, 2).expect("selection")))
         .unwrap();
     let before = session.document().clone();
 
@@ -288,9 +289,7 @@ fn canvas_size_without_a_dimension_change_is_a_no_op() {
 fn clockwise_rotation_rotates_every_layer_swaps_dimensions_and_undoes_exactly() {
     let mut session = two_layer_session(2, 3);
     session
-        .execute(Command::SelectRect(
-            Rect::new(0, 0, 1, 1).expect("selection"),
-        ))
+        .execute(select_rect(Rect::new(0, 0, 1, 1).expect("selection")))
         .unwrap();
     let before = session.document().clone();
 

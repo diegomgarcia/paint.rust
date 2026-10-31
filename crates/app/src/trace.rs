@@ -1,5 +1,5 @@
 use paint_core::{Bgra, Rect, Size, Surface};
-use paint_document::{Document, Layer, LayerId};
+use paint_document::{Document, Layer, LayerId, SelectionCombineMode};
 use serde::Deserialize;
 
 use crate::{
@@ -266,7 +266,10 @@ impl WireCommand {
             Self::Redo => Ok(Command::Redo),
             Self::ClearSelection => Ok(Command::ClearSelection),
             Self::SelectRect { rect } => Rect::new(rect.left, rect.top, rect.right, rect.bottom)
-                .map(Command::SelectRect)
+                .map(|rect| Command::SelectRect {
+                    rect,
+                    mode: SelectionCombineMode::Replace,
+                })
                 .map_err(|source| TraceError::InvalidRectangle { index, source }),
             Self::Fill { color } => Ok(Command::Fill(color.into_bgra())),
             Self::AddLayer {
@@ -365,7 +368,7 @@ fn validate_command(
     limits: &ResourceLimits,
 ) -> Result<(), TraceError> {
     match command {
-        Command::SelectRect(rect)
+        Command::SelectRect { rect, .. }
             if rect.left() < 0 || rect.top() < 0 || rect.right() < 1 || rect.bottom() < 1 =>
         {
             Err(TraceError::InvalidRectangleCoordinates {

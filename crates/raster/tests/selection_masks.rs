@@ -1,8 +1,8 @@
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId, PixelPatch, SelectionMask};
 use paint_raster::{
-    BrushOptions, RasterError, fill, fill_ellipse, fill_rect, flood_fill, global_fill, invert,
-    linear_gradient, recolor, stamp, stroke, translate,
+    BrushOptions, MagicWandSampling, RasterError, fill, fill_ellipse, fill_rect, flood_fill,
+    global_fill, invert, linear_gradient, magic_wand_mask, recolor, stamp, stroke, translate,
 };
 
 fn size(width: u32, height: u32) -> Size {
@@ -291,4 +291,68 @@ fn stamp_composites_only_inside_the_mask() {
         document.active_layer().surface().pixels(),
         &[Bgra::new(10, 10, 10, 255), b, c]
     );
+}
+
+#[test]
+fn magic_wand_samples_the_active_layer_or_the_composed_image() {
+    let size = size(3, 1);
+    let bottom = Layer::new(
+        LayerId::new(1),
+        "bottom",
+        Surface::from_pixels(size, vec![Bgra::BLACK, Bgra::WHITE, Bgra::BLACK])
+            .expect("bottom surface"),
+    );
+    let top = Layer::new(
+        LayerId::new(2),
+        "top",
+        Surface::new(size).expect("transparent top"),
+    );
+    let mut document = Document::from_layers(size, vec![bottom, top]).expect("layered document");
+    document
+        .set_active_layer(LayerId::new(2))
+        .expect("activate transparent top layer");
+
+    let active = magic_wand_mask(
+        &document,
+        LayerId::new(2),
+        Point::new(0, 0),
+        0,
+        false,
+        MagicWandSampling::ActiveLayer,
+    )
+    .expect("active layer wand")
+    .expect("transparent active layer selects pixels");
+    assert_eq!(active.selected_count(), 3);
+    assert_eq!(active.bounds(), rect(0, 0, 3, 1));
+
+    let image = magic_wand_mask(
+        &document,
+        LayerId::new(2),
+        Point::new(0, 0),
+        0,
+        false,
+        MagicWandSampling::Image,
+    )
+    .expect("image wand")
+    .expect("composed black run selects pixels");
+    assert_eq!(image.selected_count(), 1);
+    assert_eq!(image.bounds(), rect(0, 0, 1, 1));
+    assert!(image.contains_xy(0, 0));
+    assert!(!image.contains_xy(1, 0));
+
+    let global = magic_wand_mask(
+        &document,
+        LayerId::new(2),
+        Point::new(0, 0),
+        0,
+        true,
+        MagicWandSampling::Image,
+    )
+    .expect("global image wand")
+    .expect("both composed black runs");
+    assert_eq!(global.selected_count(), 2);
+    assert_eq!(global.bounds(), rect(0, 0, 3, 1));
+    assert!(global.contains_xy(0, 0));
+    assert!(!global.contains_xy(1, 0));
+    assert!(global.contains_xy(2, 0));
 }

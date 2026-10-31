@@ -1,4 +1,4 @@
-use paint_app::{AppSession, Command};
+use paint_app::{AppSession, Command, MagicWandSampling, SelectionCombineMode};
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId, SelectionMask};
 use paint_raster::{BrushOptions, ShapeStyle};
@@ -27,7 +27,10 @@ fn ellipse_selection_is_a_real_mask_that_clips_fill_and_survives_undo() {
     let mut session = session_with_color(7, 7, Bgra::WHITE);
     assert!(
         session
-            .execute(Command::SelectEllipse(rect(1, 1, 6, 6)))
+            .execute(Command::SelectEllipse {
+                rect: rect(1, 1, 6, 6),
+                mode: SelectionCombineMode::Replace
+            })
             .expect("ellipse selection")
     );
     assert!(!session.dirty());
@@ -72,7 +75,10 @@ fn lasso_selection_masks_freehand_polygon_painting_and_erasing() {
     let points = vec![Point::new(1, 1), Point::new(6, 1), Point::new(1, 6)];
     assert!(
         session
-            .execute(Command::SelectLasso(points.clone()))
+            .execute(Command::SelectLasso {
+                points: points.clone(),
+                mode: SelectionCombineMode::Replace,
+            })
             .expect("lasso selection")
     );
     let mask = session
@@ -117,16 +123,19 @@ fn lasso_selection_masks_freehand_polygon_painting_and_erasing() {
 fn degenerate_lasso_clears_the_previous_selection() {
     let mut session = session_with_color(4, 4, Bgra::WHITE);
     session
-        .execute(Command::SelectEllipse(rect(0, 0, 4, 4)))
+        .execute(Command::SelectEllipse {
+            rect: rect(0, 0, 4, 4),
+            mode: SelectionCombineMode::Replace,
+        })
         .expect("ellipse");
     assert!(session.document().selection_mask().is_some());
 
     assert!(
         session
-            .execute(Command::SelectLasso(vec![
-                Point::new(1, 1),
-                Point::new(3, 1),
-            ]))
+            .execute(Command::SelectLasso {
+                points: vec![Point::new(1, 1), Point::new(3, 1)],
+                mode: SelectionCombineMode::Replace,
+            })
             .expect("degenerate lasso")
     );
     assert_eq!(session.document().selection(), None);
@@ -151,6 +160,8 @@ fn magic_wand_uses_flood_fill_tolerance_and_contiguous_or_global_modes() {
                 point: Point::new(0, 0),
                 tolerance: 0,
                 global: false,
+                mode: SelectionCombineMode::Replace,
+                sampling: MagicWandSampling::ActiveLayer,
             })
             .expect("contiguous magic wand")
     );
@@ -180,6 +191,8 @@ fn magic_wand_uses_flood_fill_tolerance_and_contiguous_or_global_modes() {
                 point: Point::new(0, 0),
                 tolerance: 0,
                 global: true,
+                mode: SelectionCombineMode::Replace,
+                sampling: MagicWandSampling::ActiveLayer,
             })
             .expect("global magic wand")
     );
@@ -217,6 +230,8 @@ fn magic_wand_tolerance_expands_the_selected_color_range() {
             point: Point::new(0, 0),
             tolerance: 0,
             global: true,
+            mode: SelectionCombineMode::Replace,
+            sampling: MagicWandSampling::ActiveLayer,
         })
         .expect("exact wand");
     assert!(
@@ -232,6 +247,8 @@ fn magic_wand_tolerance_expands_the_selected_color_range() {
             point: Point::new(0, 0),
             tolerance: 16,
             global: true,
+            mode: SelectionCombineMode::Replace,
+            sampling: MagicWandSampling::ActiveLayer,
         })
         .expect("tolerant wand");
     assert!(
@@ -247,18 +264,20 @@ fn magic_wand_tolerance_expands_the_selected_color_range() {
 fn selection_commands_replace_each_other_without_dirtying_or_entering_history() {
     let mut session = session_with_color(5, 5, Bgra::WHITE);
     session
-        .execute(Command::SelectEllipse(rect(0, 0, 5, 5)))
+        .execute(Command::SelectEllipse {
+            rect: rect(0, 0, 5, 5),
+            mode: SelectionCombineMode::Replace,
+        })
         .expect("ellipse");
     assert!(session.document().selection_mask().is_some());
     assert!(!session.dirty());
     assert!(!session.can_undo());
 
     session
-        .execute(Command::SelectLasso(vec![
-            Point::new(0, 0),
-            Point::new(4, 0),
-            Point::new(0, 4),
-        ]))
+        .execute(Command::SelectLasso {
+            points: vec![Point::new(0, 0), Point::new(4, 0), Point::new(0, 4)],
+            mode: SelectionCombineMode::Replace,
+        })
         .expect("lasso");
     assert!(!session.dirty());
     assert!(!session.can_undo());
@@ -268,13 +287,18 @@ fn selection_commands_replace_each_other_without_dirtying_or_entering_history() 
             point: Point::new(0, 0),
             tolerance: 0,
             global: false,
+            mode: SelectionCombineMode::Replace,
+            sampling: MagicWandSampling::ActiveLayer,
         })
         .expect("wand");
     assert!(!session.dirty());
     assert!(!session.can_undo());
 
     session
-        .execute(Command::SelectRect(rect(1, 1, 3, 3)))
+        .execute(Command::SelectRect {
+            rect: rect(1, 1, 3, 3),
+            mode: SelectionCombineMode::Replace,
+        })
         .expect("rectangle replaces mask");
     assert!(session.document().selection_mask().is_none());
     assert_eq!(session.document().selection(), Some(rect(1, 1, 3, 3)));
@@ -345,7 +369,10 @@ fn translating_a_mask_selection_moves_bounds_and_undo_restores_content_and_selec
 fn translate_selection_command_moves_a_mask_without_content_history() {
     let mut session = session_with_color(5, 5, Bgra::WHITE);
     session
-        .execute(Command::SelectEllipse(rect(0, 0, 4, 4)))
+        .execute(Command::SelectEllipse {
+            rect: rect(0, 0, 4, 4),
+            mode: SelectionCombineMode::Replace,
+        })
         .expect("ellipse");
     let before = session
         .document()
@@ -374,6 +401,236 @@ fn translate_selection_command_moves_a_mask_without_content_history() {
             .selected_count(),
         before
     );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+}
+
+#[test]
+fn rectangle_combine_modes_keep_rectangles_and_follow_set_algebra() {
+    let mut session = session_with_color(8, 8, Bgra::WHITE);
+    assert!(
+        session
+            .execute(Command::SelectRect {
+                rect: rect(0, 0, 2, 2),
+                mode: SelectionCombineMode::Replace,
+            })
+            .expect("replace selection")
+    );
+    assert!(
+        session
+            .execute(Command::SelectRect {
+                rect: rect(2, 0, 4, 2),
+                mode: SelectionCombineMode::Union,
+            })
+            .expect("union selection")
+    );
+    assert_eq!(session.document().selection(), Some(rect(0, 0, 4, 2)));
+    assert!(session.document().selection_mask().is_none());
+
+    assert!(
+        session
+            .execute(Command::SelectRect {
+                rect: rect(2, 0, 4, 2),
+                mode: SelectionCombineMode::Subtract,
+            })
+            .expect("subtract selection")
+    );
+    assert_eq!(session.document().selection(), Some(rect(0, 0, 2, 2)));
+    assert!(session.document().selection_mask().is_none());
+
+    assert!(
+        session
+            .execute(Command::SelectRect {
+                rect: rect(1, 1, 4, 4),
+                mode: SelectionCombineMode::Intersect,
+            })
+            .expect("intersect selection")
+    );
+    assert_eq!(session.document().selection(), Some(rect(1, 1, 2, 2)));
+    assert!(session.document().selection_mask().is_none());
+
+    assert!(
+        session
+            .execute(Command::SelectRect {
+                rect: rect(2, 1, 3, 2),
+                mode: SelectionCombineMode::Xor,
+            })
+            .expect("xor selection")
+    );
+    assert_eq!(session.document().selection(), Some(rect(1, 1, 3, 2)));
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+}
+
+#[test]
+fn ellipse_combine_modes_match_pixel_mask_algebra() {
+    let first = SelectionMask::ellipse(rect(0, 0, 4, 4)).expect("first ellipse");
+    let second = SelectionMask::ellipse(rect(2, 0, 6, 4)).expect("second ellipse");
+    for (mode, expected) in [
+        (SelectionCombineMode::Replace, Some(second.clone())),
+        (
+            SelectionCombineMode::Union,
+            first.union(&second).expect("union"),
+        ),
+        (
+            SelectionCombineMode::Subtract,
+            first.subtract(&second).expect("subtract"),
+        ),
+        (
+            SelectionCombineMode::Intersect,
+            first.intersect(&second).expect("intersect"),
+        ),
+        (SelectionCombineMode::Xor, first.xor(&second).expect("xor")),
+    ] {
+        let mut session = session_with_color(9, 9, Bgra::WHITE);
+        assert!(
+            session
+                .execute(Command::SelectEllipse {
+                    rect: rect(0, 0, 4, 4),
+                    mode: SelectionCombineMode::Replace,
+                })
+                .expect("first ellipse")
+        );
+        assert!(
+            session
+                .execute(Command::SelectEllipse {
+                    rect: rect(2, 0, 6, 4),
+                    mode,
+                })
+                .expect("combined ellipse")
+        );
+        assert_eq!(
+            session.document().selection_mask(),
+            expected.as_ref(),
+            "{mode:?} mismatch"
+        );
+        assert!(!session.dirty());
+        assert!(!session.can_undo());
+    }
+}
+
+#[test]
+fn lasso_and_magic_wand_combine_against_the_existing_selection() {
+    let mut session = session_with_color(6, 3, Bgra::WHITE);
+    session
+        .execute(Command::FillRect {
+            rect: rect(3, 0, 4, 3),
+            color: Bgra::BLACK,
+            style: ShapeStyle::Fill,
+            border_width: 0,
+        })
+        .expect("stripe");
+    session
+        .execute(Command::SelectRect {
+            rect: rect(0, 0, 2, 3),
+            mode: SelectionCombineMode::Replace,
+        })
+        .expect("rectangle base");
+    assert!(
+        session
+            .execute(Command::SelectMagicWand {
+                point: Point::new(5, 0),
+                tolerance: 0,
+                global: false,
+                mode: SelectionCombineMode::Union,
+                sampling: MagicWandSampling::ActiveLayer,
+            })
+            .expect("wand union")
+    );
+    let mask = session
+        .document()
+        .selection_mask()
+        .expect("combined mask")
+        .clone();
+    assert_eq!(mask.selected_count(), 12);
+    assert!(mask.contains(Point::new(0, 0)));
+    assert!(mask.contains(Point::new(4, 2)));
+    assert!(!mask.contains(Point::new(2, 0)));
+    assert!(!mask.contains(Point::new(3, 0)));
+
+    assert!(
+        session
+            .execute(Command::SelectLasso {
+                points: vec![
+                    Point::new(0, 0),
+                    Point::new(6, 0),
+                    Point::new(6, 1),
+                    Point::new(0, 1),
+                ],
+                mode: SelectionCombineMode::Subtract,
+            })
+            .expect("lasso subtract")
+    );
+    let mask = session
+        .document()
+        .selection_mask()
+        .expect("remaining mask")
+        .clone();
+    assert_eq!(mask.selected_count(), 8);
+    assert!(!mask.contains(Point::new(0, 0)));
+    assert!(!mask.contains(Point::new(4, 0)));
+    assert!(mask.contains(Point::new(0, 2)));
+    assert!(mask.contains(Point::new(4, 2)));
+}
+
+#[test]
+fn magic_wand_image_sampling_uses_the_composed_surface() {
+    let size = Size::new(3, 1).expect("size");
+    let bottom = Layer::new(
+        LayerId::new(1),
+        "bottom",
+        Surface::from_pixels(size, vec![Bgra::BLACK, Bgra::WHITE, Bgra::BLACK])
+            .expect("bottom surface"),
+    );
+    let top = Layer::new(
+        LayerId::new(2),
+        "top",
+        Surface::new(size).expect("transparent top"),
+    );
+    let mut document = Document::from_layers(size, vec![bottom, top]).expect("layered document");
+    document
+        .set_active_layer(LayerId::new(2))
+        .expect("active top layer");
+    let mut session = AppSession::new(document);
+
+    assert!(
+        session
+            .execute(Command::SelectMagicWand {
+                point: Point::new(0, 0),
+                tolerance: 0,
+                global: false,
+                mode: SelectionCombineMode::Replace,
+                sampling: MagicWandSampling::ActiveLayer,
+            })
+            .expect("active-layer wand")
+    );
+    let active = session
+        .document()
+        .selection_mask()
+        .expect("active-layer mask")
+        .clone();
+    assert_eq!(active.selected_count(), 3);
+
+    assert!(
+        session
+            .execute(Command::SelectMagicWand {
+                point: Point::new(0, 0),
+                tolerance: 0,
+                global: false,
+                mode: SelectionCombineMode::Replace,
+                sampling: MagicWandSampling::Image,
+            })
+            .expect("image wand")
+    );
+    let image = session
+        .document()
+        .selection_mask()
+        .expect("image mask")
+        .clone();
+    assert_eq!(image.selected_count(), 1);
+    assert!(image.contains(Point::new(0, 0)));
+    assert!(!image.contains(Point::new(1, 0)));
+    assert_eq!(session.document().selection(), Some(rect(0, 0, 1, 1)));
     assert!(!session.dirty());
     assert!(!session.can_undo());
 }

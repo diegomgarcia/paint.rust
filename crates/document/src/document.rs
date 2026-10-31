@@ -2,7 +2,8 @@ use paint_core::{Bgra, Rect, Size, Surface, SurfaceError};
 use thiserror::Error;
 
 use crate::{
-    BlendMode, Layer, LayerId, PatchError, PixelPatch, Revision, Selection, SelectionMask,
+    BlendMode, Layer, LayerId, PatchError, PixelPatch, Revision, Selection, SelectionCombineMode,
+    SelectionError, SelectionMask,
 };
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
@@ -51,6 +52,8 @@ pub enum DocumentError {
     },
     #[error("before-pixels mismatch for layer {layer_id:?} in rectangle {rect:?}")]
     BeforePixelsMismatch { layer_id: LayerId, rect: Rect },
+    #[error(transparent)]
+    Selection(#[from] SelectionError),
 }
 
 /// A document with bottom-to-top ordered layers and one active layer.
@@ -347,6 +350,21 @@ impl Document {
         self.selection = selection;
         self.revision = next_revision;
         Ok(true)
+    }
+
+    /// Combines a newly drawn selection with the current one using `mode`.
+    ///
+    /// `Replace` swaps in the new shape unchanged, so rectangular replacements keep the
+    /// rectangle fast path. Other modes use set algebra and fall back to packed mask bits when
+    /// the result cannot be represented as one rectangle. The canvas bounds the mask fallback.
+    pub fn combine_selection(
+        &mut self,
+        addition: Option<Selection>,
+        mode: SelectionCombineMode,
+    ) -> Result<bool, DocumentError> {
+        let combined =
+            Selection::combine(self.selection.as_ref(), addition.as_ref(), mode, self.size)?;
+        self.set_selection_shape(combined)
     }
 
     pub fn clear_selection(&mut self) -> Result<bool, DocumentError> {

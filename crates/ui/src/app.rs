@@ -3,7 +3,10 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use paint_app::{AppSession, CanvasAnchor, Command, Effect, ResourceLimits};
+use paint_app::{
+    AppSession, CanvasAnchor, Command, Effect, MagicWandSampling, ResourceLimits,
+    SelectionCombineMode,
+};
 use paint_core::{Bgra, Point, Rect, Size};
 use paint_document::{Document, LayerId};
 use paint_raster::{
@@ -136,6 +139,8 @@ pub struct PaintApp {
     recolor_tolerance: u8,
     fill_tolerance: u8,
     fill_global: bool,
+    selection_combine_mode: SelectionCombineMode,
+    magic_wand_sampling: MagicWandSampling,
     paint_points: Vec<Point>,
     icons: IconTextures,
     #[cfg(target_os = "macos")]
@@ -247,6 +252,8 @@ impl PaintApp {
             recolor_tolerance: 50,
             fill_tolerance: 50,
             fill_global: false,
+            selection_combine_mode: SelectionCombineMode::Replace,
+            magic_wand_sampling: MagicWandSampling::ActiveLayer,
             paint_points: Vec::new(),
             icons,
             #[cfg(target_os = "macos")]
@@ -729,13 +736,15 @@ impl PaintApp {
     fn execute(&mut self, command: Command, success: impl Into<String>) -> bool {
         if !matches!(
             command,
-            Command::SelectRect(_) | Command::ClearSelection | Command::TranslateSelection { .. }
+            Command::SelectRect { .. }
+                | Command::ClearSelection
+                | Command::TranslateSelection { .. }
         ) {
             self.finish_active_preview();
         }
         if !matches!(
             command,
-            Command::SelectRect(_) | Command::TranslateSelection { .. }
+            Command::SelectRect { .. } | Command::TranslateSelection { .. }
         ) {
             self.finalize_floating_selection();
         }
@@ -1072,7 +1081,13 @@ impl PaintApp {
         let input = self.selection_input;
         match Rect::new(input.left, input.top, input.right, input.bottom) {
             Ok(rect) => {
-                self.execute(Command::SelectRect(rect), "Rectangle selection updated");
+                self.execute(
+                    Command::SelectRect {
+                        rect,
+                        mode: self.selection_combine_mode,
+                    },
+                    "Rectangle selection updated",
+                );
             }
             Err(error) => {
                 self.status = format!("Selection failed: {error}");
@@ -2001,6 +2016,31 @@ impl PaintApp {
         }
     }
 
+    fn selection_combine_options(&mut self, ui: &mut egui::Ui) {
+        ui.label("Selection Mode");
+        for mode in SelectionCombineMode::ALL {
+            if ui
+                .selectable_value(&mut self.selection_combine_mode, mode, mode.label())
+                .clicked()
+            {
+                self.status = format!("Selection mode: {}", mode.label());
+            }
+        }
+        ui.label("Modifiers: Shift adds, Alt subtracts");
+    }
+
+    /// Reads selection modifiers for one canvas gesture, falling back to the tool option mode.
+    fn gesture_selection_mode(&self, ui: &egui::Ui) -> SelectionCombineMode {
+        let modifiers = ui.input(|input| input.modifiers);
+        if modifiers.alt {
+            SelectionCombineMode::Subtract
+        } else if modifiers.shift {
+            SelectionCombineMode::Union
+        } else {
+            self.selection_combine_mode
+        }
+    }
+
     fn tool_options_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::top("paint-r-tool-options").show(ui, |ui| {
             ui.add_space(2.0);
@@ -2010,6 +2050,7 @@ impl PaintApp {
                 match self.active_tool {
                     Tool::Select => {
                         ui.label("Rectangle Select");
+                        self.selection_combine_options(ui);
                         selection_input(ui, "Selection left", &mut self.selection_input.left);
                         selection_input(ui, "Selection top", &mut self.selection_input.top);
                         selection_input(ui, "Selection right", &mut self.selection_input.right);
@@ -2031,16 +2072,19 @@ impl PaintApp {
                     }
                     Tool::Lasso => {
                         ui.label("Lasso Select");
+                        self.selection_combine_options(ui);
                         ui.label("Drag to trace a freehand mask; releasing closes the path");
                         self.selection_status(ui);
                     }
                     Tool::EllipseSelect => {
                         ui.label("Ellipse Select");
+                        self.selection_combine_options(ui);
                         ui.label("Drag to select an elliptical pixel mask");
                         self.selection_status(ui);
                     }
                     Tool::MagicWand => {
                         ui.label("Magic Wand");
+                        self.selection_combine_options(ui);
                         let tolerance_label = ui.label("Tolerance");
                         ui.add(
                             egui::DragValue::new(&mut self.fill_tolerance)
@@ -2051,7 +2095,14 @@ impl PaintApp {
                         ui.label("Flood Mode");
                         ui.selectable_value(&mut self.fill_global, false, "Contiguous");
                         ui.selectable_value(&mut self.fill_global, true, "Global");
-                        ui.label("Sampling: Active layer");
+                        ui.label("Sampling");
+                        for sampling in MagicWandSampling::ALL {
+                            ui.selectable_value(
+                                &mut self.magic_wand_sampling,
+                                sampling,
+                                sampling.label(),
+                            );
+                        }
                         self.selection_status(ui);
                     }
                     Tool::MoveSelection => {
@@ -3750,11 +3801,14 @@ impl PaintApp {
                                 })
                             {
                                 let threshold = (u16::from(self.fill_tolerance) * 255 / 100) as u8;
+                                let mode = self.gesture_selection_mode(ui);
                                 pending_paint = Some((
                                     Command::SelectMagicWand {
                                         point,
                                         tolerance: threshold,
                                         global: self.fill_global,
+                                        sampling: self.magic_wand_sampling,
+                                        mode,
                                     },
                                     if self.fill_global {
                                         "Selected matching pixels globally".to_owned()
@@ -3900,6 +3954,7 @@ impl PaintApp {
                                     (self.drag_start.take(), self.drag_current.take())
                             {
                                 let bounds = selection_rect_from_drag(start, end);
+                                let selection_mode = self.gesture_selection_mode(ui);
                                 let color = self.fill_color;
                                 let size = match self.active_tool {
                                     Tool::Pencil => 1,
@@ -3911,20 +3966,19 @@ impl PaintApp {
                                             self.paint_points.push(end);
                                         }
                                         let points = std::mem::take(&mut self.paint_points);
-                                        if points.len() < 3 {
-                                            Some((
-                                                Command::ClearSelection,
-                                                "Lasso selection cleared".to_owned(),
-                                            ))
-                                        } else {
-                                            Some((
-                                                Command::SelectLasso(points),
-                                                "Lasso selection updated".to_owned(),
-                                            ))
-                                        }
+                                        Some((
+                                            Command::SelectLasso {
+                                                points,
+                                                mode: selection_mode,
+                                            },
+                                            "Lasso selection updated".to_owned(),
+                                        ))
                                     }
                                     Tool::EllipseSelect => Some((
-                                        Command::SelectEllipse(bounds),
+                                        Command::SelectEllipse {
+                                            rect: bounds,
+                                            mode: selection_mode,
+                                        },
                                         "Ellipse selection updated".to_owned(),
                                     )),
                                     Tool::MoveSelection => {
@@ -3943,7 +3997,7 @@ impl PaintApp {
                                         }
                                     }
                                     Tool::Select => {
-                                        pending_selection = Some(bounds);
+                                        pending_selection = Some((bounds, selection_mode));
                                         None
                                     }
                                     Tool::Shapes if self.shape_mode == ShapeMode::Rectangle => {
@@ -4186,9 +4240,9 @@ impl PaintApp {
             if let Some(point) = picked {
                 self.pick_color_at(point);
             }
-            if let Some(selection) = pending_selection {
+            if let Some((rect, mode)) = pending_selection {
                 self.execute(
-                    Command::SelectRect(selection),
+                    Command::SelectRect { rect, mode },
                     "Rectangle selection updated",
                 );
             }
@@ -5311,9 +5365,9 @@ fn history_label(command: &Command) -> Option<String> {
         Command::SetLayerOpacity { index, opacity } => {
             Some(format!("Layer {index} opacity: {opacity}"))
         }
-        Command::SelectRect(_)
-        | Command::SelectEllipse(_)
-        | Command::SelectLasso(_)
+        Command::SelectRect { .. }
+        | Command::SelectEllipse { .. }
+        | Command::SelectLasso { .. }
         | Command::SelectMagicWand { .. }
         | Command::TranslateSelection { .. }
         | Command::ClearSelection

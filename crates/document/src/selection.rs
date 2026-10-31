@@ -274,6 +274,193 @@ impl SelectionMask {
         self.pixel_count() == self.selected
     }
 
+    /// Returns the union of both masks, or `None` when neither selects a pixel.
+    pub fn union(&self, other: &Self) -> Result<Option<Self>, SelectionError> {
+        self.combine(other, MaskOperation::Union)
+    }
+
+    /// Returns the pixels selected by `self` but not by `other`.
+    pub fn subtract(&self, other: &Self) -> Result<Option<Self>, SelectionError> {
+        self.combine(other, MaskOperation::Subtract)
+    }
+
+    /// Returns the pixels selected by both masks.
+    pub fn intersect(&self, other: &Self) -> Result<Option<Self>, SelectionError> {
+        self.combine(other, MaskOperation::Intersect)
+    }
+
+    /// Returns the pixels selected by exactly one mask.
+    pub fn xor(&self, other: &Self) -> Result<Option<Self>, SelectionError> {
+        self.combine(other, MaskOperation::Xor)
+    }
+
+    fn combine(
+        &self,
+        other: &Self,
+        operation: MaskOperation,
+    ) -> Result<Option<Self>, SelectionError> {
+        match operation {
+            MaskOperation::Union => {
+                if self.is_empty() {
+                    return Ok((!other.is_empty()).then(|| other.clone()));
+                }
+                if other.is_empty() {
+                    return Ok(Some(self.clone()));
+                }
+            }
+            MaskOperation::Subtract => {
+                if self.is_empty() {
+                    return Ok(None);
+                }
+                if other.is_empty() {
+                    return Ok(Some(self.clone()));
+                }
+            }
+            MaskOperation::Intersect => {
+                if self.is_empty() || other.is_empty() {
+                    return Ok(None);
+                }
+            }
+            MaskOperation::Xor => {
+                if self.is_empty() {
+                    return Ok((!other.is_empty()).then(|| other.clone()));
+                }
+                if other.is_empty() {
+                    return Ok(Some(self.clone()));
+                }
+            }
+        }
+
+        let bounds = match operation {
+            MaskOperation::Union | MaskOperation::Xor => Rect::new(
+                self.bounds.left().min(other.bounds.left()),
+                self.bounds.top().min(other.bounds.top()),
+                self.bounds.right().max(other.bounds.right()),
+                self.bounds.bottom().max(other.bounds.bottom()),
+            )?,
+            MaskOperation::Intersect => {
+                let Some(intersection) = self.bounds.intersection(other.bounds) else {
+                    return Ok(None);
+                };
+                intersection
+            }
+            MaskOperation::Subtract => self.bounds,
+        };
+        let mut combined = Self::empty(bounds)?;
+        let width = bounds.width();
+        let mut selected = 0usize;
+        for row in 0..bounds.height() {
+            let y = bounds.top() + i64::from(row);
+            let row_start = row as usize * combined.row_words;
+            for word in 0..combined.row_words {
+                let x_start = bounds.left() + (word as i64) * 64;
+                let left = self.row_word(y, x_start);
+                let right = other.row_word(y, x_start);
+                let mut bits = match operation {
+                    MaskOperation::Union => left | right,
+                    MaskOperation::Subtract => left & !right,
+                    MaskOperation::Intersect => left & right,
+                    MaskOperation::Xor => left ^ right,
+                };
+                bits = trim_row_word(bits, word, combined.row_words, width);
+                combined.words[row_start + word] = bits;
+                selected += bits.count_ones() as usize;
+            }
+        }
+        if selected == 0 {
+            return Ok(None);
+        }
+        combined.selected = selected;
+        combined.tightened()
+    }
+
+    /// Extracts the 64 bits starting at `(x_start, y)` in canvas coordinates.
+    ///
+    /// Bits outside this mask are zero, including bits before the left edge.
+    fn row_word(&self, y: i64, x_start: i64) -> u64 {
+        if y < self.bounds.top() || y >= self.bounds.bottom() {
+            return 0;
+        }
+        let row = (y - self.bounds.top()) as usize;
+        let base = row * self.row_words;
+        let delta = i128::from(x_start) - i128::from(self.bounds.left());
+        if delta >= 0 {
+            let delta = delta as u128;
+            let index = delta / 64;
+            if index >= self.row_words as u128 {
+                return 0;
+            }
+            let index = index as usize;
+            let shift = (delta % 64) as u32;
+            let low = self.words[base + index];
+            if shift == 0 {
+                low
+            } else {
+                let high = if index + 1 < self.row_words {
+                    self.words[base + index + 1]
+                } else {
+                    0
+                };
+                (low >> shift) | (high << (64 - shift))
+            }
+        } else {
+            let lead = (-delta) as u128;
+            if lead >= 64 {
+                return 0;
+            }
+            self.words[base] << (lead as u32)
+        }
+    }
+
+    /// Shrinks the bounds to the selected pixels so combined masks stay tight.
+    fn tightened(self) -> Result<Option<Self>, SelectionError> {
+        let mut min_x = i64::MAX;
+        let mut min_y = i64::MAX;
+        let mut max_x = i64::MIN;
+        let mut max_y = i64::MIN;
+        for row in 0..self.bounds.height() {
+            let row_start = row as usize * self.row_words;
+            let y = self.bounds.top() + i64::from(row);
+            for word in 0..self.row_words {
+                let bits = self.words[row_start + word];
+                if bits == 0 {
+                    continue;
+                }
+                let word_start = self.bounds.left() + (word as i64) * 64;
+                let start = word_start + i64::from(bits.trailing_zeros());
+                let end = word_start + i64::from(63 - bits.leading_zeros());
+                min_x = min_x.min(start);
+                max_x = max_x.max(end);
+                min_y = min_y.min(y);
+                max_y = max_y.max(y);
+            }
+        }
+        if min_x == i64::MAX {
+            return Ok(None);
+        }
+        let bounds = Rect::new(min_x, min_y, max_x + 1, max_y + 1)?;
+        if bounds == self.bounds {
+            return Ok(Some(self));
+        }
+        let mut tight = Self::empty(bounds)?;
+        for row in 0..bounds.height() {
+            let y = bounds.top() + i64::from(row);
+            let row_start = row as usize * tight.row_words;
+            for word in 0..tight.row_words {
+                let x_start = bounds.left() + (word as i64) * 64;
+                let bits = trim_row_word(
+                    self.row_word(y, x_start),
+                    word,
+                    tight.row_words,
+                    bounds.width(),
+                );
+                tight.words[row_start + word] = bits;
+            }
+        }
+        tight.selected = self.selected;
+        Ok(Some(tight))
+    }
+
     pub fn contains(&self, point: Point) -> bool {
         self.contains_xy(i64::from(point.x), i64::from(point.y))
     }
@@ -387,6 +574,46 @@ impl SelectionMask {
     }
 }
 
+/// How a newly drawn selection combines with the existing selection.
+///
+/// This mirrors Paint.NET's selection combine modes. [`Self::Subtract`] is Paint.NET's
+/// "Exclude" mode: it removes the new shape from the existing selection.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum SelectionCombineMode {
+    /// Discard the existing selection and keep only the new shape.
+    #[default]
+    Replace,
+    /// Add the new shape to the existing selection.
+    Union,
+    /// Remove the new shape from the existing selection.
+    Subtract,
+    /// Keep only pixels selected by both the existing selection and the new shape.
+    Intersect,
+    /// Keep pixels selected by exactly one of the existing selection and the new shape.
+    Xor,
+}
+
+impl SelectionCombineMode {
+    /// Every mode in the Paint.NET tool-config-strip order.
+    pub const ALL: [Self; 5] = [
+        Self::Replace,
+        Self::Union,
+        Self::Subtract,
+        Self::Intersect,
+        Self::Xor,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Replace => "Replace",
+            Self::Union => "Union",
+            Self::Subtract => "Subtract",
+            Self::Intersect => "Intersect",
+            Self::Xor => "Xor",
+        }
+    }
+}
+
 /// A rectangle selection with an optional pixel mask.
 ///
 /// A rectangular selection stores only its bounds, matching the historical `Option<Rect>` model.
@@ -440,6 +667,88 @@ impl Selection {
         }
     }
 
+    /// Combines a newly drawn `addition` with the existing `base` selection.
+    ///
+    /// The result is `None` when the combination selects no pixels. Two rectangular selections
+    /// stay on the cheap rectangle path whenever set algebra can express the result as one
+    /// rectangle; shapes that would become L-shaped or split fall back to packed mask algebra.
+    pub fn combine(
+        base: Option<&Self>,
+        addition: Option<&Self>,
+        mode: SelectionCombineMode,
+        canvas: Size,
+    ) -> Result<Option<Self>, SelectionError> {
+        let base = base.filter(|selection| !selection.is_empty());
+        let addition = addition.filter(|selection| !selection.is_empty());
+        if mode == SelectionCombineMode::Replace {
+            return Ok(addition.cloned());
+        }
+        let Some(base) = base else {
+            return Ok(match mode {
+                SelectionCombineMode::Union | SelectionCombineMode::Xor => addition.cloned(),
+                SelectionCombineMode::Replace
+                | SelectionCombineMode::Subtract
+                | SelectionCombineMode::Intersect => None,
+            });
+        };
+        let Some(addition) = addition else {
+            return Ok(match mode {
+                SelectionCombineMode::Union
+                | SelectionCombineMode::Subtract
+                | SelectionCombineMode::Xor => Some(base.clone()),
+                SelectionCombineMode::Replace | SelectionCombineMode::Intersect => None,
+            });
+        };
+
+        if base.mask().is_none() && addition.mask().is_none() {
+            return match combine_rectangles(base.bounds(), addition.bounds(), mode) {
+                RectCombination::Rect(rect) => Ok(Some(Self::rectangle(rect))),
+                RectCombination::Empty => Ok(None),
+                RectCombination::Mask => combine_as_masks(Some(base), Some(addition), mode, canvas),
+            };
+        }
+
+        match mode {
+            SelectionCombineMode::Union => {
+                if base.mask().is_none() && rect_contains(base.bounds(), addition.bounds()) {
+                    return Ok(Some(base.clone()));
+                }
+                if addition.mask().is_none() && rect_contains(addition.bounds(), base.bounds()) {
+                    return Ok(Some(addition.clone()));
+                }
+            }
+            SelectionCombineMode::Intersect => {
+                if base.mask().is_none() && rect_contains(base.bounds(), addition.bounds()) {
+                    return Ok(Some(addition.clone()));
+                }
+                if addition.mask().is_none() && rect_contains(addition.bounds(), base.bounds()) {
+                    return Ok(Some(base.clone()));
+                }
+            }
+            SelectionCombineMode::Replace
+            | SelectionCombineMode::Subtract
+            | SelectionCombineMode::Xor => {}
+        }
+        combine_as_masks(Some(base), Some(addition), mode, canvas)
+    }
+
+    /// Whether this selection selects nothing. Rectangle selections are always non-empty.
+    pub fn is_empty(&self) -> bool {
+        self.mask.as_ref().is_some_and(SelectionMask::is_empty)
+    }
+
+    fn as_canvas_mask(&self, canvas: Size) -> Result<Option<SelectionMask>, SelectionError> {
+        match &self.mask {
+            Some(mask) => mask.clipped_to(canvas),
+            None => {
+                let Some(bounds) = self.bounds.intersection(canvas.rect()) else {
+                    return Ok(None);
+                };
+                Ok(Some(SelectionMask::full(bounds)?))
+            }
+        }
+    }
+
     pub fn translated(&self, dx: i64, dy: i64) -> Result<Self, SelectionError> {
         match &self.mask {
             Some(mask) => Ok(Self::from_mask(mask.translated(dx, dy)?)),
@@ -463,6 +772,196 @@ impl Selection {
             )?)),
         }
     }
+}
+
+#[derive(Clone, Copy)]
+enum MaskOperation {
+    Union,
+    Subtract,
+    Intersect,
+    Xor,
+}
+
+fn trim_row_word(bits: u64, word: usize, row_words: usize, width: u32) -> u64 {
+    if word + 1 == row_words {
+        let remainder = width % 64;
+        if remainder == 0 {
+            bits
+        } else {
+            bits & ((1_u64 << remainder) - 1)
+        }
+    } else {
+        bits
+    }
+}
+
+fn rect_contains(outer: Rect, inner: Rect) -> bool {
+    outer.left() <= inner.left()
+        && inner.right() <= outer.right()
+        && outer.top() <= inner.top()
+        && inner.bottom() <= outer.bottom()
+}
+
+#[derive(Clone, Copy)]
+enum RectCombination {
+    Rect(Rect),
+    Empty,
+    Mask,
+}
+
+fn combine_rectangles(base: Rect, addition: Rect, mode: SelectionCombineMode) -> RectCombination {
+    match mode {
+        SelectionCombineMode::Replace => RectCombination::Rect(addition),
+        SelectionCombineMode::Union => union_rectangles(base, addition),
+        SelectionCombineMode::Subtract => subtract_rectangles(base, addition),
+        SelectionCombineMode::Intersect => match base.intersection(addition) {
+            Some(intersection) => RectCombination::Rect(intersection),
+            None => RectCombination::Empty,
+        },
+        SelectionCombineMode::Xor => {
+            if base == addition {
+                RectCombination::Empty
+            } else if base.intersection(addition).is_none() {
+                union_rectangles(base, addition)
+            } else {
+                RectCombination::Mask
+            }
+        }
+    }
+}
+
+fn union_rectangles(base: Rect, addition: Rect) -> RectCombination {
+    if rect_contains(base, addition) {
+        return RectCombination::Rect(base);
+    }
+    if rect_contains(addition, base) {
+        return RectCombination::Rect(addition);
+    }
+    let shares_columns = base.left() == addition.left()
+        && base.right() == addition.right()
+        && base.bottom() >= addition.top()
+        && addition.bottom() >= base.top();
+    let shares_rows = base.top() == addition.top()
+        && base.bottom() == addition.bottom()
+        && base.right() >= addition.left()
+        && addition.right() >= base.left();
+    if !shares_columns && !shares_rows {
+        return RectCombination::Mask;
+    }
+    match Rect::new(
+        base.left().min(addition.left()),
+        base.top().min(addition.top()),
+        base.right().max(addition.right()),
+        base.bottom().max(addition.bottom()),
+    ) {
+        Ok(rect) => RectCombination::Rect(rect),
+        Err(_) => RectCombination::Mask,
+    }
+}
+
+fn subtract_rectangles(base: Rect, addition: Rect) -> RectCombination {
+    if base.intersection(addition).is_none() {
+        return RectCombination::Rect(base);
+    }
+    if rect_contains(addition, base) {
+        return RectCombination::Empty;
+    }
+    if addition.left() <= base.left() && addition.right() >= base.right() {
+        let above = (base.top() < addition.top())
+            .then(|| {
+                Rect::new(
+                    base.left(),
+                    base.top(),
+                    base.right(),
+                    addition.top().min(base.bottom()),
+                )
+            })
+            .transpose();
+        let below = (addition.bottom() < base.bottom())
+            .then(|| {
+                Rect::new(
+                    base.left(),
+                    addition.bottom().max(base.top()),
+                    base.right(),
+                    base.bottom(),
+                )
+            })
+            .transpose();
+        return merge_rect_pieces(above, below);
+    }
+    if addition.top() <= base.top() && addition.bottom() >= base.bottom() {
+        let left = (base.left() < addition.left())
+            .then(|| {
+                Rect::new(
+                    base.left(),
+                    base.top(),
+                    addition.left().min(base.right()),
+                    base.bottom(),
+                )
+            })
+            .transpose();
+        let right = (addition.right() < base.right())
+            .then(|| {
+                Rect::new(
+                    addition.right().max(base.left()),
+                    base.top(),
+                    base.right(),
+                    base.bottom(),
+                )
+            })
+            .transpose();
+        return merge_rect_pieces(left, right);
+    }
+    RectCombination::Mask
+}
+
+fn merge_rect_pieces(
+    first: Result<Option<Rect>, GeometryError>,
+    second: Result<Option<Rect>, GeometryError>,
+) -> RectCombination {
+    match (first, second) {
+        (Ok(None), Ok(None)) => RectCombination::Empty,
+        (Ok(Some(rect)), Ok(None)) | (Ok(None), Ok(Some(rect))) => RectCombination::Rect(rect),
+        (Ok(Some(_)), Ok(Some(_))) => RectCombination::Mask,
+        (Err(_), _) | (_, Err(_)) => RectCombination::Mask,
+    }
+}
+
+fn combine_as_masks(
+    base: Option<&Selection>,
+    addition: Option<&Selection>,
+    mode: SelectionCombineMode,
+    canvas: Size,
+) -> Result<Option<Selection>, SelectionError> {
+    let base_mask = base
+        .map(|selection| selection.as_canvas_mask(canvas))
+        .transpose()?
+        .flatten();
+    let addition_mask = addition
+        .map(|selection| selection.as_canvas_mask(canvas))
+        .transpose()?
+        .flatten();
+    let combined = match mode {
+        SelectionCombineMode::Replace => addition_mask,
+        SelectionCombineMode::Union => match (base_mask, addition_mask) {
+            (None, other) | (other, None) => other,
+            (Some(base), Some(addition)) => base.union(&addition)?,
+        },
+        SelectionCombineMode::Subtract => match (base_mask, addition_mask) {
+            (None, _) => None,
+            (Some(base), None) => Some(base),
+            (Some(base), Some(addition)) => base.subtract(&addition)?,
+        },
+        SelectionCombineMode::Intersect => match (base_mask, addition_mask) {
+            (Some(base), Some(addition)) => base.intersect(&addition)?,
+            _ => None,
+        },
+        SelectionCombineMode::Xor => match (base_mask, addition_mask) {
+            (None, other) | (other, None) => other,
+            (Some(base), Some(addition)) => base.xor(&addition)?,
+        },
+    };
+    Ok(combined.map(Selection::from_mask))
 }
 
 fn layout(bounds: Rect) -> Result<(usize, usize), SelectionError> {

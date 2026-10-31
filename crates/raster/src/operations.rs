@@ -1151,7 +1151,28 @@ pub fn stamp(
     )?))
 }
 
-/// Builds a magic-wand selection mask sampled from one layer.
+/// Which surface the magic wand samples when matching colors.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum MagicWandSampling {
+    /// Sample only the active layer, ignoring every other layer.
+    #[default]
+    ActiveLayer,
+    /// Sample the composed image exactly as the canvas displays it.
+    Image,
+}
+
+impl MagicWandSampling {
+    pub const ALL: [Self; 2] = [Self::ActiveLayer, Self::Image];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ActiveLayer => "Active Layer",
+            Self::Image => "Image",
+        }
+    }
+}
+
+/// Builds a magic-wand selection mask sampled from the active layer or the composed image.
 ///
 /// Contiguous mode uses the same four-connected flood traversal and tolerance rule as
 /// [`flood_fill`]; global mode selects every matching pixel regardless of connectivity. The mask
@@ -1163,6 +1184,7 @@ pub fn magic_wand_mask(
     point: Point,
     tolerance: u8,
     global: bool,
+    sampling: MagicWandSampling,
 ) -> Result<Option<SelectionMask>, RasterError> {
     let layer = layer(document, layer_id)?;
     let rect = document.canvas_rect();
@@ -1176,7 +1198,14 @@ pub fn magic_wand_mask(
     {
         return Ok(None);
     }
-    let pixels = layer.surface().read_region(rect)?;
+    let composed;
+    let pixels = match sampling {
+        MagicWandSampling::ActiveLayer => layer.surface().read_region(rect)?,
+        MagicWandSampling::Image => {
+            composed = crate::compose(document)?;
+            composed.read_region(rect)?
+        }
+    };
     let target = pixels[((start_y - rect.top()) * width + (start_x - rect.left())) as usize];
     let tolerance = i16::from(tolerance);
     let matches = |pixel: Bgra| bgra_within_tolerance(pixel, target, tolerance);

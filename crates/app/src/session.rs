@@ -1,8 +1,9 @@
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{
     Document, DocumentError, Layer, LayerId, PatchError, PixelPatch, Revision, Selection,
-    SelectionMask,
+    SelectionCombineMode, SelectionMask,
 };
+use paint_raster::MagicWandSampling;
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -116,14 +117,16 @@ impl AppSession {
     /// Executes one command and returns whether document or UI state changed.
     pub fn execute(&mut self, command: Command) -> Result<bool, SessionError> {
         match command {
-            Command::SelectRect(rect) => self.select_rect(rect),
-            Command::SelectEllipse(rect) => self.select_ellipse(rect),
-            Command::SelectLasso(points) => self.select_lasso(points),
+            Command::SelectRect { rect, mode } => self.select_rect(rect, mode),
+            Command::SelectEllipse { rect, mode } => self.select_ellipse(rect, mode),
+            Command::SelectLasso { points, mode } => self.select_lasso(points, mode),
             Command::SelectMagicWand {
                 point,
                 tolerance,
                 global,
-            } => self.select_magic_wand(point, tolerance, global),
+                sampling,
+                mode,
+            } => self.select_magic_wand(point, tolerance, global, sampling, mode),
             Command::TranslateSelection { dx, dy } => self.translate_selection(dx, dy),
             Command::ClearSelection => self.clear_selection(),
             Command::Fill(color) => self.fill(color),
@@ -230,47 +233,69 @@ impl AppSession {
         }
     }
 
-    pub fn select_rect(&mut self, rect: Rect) -> Result<bool, SessionError> {
-        Ok(self.document.set_selection(Some(rect))?)
+    /// Applies a signed, half-open rectangle with the requested combine mode.
+    pub fn select_rect(
+        &mut self,
+        rect: Rect,
+        mode: SelectionCombineMode,
+    ) -> Result<bool, SessionError> {
+        let addition = Selection::rectangle(rect);
+        self.combine_selection(Some(addition), mode)
     }
 
-    /// Replaces the selection with a real pixel-mask ellipse clipped to the canvas.
-    pub fn select_ellipse(&mut self, rect: Rect) -> Result<bool, SessionError> {
-        let Some(mask) = SelectionMask::ellipse_clipped(rect, self.document.size())? else {
-            return self.clear_selection();
-        };
-        Ok(self.document.set_selection_mask(mask)?)
+    /// Applies a real pixel-mask ellipse clipped to the canvas with the requested combine mode.
+    pub fn select_ellipse(
+        &mut self,
+        rect: Rect,
+        mode: SelectionCombineMode,
+    ) -> Result<bool, SessionError> {
+        let addition =
+            SelectionMask::ellipse_clipped(rect, self.document.size())?.map(Selection::from_mask);
+        self.combine_selection(addition, mode)
     }
 
-    /// Replaces the selection with the pixel mask enclosed by an implicitly closed lasso path.
-    pub fn select_lasso(&mut self, points: Vec<Point>) -> Result<bool, SessionError> {
-        let Some(mask) = SelectionMask::polygon(&points)? else {
-            return self.clear_selection();
+    /// Applies the pixel mask enclosed by an implicitly closed lasso path with `mode`.
+    pub fn select_lasso(
+        &mut self,
+        points: Vec<Point>,
+        mode: SelectionCombineMode,
+    ) -> Result<bool, SessionError> {
+        let addition = match SelectionMask::polygon(&points)? {
+            Some(mask) => mask
+                .clipped_to(self.document.size())?
+                .map(Selection::from_mask),
+            None => None,
         };
-        let Some(mask) = mask.clipped_to(self.document.size())? else {
-            return self.clear_selection();
-        };
-        Ok(self.document.set_selection_mask(mask)?)
+        self.combine_selection(addition, mode)
     }
 
-    /// Replaces the selection with a magic-wand mask sampled from the active layer.
+    /// Applies a magic-wand mask sampled from the active layer or the composed image.
     pub fn select_magic_wand(
         &mut self,
         point: Point,
         tolerance: u8,
         global: bool,
+        sampling: MagicWandSampling,
+        mode: SelectionCombineMode,
     ) -> Result<bool, SessionError> {
-        let mask = paint_raster::magic_wand_mask(
+        let addition = paint_raster::magic_wand_mask(
             &self.document,
             self.document.active_layer_id(),
             point,
             tolerance,
             global,
-        )?;
-        match mask {
-            Some(mask) => Ok(self.document.set_selection_mask(mask)?),
-            None => self.clear_selection(),
-        }
+            sampling,
+        )?
+        .map(Selection::from_mask);
+        self.combine_selection(addition, mode)
+    }
+
+    fn combine_selection(
+        &mut self,
+        addition: Option<Selection>,
+        mode: SelectionCombineMode,
+    ) -> Result<bool, SessionError> {
+        Ok(self.document.combine_selection(addition, mode)?)
     }
 
     /// Translates the rectangle or mask selection without editing pixels or content history.

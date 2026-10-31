@@ -8,4 +8,4 @@ mod selection;
 pub use document::{Document, DocumentError};
 pub use layer::{BlendMode, Layer, LayerId, Revision};
 pub use patch::{PatchError, PixelPatch};
-pub use selection::{Selection, SelectionError, SelectionMask};
+pub use selection::{Selection, SelectionCombineMode, SelectionError, SelectionMask};

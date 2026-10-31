@@ -1,5 +1,6 @@
 use paint_core::{Bgra, Point, Rect, Size};
-use paint_raster::{BrushOptions, GradientOptions, ShapeStyle, TextStyle};
+use paint_document::SelectionCombineMode;
+use paint_raster::{BrushOptions, GradientOptions, MagicWandSampling, ShapeStyle, TextStyle};
 
 use crate::Effect;
 
@@ -44,17 +45,28 @@ impl CanvasAnchor {
 /// One UI-neutral operation submitted to the single-writer session.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
-    /// Sets a signed, half-open rectangular selection. Raster operations clip it to the canvas.
-    SelectRect(Rect),
-    /// Replaces the selection with a pixel-mask ellipse inscribed in a canvas rectangle.
-    SelectEllipse(Rect),
-    /// Replaces the selection with the pixel mask enclosed by an implicitly closed lasso path.
-    SelectLasso(Vec<Point>),
-    /// Replaces the selection with a magic-wand mask sampled from the active layer.
+    /// Applies a signed, half-open rectangle to the selection using `mode`.
+    SelectRect {
+        rect: Rect,
+        mode: SelectionCombineMode,
+    },
+    /// Applies a pixel-mask ellipse inscribed in a canvas rectangle using `mode`.
+    SelectEllipse {
+        rect: Rect,
+        mode: SelectionCombineMode,
+    },
+    /// Applies the pixel mask enclosed by an implicitly closed lasso path using `mode`.
+    SelectLasso {
+        points: Vec<Point>,
+        mode: SelectionCombineMode,
+    },
+    /// Applies a magic-wand mask sampled from `sampling` using `mode`.
     SelectMagicWand {
         point: Point,
         tolerance: u8,
         global: bool,
+        sampling: MagicWandSampling,
+        mode: SelectionCombineMode,
     },
     /// Translates the current rectangle or mask selection without editing pixels.
     TranslateSelection {

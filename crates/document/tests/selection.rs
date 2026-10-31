@@ -1,8 +1,22 @@
 use paint_core::{Point, Rect, Size};
-use paint_document::{Document, Selection, SelectionMask};
+use paint_document::{Document, Selection, SelectionCombineMode, SelectionMask};
 
 fn rect(left: i64, top: i64, right: i64, bottom: i64) -> Rect {
     Rect::new(left, top, right, bottom).expect("valid test rectangle")
+}
+
+fn mask(bounds: Rect, selected: &[(i64, i64)]) -> SelectionMask {
+    let mut mask = SelectionMask::empty(bounds).expect("empty mask");
+    for &(x, y) in selected {
+        mask.set_xy(x, y, true).expect("selected pixel");
+    }
+    mask
+}
+
+fn selected_bits(mask: &SelectionMask, bounds: Rect) -> Vec<bool> {
+    (bounds.top()..bounds.bottom())
+        .flat_map(|y| (bounds.left()..bounds.right()).map(move |x| mask.contains_xy(x, y)))
+        .collect()
 }
 
 #[test]
@@ -141,4 +155,362 @@ fn partially_off_canvas_ellipse_keeps_its_original_geometry() {
             .expect("outside ellipse")
             .is_none()
     );
+}
+
+#[test]
+fn mask_algebra_matches_set_operations_for_each_combine_mode() {
+    let bounds = rect(0, 0, 4, 1);
+    let base = mask(bounds, &[(0, 0), (1, 0)]);
+    let addition = mask(bounds, &[(1, 0), (2, 0)]);
+
+    let union = base
+        .union(&addition)
+        .expect("union")
+        .expect("union is not empty");
+    assert_eq!(selected_bits(&union, bounds), [true, true, true, false]);
+    assert_eq!(union.selected_count(), 3);
+    assert_eq!(union.bounds(), rect(0, 0, 3, 1));
+
+    let intersect = base
+        .intersect(&addition)
+        .expect("intersect")
+        .expect("shared pixel");
+    assert_eq!(
+        selected_bits(&intersect, bounds),
+        [false, true, false, false]
+    );
+    assert_eq!(intersect.bounds(), rect(1, 0, 2, 1));
+
+    let subtract = base
+        .subtract(&addition)
+        .expect("subtract")
+        .expect("remaining pixel");
+    assert_eq!(
+        selected_bits(&subtract, bounds),
+        [true, false, false, false]
+    );
+    assert_eq!(subtract.bounds(), rect(0, 0, 1, 1));
+
+    let xor = base.xor(&addition).expect("xor").expect("xor is not empty");
+    assert_eq!(selected_bits(&xor, bounds), [true, false, true, false]);
+    assert_eq!(xor.bounds(), rect(0, 0, 3, 1));
+}
+
+#[test]
+fn mask_algebra_handles_empty_full_and_disjoint_masks() {
+    let bounds = rect(0, 0, 4, 4);
+    let empty = SelectionMask::empty(bounds).expect("empty mask");
+    let full = SelectionMask::full(bounds).expect("full mask");
+    let partial = mask(rect(0, 0, 2, 2), &[(0, 0), (1, 1)]);
+
+    assert_eq!(empty.union(&partial).expect("union"), Some(partial.clone()));
+    assert_eq!(partial.union(&empty).expect("union"), Some(partial.clone()));
+    assert!(empty.intersect(&partial).expect("intersect").is_none());
+    assert!(empty.subtract(&partial).expect("subtract").is_none());
+    assert_eq!(
+        partial.subtract(&empty).expect("subtract"),
+        Some(partial.clone())
+    );
+
+    assert_eq!(full.union(&partial).expect("union"), Some(full.clone()));
+    assert_eq!(
+        full.intersect(&partial).expect("intersect"),
+        Some(partial.clone())
+    );
+    assert!(full.subtract(&full).expect("subtract").is_none());
+    assert!(full.xor(&full).expect("xor").is_none());
+    let complement = full
+        .subtract(&partial)
+        .expect("subtract")
+        .expect("complement is not empty");
+    assert_eq!(
+        complement.selected_count(),
+        full.selected_count() - partial.selected_count()
+    );
+    assert!(!complement.contains_xy(0, 0));
+    assert!(complement.contains_xy(2, 2));
+    assert_eq!(full.xor(&empty).expect("xor"), Some(full));
+
+    let left = mask(rect(0, 0, 2, 2), &[(0, 0), (1, 1)]);
+    let right = mask(rect(2, 0, 4, 2), &[(3, 0)]);
+    let disjoint_union = left.union(&right).expect("union").expect("disjoint union");
+    assert_eq!(disjoint_union.selected_count(), 3);
+    assert_eq!(disjoint_union.bounds(), rect(0, 0, 4, 2));
+    assert!(disjoint_union.contains_xy(3, 0));
+    assert!(!disjoint_union.contains_xy(2, 1));
+    assert!(left.intersect(&right).expect("intersect").is_none());
+    assert_eq!(left.subtract(&right).expect("subtract"), Some(left.clone()));
+    assert_eq!(left.xor(&right).expect("xor"), Some(disjoint_union.clone()));
+}
+
+#[test]
+fn rectangle_combine_keeps_the_rectangle_fast_path_and_falls_back_to_masks() {
+    let canvas = Size::new(10, 10).expect("canvas");
+    let base = Selection::rectangle(rect(0, 0, 4, 4));
+    let inner = Selection::rectangle(rect(1, 1, 3, 3));
+
+    let union = Selection::combine(
+        Some(&base),
+        Some(&inner),
+        SelectionCombineMode::Union,
+        canvas,
+    )
+    .expect("union")
+    .expect("union selection");
+    assert!(union.is_rectangular());
+    assert_eq!(union.bounds(), base.bounds());
+
+    let intersect = Selection::combine(
+        Some(&base),
+        Some(&inner),
+        SelectionCombineMode::Intersect,
+        canvas,
+    )
+    .expect("intersect")
+    .expect("intersection selection");
+    assert!(intersect.is_rectangular());
+    assert_eq!(intersect.bounds(), inner.bounds());
+
+    let subtract = Selection::combine(
+        Some(&base),
+        Some(&inner),
+        SelectionCombineMode::Subtract,
+        canvas,
+    )
+    .expect("subtract")
+    .expect("subtracted selection");
+    assert!(!subtract.is_rectangular());
+    assert!(subtract.contains(Point::new(0, 0)));
+    assert!(!subtract.contains(Point::new(1, 1)));
+    assert!(subtract.contains(Point::new(3, 3)));
+    assert_eq!(subtract.bounds(), base.bounds());
+
+    let xor = Selection::combine(Some(&base), Some(&inner), SelectionCombineMode::Xor, canvas)
+        .expect("xor")
+        .expect("xor selection");
+    assert!(!xor.is_rectangular());
+    assert!(xor.contains(Point::new(0, 0)));
+    assert!(!xor.contains(Point::new(1, 1)));
+    assert!(xor.contains(Point::new(3, 3)));
+
+    let left = Selection::rectangle(rect(0, 0, 2, 2));
+    let touching = Selection::rectangle(rect(2, 0, 4, 2));
+    let merged = Selection::combine(
+        Some(&left),
+        Some(&touching),
+        SelectionCombineMode::Union,
+        canvas,
+    )
+    .expect("union")
+    .expect("merged selection");
+    assert!(merged.is_rectangular());
+    assert_eq!(merged.bounds(), rect(0, 0, 4, 2));
+
+    let gap = Selection::rectangle(rect(3, 0, 5, 2));
+    let split = Selection::combine(Some(&left), Some(&gap), SelectionCombineMode::Union, canvas)
+        .expect("union")
+        .expect("split selection");
+    assert!(!split.is_rectangular());
+    assert!(split.contains(Point::new(0, 0)));
+    assert!(!split.contains(Point::new(2, 0)));
+    assert!(split.contains(Point::new(3, 0)));
+
+    let band = Selection::rectangle(rect(2, 0, 6, 4));
+    let remaining = Selection::combine(
+        Some(&base),
+        Some(&band),
+        SelectionCombineMode::Subtract,
+        canvas,
+    )
+    .expect("subtract")
+    .expect("remaining selection");
+    assert!(remaining.is_rectangular());
+    assert_eq!(remaining.bounds(), rect(0, 0, 2, 4));
+
+    let outside = Selection::rectangle(rect(8, 8, 9, 9));
+    assert!(
+        Selection::combine(
+            Some(&base),
+            Some(&outside),
+            SelectionCombineMode::Intersect,
+            canvas,
+        )
+        .expect("intersect")
+        .is_none()
+    );
+    let untouched = Selection::combine(
+        Some(&base),
+        Some(&outside),
+        SelectionCombineMode::Subtract,
+        canvas,
+    )
+    .expect("subtract")
+    .expect("untouched selection");
+    assert!(untouched.is_rectangular());
+    assert_eq!(untouched.bounds(), base.bounds());
+}
+
+#[test]
+fn rectangle_union_with_a_mask_inside_keeps_the_rectangle() {
+    let canvas = Size::new(10, 10).expect("canvas");
+    let base = Selection::rectangle(rect(0, 0, 6, 6));
+    let inner = Selection::from_mask(SelectionMask::ellipse(rect(1, 1, 5, 5)).expect("ellipse"));
+
+    let union = Selection::combine(
+        Some(&base),
+        Some(&inner),
+        SelectionCombineMode::Union,
+        canvas,
+    )
+    .expect("union")
+    .expect("union selection");
+    assert!(union.is_rectangular());
+    assert_eq!(union.bounds(), base.bounds());
+
+    let intersect = Selection::combine(
+        Some(&base),
+        Some(&inner),
+        SelectionCombineMode::Intersect,
+        canvas,
+    )
+    .expect("intersect")
+    .expect("intersection selection");
+    assert_eq!(intersect, inner);
+}
+
+#[test]
+fn combine_without_a_base_or_without_an_addition_follows_set_algebra() {
+    let canvas = Size::new(10, 10).expect("canvas");
+    let addition = Selection::rectangle(rect(0, 0, 2, 2));
+    for mode in [
+        SelectionCombineMode::Replace,
+        SelectionCombineMode::Union,
+        SelectionCombineMode::Xor,
+    ] {
+        assert_eq!(
+            Selection::combine(None, Some(&addition), mode, canvas).expect("combine"),
+            Some(addition.clone()),
+            "{mode:?} with no base keeps the addition"
+        );
+    }
+    for mode in [
+        SelectionCombineMode::Subtract,
+        SelectionCombineMode::Intersect,
+    ] {
+        assert!(
+            Selection::combine(None, Some(&addition), mode, canvas)
+                .expect("combine")
+                .is_none(),
+            "{mode:?} with no base selects nothing"
+        );
+    }
+
+    let base = Selection::rectangle(rect(1, 1, 4, 4));
+    assert!(
+        Selection::combine(Some(&base), None, SelectionCombineMode::Replace, canvas)
+            .expect("combine")
+            .is_none()
+    );
+    assert!(
+        Selection::combine(Some(&base), None, SelectionCombineMode::Intersect, canvas)
+            .expect("combine")
+            .is_none()
+    );
+    for mode in [
+        SelectionCombineMode::Union,
+        SelectionCombineMode::Subtract,
+        SelectionCombineMode::Xor,
+    ] {
+        assert_eq!(
+            Selection::combine(Some(&base), None, mode, canvas).expect("combine"),
+            Some(base.clone()),
+            "{mode:?} with an empty addition keeps the base"
+        );
+    }
+}
+
+#[test]
+fn document_combine_selection_applies_modes_and_reports_real_changes() {
+    let mut document = Document::new(Size::new(6, 6).expect("document size")).expect("document");
+    let first = Selection::rectangle(rect(0, 0, 2, 2));
+    assert!(
+        document
+            .combine_selection(Some(first.clone()), SelectionCombineMode::Replace)
+            .expect("replace")
+    );
+    assert_eq!(document.selection(), Some(first.bounds()));
+    assert!(
+        !document
+            .combine_selection(Some(first), SelectionCombineMode::Replace)
+            .expect("repeat replace"),
+        "an identical replacement is a no-op"
+    );
+
+    let adjacent = Selection::rectangle(rect(2, 0, 4, 2));
+    assert!(
+        document
+            .combine_selection(Some(adjacent), SelectionCombineMode::Union)
+            .expect("union")
+    );
+    assert_eq!(document.selection(), Some(rect(0, 0, 4, 2)));
+
+    let band = Selection::rectangle(rect(1, 0, 6, 2));
+    assert!(
+        document
+            .combine_selection(Some(band), SelectionCombineMode::Subtract)
+            .expect("subtract")
+    );
+    assert_eq!(document.selection(), Some(rect(0, 0, 1, 2)));
+
+    let outside = Selection::rectangle(rect(4, 4, 6, 6));
+    assert!(
+        document
+            .combine_selection(Some(outside), SelectionCombineMode::Intersect)
+            .expect("intersect")
+    );
+    assert_eq!(document.selection(), None);
+
+    assert!(
+        !document
+            .combine_selection(None, SelectionCombineMode::Union)
+            .expect("empty union"),
+        "an empty addition with no selection changes nothing"
+    );
+}
+
+#[test]
+fn mask_algebra_crosses_word_and_signed_boundaries() {
+    let base = mask(rect(-70, -2, 70, 2), &[(-70, -2), (0, 0), (69, 1)]);
+    let other = mask(
+        rect(-10, -2, 130, 2),
+        &[(-10, -2), (0, 0), (75, 1), (129, 1)],
+    );
+
+    let union = base.union(&other).expect("union").expect("union pixels");
+    assert_eq!(union.selected_count(), 6);
+    for point in [(-70, -2), (-10, -2), (0, 0), (69, 1), (75, 1), (129, 1)] {
+        assert!(
+            union.contains_xy(point.0, point.1),
+            "union misses {point:?}"
+        );
+    }
+
+    let intersect = base
+        .intersect(&other)
+        .expect("intersect")
+        .expect("shared pixel");
+    assert_eq!(intersect.selected_count(), 1);
+    assert!(intersect.contains_xy(0, 0));
+
+    let subtract = base.subtract(&other).expect("subtract").expect("remainder");
+    assert_eq!(subtract.selected_count(), 2);
+    assert!(subtract.contains_xy(-70, -2));
+    assert!(subtract.contains_xy(69, 1));
+    assert!(!subtract.contains_xy(0, 0));
+
+    let xor = base.xor(&other).expect("xor").expect("xor pixels");
+    assert_eq!(xor.selected_count(), 5);
+    assert!(xor.contains_xy(-70, -2));
+    assert!(xor.contains_xy(129, 1));
+    assert!(!xor.contains_xy(0, 0));
 }
