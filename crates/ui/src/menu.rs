@@ -25,6 +25,7 @@ pub(crate) enum NativeCommand {
     ZoomOut,
     ActualSize,
     FitCanvas,
+    ToggleRulers,
     FlipHorizontal,
     FlipVertical,
     Invert,
@@ -62,6 +63,7 @@ impl NativeCommand {
             "view.zoom_out" => Self::ZoomOut,
             "view.actual" => Self::ActualSize,
             "view.fit" => Self::FitCanvas,
+            "view.rulers" => Self::ToggleRulers,
             "layers.flip_h" => Self::FlipHorizontal,
             "layers.flip_v" => Self::FlipVertical,
             "adjust.invert" => Self::Invert,
@@ -96,6 +98,7 @@ pub(crate) struct NativeMenuState {
     pub layers_visible: bool,
     pub history_visible: bool,
     pub float_panels: bool,
+    pub rulers_enabled: bool,
 }
 
 pub(crate) struct NativeMenu {
@@ -109,6 +112,7 @@ pub(crate) struct NativeMenu {
     layers: CheckMenuItem,
     history: CheckMenuItem,
     float_panels: CheckMenuItem,
+    rulers: CheckMenuItem,
 }
 
 impl NativeMenu {
@@ -199,8 +203,16 @@ impl NativeMenu {
         let zoom_out = MenuItem::with_id("view.zoom_out", "Zoom Out", true, None);
         let actual = MenuItem::with_id("view.actual", "Actual Size", true, None);
         let fit = MenuItem::with_id("view.fit", "Fit Canvas", true, None);
-        view.append_items(&[&zoom_in, &zoom_out, &actual, &fit])
-            .ok()?;
+        let rulers = CheckMenuItem::with_id("view.rulers", "Rulers", true, false, None);
+        view.append_items(&[
+            &zoom_in,
+            &zoom_out,
+            &actual,
+            &fit,
+            &PredefinedMenuItem::separator(),
+            &rulers,
+        ])
+        .ok()?;
 
         let layers = Submenu::new("Layers", true);
         let flip_h = MenuItem::with_id(
@@ -380,6 +392,7 @@ impl NativeMenu {
             layers: layer_window,
             history,
             float_panels,
+            rulers,
         })
     }
 
@@ -400,6 +413,7 @@ impl NativeMenu {
         self.layers.set_checked(state.layers_visible);
         self.history.set_checked(state.history_visible);
         self.float_panels.set_checked(state.float_panels);
+        self.rulers.set_checked(state.rulers_enabled);
     }
 }
 
@@ -424,6 +438,7 @@ mod tests {
             ("view.zoom_out", ZoomOut),
             ("view.actual", ActualSize),
             ("view.fit", FitCanvas),
+            ("view.rulers", ToggleRulers),
             ("layers.flip_h", FlipHorizontal),
             ("layers.flip_v", FlipVertical),
             ("adjust.invert", Invert),

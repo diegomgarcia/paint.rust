@@ -11,9 +11,11 @@ mod layers;
 #[cfg(target_os = "macos")]
 mod menu;
 pub mod native;
+mod rulers;
 mod selection;
 
 pub use app::{LayerListGeometry, LayerRowGeometry, PaintApp};
+pub use rulers::{RULER_THICKNESS, RulerLayout, RulerTick};
 
 /// Converts hue in degrees, saturation, value, and alpha into canonical BGRA.
 pub fn color_from_hsv(hue_degrees: f32, saturation: f32, value: f32, alpha: u8) -> Bgra {

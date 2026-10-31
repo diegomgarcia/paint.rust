@@ -86,6 +86,28 @@ fn menu_item(harness: &mut Harness<'_, PaintApp>, menu: &str, item: &str) {
     click(harness, item);
 }
 
+fn toggle_rulers(harness: &mut Harness<'_, PaintApp>) {
+    click(harness, "View");
+    harness
+        .get_by_role_and_label(Role::CheckBox, "Rulers")
+        .click();
+    harness.run();
+}
+
+fn select_unit(harness: &mut Harness<'_, PaintApp>, unit: &str) {
+    click(harness, "View");
+    harness
+        .get_by_role_and_label(Role::RadioButton, unit)
+        .click();
+    harness.run();
+}
+
+fn canvas_rect(harness: &Harness<'_, PaintApp>) -> egui::Rect {
+    harness
+        .get_by_role_and_label(Role::Image, "Composed document canvas")
+        .rect()
+}
+
 fn button_is_disabled(harness: &Harness<'_, PaintApp>, label: &str) -> bool {
     harness
         .get_by_role_and_label(Role::Button, label)
@@ -3187,6 +3209,221 @@ fn view_units_change_status_coordinates() {
         .click();
     harness.run();
     harness.get_by_label("—, — cm");
+}
+
+#[test]
+fn view_rulers_toggle_draws_strips_and_shifts_only_the_canvas_origin() {
+    let mut harness = app();
+    assert!(!harness.state().rulers_enabled());
+    assert!(harness.state().ruler_layout().is_none());
+    let before = canvas_rect(&harness);
+
+    toggle_rulers(&mut harness);
+
+    assert!(harness.state().rulers_enabled());
+    harness.get_by_label("Horizontal ruler");
+    harness.get_by_label("Vertical ruler");
+    harness.get_by_label("Ruler units: px");
+    let after = canvas_rect(&harness);
+    let thickness = paint_ui::RULER_THICKNESS;
+    assert!((20.0..=24.0).contains(&thickness));
+    assert!((after.min.x - before.min.x - thickness).abs() < 0.5);
+    assert!((after.min.y - before.min.y - thickness).abs() < 0.5);
+    assert!((after.width() - before.width()).abs() < 0.5);
+    assert!((after.height() - before.height()).abs() < 0.5);
+
+    let layout = harness.state().ruler_layout().expect("ruler layout");
+    assert!((layout.thickness - thickness).abs() < f32::EPSILON);
+    assert_eq!(layout.unit, "px");
+    assert!((layout.canvas_origin.x - after.min.x).abs() < 0.01);
+    assert!((layout.canvas_origin.y - after.min.y).abs() < 0.01);
+    let origin = layout.horizontal.first().expect("horizontal origin tick");
+    assert_eq!(origin.value, 0.0);
+    assert_eq!(origin.label.as_deref(), Some("0"));
+    assert!(origin.major);
+    assert!((origin.position.x - layout.canvas_origin.x).abs() < 0.01);
+    assert!((origin.position.y - layout.canvas_origin.y).abs() < 0.01);
+
+    toggle_rulers(&mut harness);
+    assert!(!harness.state().rulers_enabled());
+    assert!(harness.state().ruler_layout().is_none());
+    let restored = canvas_rect(&harness);
+    assert!((restored.min.x - before.min.x).abs() < 0.5);
+    assert!((restored.min.y - before.min.y).abs() < 0.5);
+}
+
+#[test]
+fn ruler_ticks_follow_zoom_and_units() {
+    let mut harness = app();
+    toggle_rulers(&mut harness);
+
+    let layout = harness.state().ruler_layout().expect("ruler layout");
+    let origin = layout.canvas_origin;
+    let tick = layout
+        .horizontal
+        .iter()
+        .find(|tick| (tick.value - 100.0).abs() < 1e-6)
+        .expect("100 px tick");
+    assert_eq!(tick.label.as_deref(), Some("100"));
+    assert!(tick.major);
+    assert!((tick.position.x - origin.x - 100.0).abs() < 0.01);
+    assert!(harness.query_all_by_label("100 px").count() > 0);
+    assert_major_labels_do_not_overlap(layout);
+
+    for _ in 0..4 {
+        click(&mut harness, "Zoom in");
+    }
+    assert_eq!(harness.state().zoom(), 2.0);
+    let layout = harness.state().ruler_layout().expect("ruler layout");
+    let origin = layout.canvas_origin;
+    let tick = layout
+        .horizontal
+        .iter()
+        .find(|tick| (tick.value - 100.0).abs() < 1e-6)
+        .expect("100 px tick at 200%");
+    assert_eq!(tick.label.as_deref(), Some("100"));
+    assert!((tick.position.x - origin.x - 200.0).abs() < 0.01);
+    assert_major_labels_do_not_overlap(layout);
+
+    for _ in 0..24 {
+        click(&mut harness, "Zoom in");
+    }
+    assert_eq!(harness.state().zoom(), 8.0);
+    let layout = harness.state().ruler_layout().expect("ruler layout");
+    let origin = layout.canvas_origin;
+    let tick = layout
+        .horizontal
+        .iter()
+        .find(|tick| (tick.value - 100.0).abs() < 1e-6)
+        .expect("100 px tick at 800%");
+    assert_eq!(tick.label.as_deref(), Some("100"));
+    assert!((tick.position.x - origin.x - 800.0).abs() < 0.01);
+    assert_major_labels_do_not_overlap(layout);
+
+    menu_item(&mut harness, "View", "Actual Size");
+    select_unit(&mut harness, "Inches");
+    let layout = harness.state().ruler_layout().expect("ruler layout");
+    assert_eq!(layout.unit, "in");
+    let tick = layout
+        .horizontal
+        .iter()
+        .find(|tick| (tick.value - 96.0).abs() < 1e-6)
+        .expect("1 inch tick");
+    assert_eq!(tick.label.as_deref(), Some("1.0"));
+    assert!(harness.query_all_by_label("1.0 in").count() > 0);
+    assert_eq!(harness.query_all_by_label("100 px").count(), 0);
+    assert_major_labels_do_not_overlap(layout);
+
+    select_unit(&mut harness, "Centimeters");
+    let layout = harness.state().ruler_layout().expect("ruler layout");
+    assert_eq!(layout.unit, "cm");
+    let centimeters = 2.0;
+    let value = centimeters / 2.54 * 96.0;
+    let tick = layout
+        .horizontal
+        .iter()
+        .find(|tick| (tick.value - value).abs() < 1e-6)
+        .expect("2 cm tick");
+    assert_eq!(tick.label.as_deref(), Some("2"));
+    assert!(harness.query_all_by_label("2 cm").count() >= 2);
+    assert_eq!(harness.query_all_by_label("1.0 in").count(), 0);
+    assert_major_labels_do_not_overlap(layout);
+}
+
+fn assert_major_labels_do_not_overlap(layout: &paint_ui::RulerLayout) {
+    let majors: Vec<_> = layout.horizontal.iter().filter(|tick| tick.major).collect();
+    assert!(majors.len() >= 2, "at least two labeled ticks");
+    for pair in majors.windows(2) {
+        assert!(
+            pair[1].position.x - pair[0].position.x >= 40.0,
+            "labeled ticks must not overlap: {:?} -> {:?}",
+            pair[0].label,
+            pair[1].label
+        );
+    }
+}
+
+#[test]
+fn drawing_and_pointer_coordinates_stay_aligned_with_rulers_enabled() {
+    let mut harness = app();
+    toggle_rulers(&mut harness);
+    dock_tools(&mut harness);
+    click(&mut harness, "Pencil");
+    drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(20.0, 6.0));
+    let surface = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface();
+    for x in [5, 12, 20] {
+        assert_eq!(
+            *surface.pixel(Point::new(x, 6)).expect("ruled pencil pixel"),
+            Bgra::BLACK,
+            "rulers must not shift document-space drawing at x={x}"
+        );
+    }
+
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(20.0, 6.0));
+    assert_eq!(
+        harness.state().session().document().selection().map(|s| (
+            s.left(),
+            s.top(),
+            s.right(),
+            s.bottom()
+        )),
+        Some((5, 6, 21, 7)),
+        "rulers must not shift document-space selection mapping"
+    );
+
+    let rect = canvas_rect(&harness);
+    harness.drag_at(rect.min + egui::vec2(10.0, 10.0));
+    harness.run();
+    harness.get_by_label("10, 10 px");
+    harness.drop_at(rect.min + egui::vec2(10.0, 10.0));
+    harness.run();
+}
+
+#[test]
+fn rulers_scroll_with_the_canvas_when_panned() {
+    let mut harness = app();
+    for _ in 0..4 {
+        click(&mut harness, "Zoom in");
+    }
+    assert_eq!(harness.state().zoom(), 2.0);
+    toggle_rulers(&mut harness);
+    dock_tools(&mut harness);
+    click(&mut harness, "Pan");
+
+    let before = harness
+        .state()
+        .ruler_layout()
+        .expect("ruler layout")
+        .clone();
+    drag_canvas(
+        &mut harness,
+        egui::vec2(300.0, 300.0),
+        egui::vec2(600.0, 520.0),
+    );
+    let after = harness.state().ruler_layout().expect("ruler layout");
+    assert!(
+        (after.canvas_origin.x - before.canvas_origin.x).abs() > 1.0
+            || (after.canvas_origin.y - before.canvas_origin.y).abs() > 1.0,
+        "panning must scroll the canvas"
+    );
+    let before_tick = before.horizontal_tick(100.0).expect("100 px tick");
+    let after_tick = after.horizontal_tick(100.0).expect("100 px tick");
+    assert!((after_tick.position.x - after.canvas_origin.x - 200.0).abs() < 0.5);
+    assert!(
+        (after.canvas_origin.x
+            - before.canvas_origin.x
+            - (after_tick.position.x - before_tick.position.x))
+            .abs()
+            < 0.5
+    );
+    let after_vertical = after.vertical_tick(100.0).expect("100 px tick");
+    assert!((after_vertical.position.y - after.canvas_origin.y - 200.0).abs() < 0.5);
 }
 
 #[test]

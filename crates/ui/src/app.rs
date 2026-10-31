@@ -27,6 +27,7 @@ use crate::icons::{
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
 #[cfg(target_os = "macos")]
 use crate::menu::{NativeCommand, NativeMenu, NativeMenuState};
+use crate::rulers::{RULER_THICKNESS, RulerLayout};
 use crate::selection::{paint_selection, paint_selection_outline};
 
 const DEFAULT_WIDTH: u32 = 800;
@@ -186,6 +187,8 @@ pub struct PaintApp {
     fit_canvas_requested: bool,
     zoom_to_selection_requested: bool,
     show_grid: bool,
+    show_rulers: bool,
+    ruler_layout: Option<RulerLayout>,
     unit: CanvasUnit,
     layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
     floating_selection: Option<FloatingSelectionState>,
@@ -313,6 +316,8 @@ impl PaintApp {
             fit_canvas_requested: false,
             zoom_to_selection_requested: false,
             show_grid: false,
+            show_rulers: false,
+            ruler_layout: None,
             unit: CanvasUnit::Pixels,
             layer_thumbnails: HashMap::new(),
             floating_selection: None,
@@ -473,6 +478,16 @@ impl PaintApp {
     #[doc(hidden)]
     pub const fn grid_enabled(&self) -> bool {
         self.show_grid
+    }
+
+    #[doc(hidden)]
+    pub const fn rulers_enabled(&self) -> bool {
+        self.show_rulers
+    }
+
+    #[doc(hidden)]
+    pub const fn ruler_layout(&self) -> Option<&RulerLayout> {
+        self.ruler_layout.as_ref()
     }
 
     #[doc(hidden)]
@@ -1379,6 +1394,7 @@ impl PaintApp {
                 NativeCommand::ZoomOut => self.zoom = (self.zoom - 0.25).max(0.1),
                 NativeCommand::ActualSize => self.zoom = 1.0,
                 NativeCommand::FitCanvas => self.fit_canvas_requested = true,
+                NativeCommand::ToggleRulers => self.show_rulers = !self.show_rulers,
                 NativeCommand::FlipHorizontal => {
                     self.execute(
                         Command::FlipLayerHorizontal,
@@ -1473,6 +1489,7 @@ impl PaintApp {
             layers_visible: self.layers_visible,
             history_visible: self.history_visible,
             float_panels: self.panels_floating,
+            rulers_enabled: self.show_rulers,
         };
         if let Some(menu) = self.native_menu.as_ref() {
             menu.sync(state);
@@ -1577,7 +1594,7 @@ impl PaintApp {
                     }
                     ui.separator();
                     ui.checkbox(&mut self.show_grid, "Grid");
-                    ui.add_enabled(false, egui::Button::new("Rulers"));
+                    ui.checkbox(&mut self.show_rulers, "Rulers");
                     ui.separator();
                     ui.radio_value(&mut self.unit, CanvasUnit::Pixels, "Pixels");
                     ui.radio_value(&mut self.unit, CanvasUnit::Inches, "Inches");
@@ -3985,8 +4002,13 @@ impl PaintApp {
             let size = self.session.document().size();
             if self.fit_canvas_requested {
                 let available = ui.available_size();
-                self.zoom = ((available.x - 24.0).max(32.0) / size.width() as f32)
-                    .min((available.y - 24.0).max(32.0) / size.height() as f32)
+                let gutter = if self.show_rulers {
+                    RULER_THICKNESS
+                } else {
+                    0.0
+                };
+                self.zoom = ((available.x - gutter - 24.0).max(32.0) / size.width() as f32)
+                    .min((available.y - gutter - 24.0).max(32.0) / size.height() as f32)
                     .clamp(0.05, 8.0);
                 self.fit_canvas_requested = false;
             }
@@ -3998,8 +4020,14 @@ impl PaintApp {
                     .and_then(|selection| selection.clip_to(size))
                 {
                     let available = ui.available_size();
-                    self.zoom = ((available.x - 24.0).max(32.0) / selection.width() as f32)
-                        .min((available.y - 24.0).max(32.0) / selection.height() as f32)
+                    let gutter = if self.show_rulers {
+                        RULER_THICKNESS
+                    } else {
+                        0.0
+                    };
+                    self.zoom = ((available.x - gutter - 24.0).max(32.0)
+                        / selection.width() as f32)
+                        .min((available.y - gutter - 24.0).max(32.0) / selection.height() as f32)
                         .clamp(0.05, 8.0);
                 }
                 self.zoom_to_selection_requested = false;
@@ -4007,6 +4035,8 @@ impl PaintApp {
             let texture = self.texture.clone();
             let zoom = self.zoom;
             let picking = self.picking_color;
+            let ruler_thickness = self.show_rulers.then_some(RULER_THICKNESS);
+            self.ruler_layout = None;
             let mut picked = None;
             let mut pending_selection = None;
             let mut pending_paint: Option<(Command, String)> = None;
@@ -4021,7 +4051,25 @@ impl PaintApp {
                         } else {
                             egui::Sense::click_and_drag()
                         };
-                        let (rect, response) = ui.allocate_exact_size(display, sense);
+                        let (rect, response, block_rect) = if let Some(thickness) = ruler_thickness
+                        {
+                            let block = egui::vec2(display.x + thickness, display.y + thickness);
+                            let (block_rect, _) =
+                                ui.allocate_exact_size(block, egui::Sense::hover());
+                            let rect = egui::Rect::from_min_size(
+                                block_rect.min + egui::vec2(thickness, thickness),
+                                display,
+                            );
+                            let response = ui.interact(
+                                rect,
+                                ui.scope_id().with("paint-r-canvas-surface"),
+                                sense,
+                            );
+                            (rect, response, block_rect)
+                        } else {
+                            let (rect, response) = ui.allocate_exact_size(display, sense);
+                            (rect, response, rect)
+                        };
                         response.widget_info(|| {
                             egui::WidgetInfo::labeled(
                                 egui::Role::Image,
@@ -4030,6 +4078,11 @@ impl PaintApp {
                             )
                         });
                         let response = response.on_hover_cursor(egui::CursorIcon::Crosshair);
+                        if ruler_thickness.is_some() {
+                            let layout = crate::rulers::layout(self.unit, zoom, rect.min, size);
+                            crate::rulers::paint(ui, block_rect, rect, &layout);
+                            self.ruler_layout = Some(layout);
+                        }
                         if ui.is_rect_visible(rect) {
                             paint_checkerboard(ui.painter(), rect);
                             egui::Image::from_texture(&texture).paint_at(ui, rect);
@@ -5239,14 +5292,14 @@ enum DiscardAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CanvasUnit {
+pub(crate) enum CanvasUnit {
     Pixels,
     Inches,
     Centimeters,
 }
 
 impl CanvasUnit {
-    const fn suffix(self) -> &'static str {
+    pub(crate) const fn suffix(self) -> &'static str {
         match self {
             Self::Pixels => "px",
             Self::Inches => "in",
@@ -5254,7 +5307,7 @@ impl CanvasUnit {
         }
     }
 
-    fn convert(self, pixels: f64) -> f64 {
+    pub(crate) fn convert(self, pixels: f64) -> f64 {
         match self {
             Self::Pixels => pixels,
             Self::Inches => pixels / 96.0,
