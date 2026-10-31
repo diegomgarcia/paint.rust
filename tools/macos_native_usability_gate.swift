@@ -369,7 +369,7 @@ private func focusTarget(pid: pid_t, title: String) throws {
 }
 
 private func sendKey(pid: pid_t, title: String, name: String, modifierText: String) throws -> [String: Any] {
-    let allowed = (name == "i" && modifierText == "command")
+    let allowed = (name == "i" && (modifierText == "command" || modifierText == "command,shift"))
         || (name == "q" && modifierText == "command")
         || (name == "w" && modifierText == "command")
         || (name == "escape" && modifierText.isEmpty)
@@ -380,36 +380,52 @@ private func sendKey(pid: pid_t, title: String, name: String, modifierText: Stri
     try requirePreflight() // Recheck immediately before posting into the console session.
 
     let source = CGEventSource(stateID: .hidSystemState)
-    let flags: CGEventFlags = modifierText == "command" ? [.maskCommand] : []
+    var flags: CGEventFlags = []
+    if modifierText.contains("command") { flags.insert(.maskCommand) }
+    if modifierText.contains("shift") { flags.insert(.maskShift) }
     guard let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
           let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
         throw error("CG_EVENT_FAILED", "could not create keyboard events")
     }
     down.flags = flags
     up.flags = flags
-    var commandDown: CGEvent?
-    var commandUp: CGEvent?
-    if modifierText == "command" {
-        commandDown = CGEvent(keyboardEventSource: source, virtualKey: 55, keyDown: true)
-        commandUp = CGEvent(keyboardEventSource: source, virtualKey: 55, keyDown: false)
-        guard commandDown != nil, commandUp != nil else {
+    var modifierDowns: [CGEvent] = []
+    var modifierUps: [CGEvent] = []
+    if modifierText.contains("shift") {
+        guard let shiftDown = CGEvent(keyboardEventSource: source, virtualKey: 56, keyDown: true),
+              let shiftUp = CGEvent(keyboardEventSource: source, virtualKey: 56, keyDown: false) else {
+            throw error("CG_EVENT_FAILED", "could not create Shift modifier events")
+        }
+        shiftDown.flags = flags
+        modifierDowns.append(shiftDown)
+        modifierUps.append(shiftUp)
+    }
+    if modifierText.contains("command") {
+        guard let commandDown = CGEvent(keyboardEventSource: source, virtualKey: 55, keyDown: true),
+              let commandUp = CGEvent(keyboardEventSource: source, virtualKey: 55, keyDown: false) else {
             throw error("CG_EVENT_FAILED", "could not create Command modifier events")
         }
-        commandDown?.flags = flags
+        commandDown.flags = flags
+        modifierDowns.append(commandDown)
+        modifierUps.append(commandUp)
     }
-    commandDown?.post(tap: .cgSessionEventTap)
-    if commandDown != nil { usleep(40_000) }
+    for event in modifierDowns {
+        event.post(tap: .cgSessionEventTap)
+        usleep(40_000)
+    }
     down.post(tap: .cgSessionEventTap)
     usleep(80_000)
     up.post(tap: .cgSessionEventTap)
     usleep(40_000)
-    commandUp?.post(tap: .cgSessionEventTap)
+    for event in modifierUps.reversed() {
+        event.post(tap: .cgSessionEventTap)
+    }
     usleep(100_000)
     return [
         "event": "CGEvent keyboard down/up posted",
         "pid": Int(pid),
         "key": name,
-        "modifiers": modifierText.isEmpty ? [] : [modifierText],
+        "modifiers": modifierText.isEmpty ? [] : modifierText.split(separator: ",").map(String.init),
     ]
 }
 

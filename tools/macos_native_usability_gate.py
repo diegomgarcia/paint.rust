@@ -600,9 +600,18 @@ class NativeUsabilityGate:
         before = self._capture("00-before.png", initial)
         window_id = initial.window_id
 
-        self.evidence.record("native_input", action="key", key="i", modifiers=["command"], result=self._native("send Command-I", lambda: self.backend.key(pid, "i", ("command",))))
+        self.evidence.record(
+            "native_input",
+            action="key",
+            key="i",
+            modifiers=["command", "shift"],
+            result=self._native(
+                "send Command-Shift-I",
+                lambda: self.backend.key(pid, "i", ("command", "shift")),
+            ),
+        )
         modified = self._wait_window(
-            "command_i_modified_document",
+            "invert_colors_modified_document",
             self.config.observation_timeout,
             lambda item: item.window_id == window_id and item.modified() and not item.close_dialog(),
         )
@@ -851,6 +860,7 @@ class MacOSNativeBackend:
     def key(self, pid: int, name: str, modifiers: tuple[str, ...] = ()) -> dict[str, Any]:
         allowed = {
             ("i", ("command",)),
+            ("i", ("command", "shift")),
             ("q", ("command",)),
             ("w", ("command",)),
             ("escape", ()),

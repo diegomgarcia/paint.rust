@@ -208,7 +208,7 @@ class FakeBackend:
         self.actions.append(("key", pid, name, modifiers))
         if self.fail_cleanup:
             return {"event": "simulated native command failure"}
-        if (name, modifiers) == ("i", ("command",)):
+        if (name, modifiers) == ("i", ("command", "shift")):
             if not self.ignore_invert:
                 self.modified = True
             if self.lock_during_invert:
@@ -301,7 +301,7 @@ class NativeGateTests(unittest.TestCase):
         self.assertEqual(
             native_actions,
             [
-                ("key", 4242, "i", ("command",)),
+                ("key", 4242, "i", ("command", "shift")),
                 ("key", 4242, "q", ("command",)),
                 ("key", 4242, "escape", ()),
                 ("close_window", 4242),
@@ -318,7 +318,7 @@ class NativeGateTests(unittest.TestCase):
         self.assertTrue(
             {
                 "initial_clean_native_window",
-                "command_i_modified_document",
+                "invert_colors_modified_document",
                 "dirty_close_blocked_by_confirmation",
                 "cancel_preserved_modified_session",
                 "second_dirty_close_confirmation",
@@ -371,7 +371,7 @@ class NativeGateTests(unittest.TestCase):
 
         self.assertEqual(result["outcome"], "FAIL")
         self.assertEqual(result["error"]["code"], "OBSERVATION_TIMEOUT")
-        self.assertFalse(any(item["name"] == "command_i_modified_document" and item["passed"] for item in result["assertions"]))
+        self.assertFalse(any(item["name"] == "invert_colors_modified_document" and item["passed"] for item in result["assertions"]))
 
     def test_transient_ax_unavailability_is_retried_within_startup(self) -> None:
         self.backend.ax_unavailable_observations = 2
