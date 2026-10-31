@@ -11,7 +11,8 @@ use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{BlendMode, Document, LayerId};
 use paint_raster::{
     BrushOptions, GradientOptions, GradientRepeat, GradientType, LineCap, LineDash, LineStyle,
-    MAX_GAUSSIAN_BLUR_RADIUS, ShapeStyle, TextFontFamily, TextStyle,
+    MAX_ADJUSTMENT_VALUE, MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA, MIN_ADJUSTMENT_VALUE,
+    MIN_HUE_DELTA, ShapeStyle, TextFontFamily, TextStyle,
 };
 
 use crate::checkerboard::paint_checkerboard;
@@ -194,6 +195,8 @@ pub struct PaintApp {
     layer_properties_blend_mode: BlendMode,
     gaussian_blur_open: bool,
     gaussian_blur_radius: u32,
+    adjustment_dialog: Option<AdjustmentDialog>,
+    adjustment_previewed: Option<Effect>,
     document_title: String,
     document_thumbnail: Option<egui::TextureHandle>,
     tabs: Vec<Option<DocumentTabState>>,
@@ -317,6 +320,8 @@ impl PaintApp {
             layer_properties_blend_mode: BlendMode::Normal,
             gaussian_blur_open: false,
             gaussian_blur_radius: 2,
+            adjustment_dialog: None,
+            adjustment_previewed: None,
             document_title: "New Image".to_owned(),
             document_thumbnail: None,
             tabs: vec![None],
@@ -553,9 +558,12 @@ impl PaintApp {
         self.paint_points = state.paint_points;
         self.floating_selection = state.floating_selection;
         self.next_layer_number = state.next_layer_number;
+        self.adjustment_dialog = None;
+        self.adjustment_previewed = None;
     }
 
     fn store_active_tab(&mut self) {
+        self.close_adjustment_preview();
         self.commit_text_preview();
         let state = self.take_active_tab();
         self.tabs[self.active_tab] = Some(state);
@@ -610,6 +618,7 @@ impl PaintApp {
     }
 
     fn close_document_tab(&mut self, index: usize) {
+        self.close_adjustment_preview();
         if index >= self.tabs.len() {
             return;
         }
@@ -656,6 +665,7 @@ impl PaintApp {
     }
 
     fn new_document(&mut self) {
+        self.close_adjustment_preview();
         self.session = default_session();
         self.selection_input = SelectionInput::default();
         self.next_layer_number = 1;
@@ -736,6 +746,8 @@ impl PaintApp {
                     .to_owned();
                 self.document_thumbnail = None;
                 self.next_layer_number = 1;
+                self.history_entries = vec!["Open PNG".to_owned()];
+                self.redo_entries.clear();
                 self.texture_dirty = true;
                 self.zoom = 1.0;
                 self.layer_thumbnails.clear();
@@ -754,6 +766,9 @@ impl PaintApp {
     }
 
     fn execute(&mut self, command: Command, success: impl Into<String>) -> bool {
+        if self.adjustment_dialog.take().is_some() {
+            self.cancel_pending_adjustment();
+        }
         if !matches!(
             command,
             Command::SelectRect { .. }
@@ -1296,7 +1311,23 @@ impl PaintApp {
                     );
                 }
                 NativeCommand::GaussianBlur => {
-                    self.gaussian_blur_open = true;
+                    self.open_gaussian_blur_dialog();
+                }
+                NativeCommand::BrightnessContrast => {
+                    self.open_adjustment_dialog(AdjustmentDialog::BrightnessContrast {
+                        brightness: 0,
+                        contrast: 0,
+                    });
+                }
+                NativeCommand::HueSaturation => {
+                    self.open_adjustment_dialog(AdjustmentDialog::HueSaturation {
+                        hue: 0,
+                        saturation: 0,
+                        lightness: 0,
+                    });
+                }
+                NativeCommand::AutoLevel => {
+                    self.open_adjustment_dialog(AdjustmentDialog::AutoLevel);
                 }
                 NativeCommand::ToggleTools => self.tools_visible = !self.tools_visible,
                 NativeCommand::ToggleColors => self.colors_visible = !self.colors_visible,
@@ -1632,6 +1663,26 @@ impl PaintApp {
                         self.execute(Command::Invert, "Inverted colors on the active layer");
                         ui.close();
                     }
+                    ui.separator();
+                    if ui.button("Brightness / Contrast…").clicked() {
+                        self.open_adjustment_dialog(AdjustmentDialog::BrightnessContrast {
+                            brightness: 0,
+                            contrast: 0,
+                        });
+                        ui.close();
+                    }
+                    if ui.button("Hue / Saturation…").clicked() {
+                        self.open_adjustment_dialog(AdjustmentDialog::HueSaturation {
+                            hue: 0,
+                            saturation: 0,
+                            lightness: 0,
+                        });
+                        ui.close();
+                    }
+                    if ui.button("Auto-Level…").clicked() {
+                        self.open_adjustment_dialog(AdjustmentDialog::AutoLevel);
+                        ui.close();
+                    }
                 });
                 ui.menu_button("Effects", |ui| {
                     let invert = ui.button("Invert Colors");
@@ -1648,7 +1699,7 @@ impl PaintApp {
                     });
                     ui.menu_button("Blurs", |ui| {
                         if ui.button("Gaussian Blur…").clicked() {
-                            self.gaussian_blur_open = true;
+                            self.open_gaussian_blur_dialog();
                             ui.close();
                         }
                         for label in ["Motion Blur", "Radial Blur", "Unfocus", "Zoom Blur"] {
@@ -3544,6 +3595,90 @@ impl PaintApp {
         self.layer_properties_open = open;
     }
 
+    fn adjustment_dialog_window(&mut self, context: &egui::Context) {
+        let Some(mut dialog) = self.adjustment_dialog.take() else {
+            return;
+        };
+        let mut open = true;
+        let mut apply = false;
+        let mut cancel =
+            context.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        egui::Window::new(dialog.title())
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(320.0)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(context, |ui| {
+                dialog.show(ui);
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.button("Apply").clicked() {
+                        apply = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if apply {
+            self.apply_adjustment(dialog);
+        } else if cancel || !open {
+            let title = dialog.title();
+            self.cancel_pending_adjustment();
+            self.status = format!("Canceled {title}");
+        } else {
+            let effect = dialog.effect();
+            if self.adjustment_previewed != Some(effect) {
+                match self.session.preview_effect(effect) {
+                    Ok(_) => {
+                        self.adjustment_previewed = Some(effect);
+                        self.texture_dirty = true;
+                    }
+                    Err(error) => {
+                        self.status = format!("Adjustment preview failed: {error}");
+                    }
+                }
+            }
+            self.adjustment_dialog = Some(dialog);
+        }
+    }
+
+    fn open_adjustment_dialog(&mut self, dialog: AdjustmentDialog) {
+        self.close_adjustment_preview();
+        self.finish_active_preview();
+        self.finalize_floating_selection();
+        self.gaussian_blur_open = false;
+        self.session.begin_preview();
+        self.adjustment_previewed = None;
+        self.adjustment_dialog = Some(dialog);
+        self.texture_dirty = true;
+    }
+
+    fn apply_adjustment(&mut self, dialog: AdjustmentDialog) {
+        let effect = dialog.effect();
+        let label = effect.history_label();
+        self.cancel_pending_adjustment();
+        self.execute(Command::ApplyEffect(effect), format!("Applied {label}"));
+    }
+
+    fn cancel_pending_adjustment(&mut self) {
+        self.session.cancel_preview();
+        self.adjustment_previewed = None;
+        self.texture_dirty = true;
+    }
+
+    fn close_adjustment_preview(&mut self) {
+        if self.adjustment_dialog.take().is_some() {
+            self.cancel_pending_adjustment();
+        }
+    }
+
+    fn open_gaussian_blur_dialog(&mut self) {
+        self.close_adjustment_preview();
+        self.gaussian_blur_open = true;
+    }
+
     fn gaussian_blur_dialog(&mut self, context: &egui::Context) {
         if !self.gaussian_blur_open {
             return;
@@ -4844,6 +4979,7 @@ impl PaintApp {
             || self.resize_dialog.is_some()
             || self.canvas_size_dialog.is_some()
             || self.pending_discard.is_some()
+            || self.adjustment_dialog.is_some()
             || context.text_edit_focused()
         {
             return;
@@ -4949,6 +5085,7 @@ impl eframe::App for PaintApp {
         }
         self.layer_properties_dialog(ui.ctx());
         self.gaussian_blur_dialog(ui.ctx());
+        self.adjustment_dialog_window(ui.ctx());
         self.canvas_panel(ui);
         self.path_dialog(ui);
         self.image_size_dialogs(ui.ctx());
@@ -5289,6 +5426,93 @@ impl SizeFields {
             ));
         }
         Ok(size)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AdjustmentDialog {
+    BrightnessContrast {
+        brightness: i32,
+        contrast: i32,
+    },
+    HueSaturation {
+        hue: i32,
+        saturation: i32,
+        lightness: i32,
+    },
+    AutoLevel,
+}
+
+impl AdjustmentDialog {
+    const fn title(self) -> &'static str {
+        match self {
+            Self::BrightnessContrast { .. } => "Brightness / Contrast",
+            Self::HueSaturation { .. } => "Hue / Saturation",
+            Self::AutoLevel => "Auto-Level",
+        }
+    }
+
+    const fn effect(self) -> Effect {
+        match self {
+            Self::BrightnessContrast {
+                brightness,
+                contrast,
+            } => Effect::BrightnessContrast {
+                brightness,
+                contrast,
+            },
+            Self::HueSaturation {
+                hue,
+                saturation,
+                lightness,
+            } => Effect::HueSaturation {
+                hue,
+                saturation,
+                lightness,
+            },
+            Self::AutoLevel => Effect::AutoLevel,
+        }
+    }
+
+    fn show(&mut self, ui: &mut egui::Ui) {
+        match self {
+            Self::BrightnessContrast {
+                brightness,
+                contrast,
+            } => {
+                ui.label("Brighten or darken the selection and expand or contract its tones.");
+                ui.separator();
+                ui.add(
+                    egui::Slider::new(brightness, MIN_ADJUSTMENT_VALUE..=MAX_ADJUSTMENT_VALUE)
+                        .text("Brightness"),
+                );
+                ui.add(
+                    egui::Slider::new(contrast, MIN_ADJUSTMENT_VALUE..=MAX_ADJUSTMENT_VALUE)
+                        .text("Contrast"),
+                );
+            }
+            Self::HueSaturation {
+                hue,
+                saturation,
+                lightness,
+            } => {
+                ui.label("Rotate hue and adjust saturation and lightness in HSL.");
+                ui.separator();
+                ui.add(egui::Slider::new(hue, MIN_HUE_DELTA..=MAX_HUE_DELTA).text("Hue shift"));
+                ui.add(
+                    egui::Slider::new(saturation, MIN_ADJUSTMENT_VALUE..=MAX_ADJUSTMENT_VALUE)
+                        .text("Saturation amount"),
+                );
+                ui.add(
+                    egui::Slider::new(lightness, MIN_ADJUSTMENT_VALUE..=MAX_ADJUSTMENT_VALUE)
+                        .text("Lightness"),
+                );
+            }
+            Self::AutoLevel => {
+                ui.label("Stretch each RGB channel from the selected pixels to 0-255.");
+                ui.label("A flat selection leaves the image unchanged.");
+            }
+        }
     }
 }
 

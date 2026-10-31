@@ -28,6 +28,9 @@ pub(crate) enum NativeCommand {
     Grayscale,
     Sepia,
     GaussianBlur,
+    BrightnessContrast,
+    HueSaturation,
+    AutoLevel,
     ToggleTools,
     ToggleColors,
     ToggleLayers,
@@ -56,6 +59,9 @@ impl NativeCommand {
             "effects.grayscale" => Self::Grayscale,
             "effects.sepia" => Self::Sepia,
             "effects.gaussian_blur" => Self::GaussianBlur,
+            "adjust.brightness_contrast" => Self::BrightnessContrast,
+            "adjust.hue_saturation" => Self::HueSaturation,
+            "adjust.auto_level" => Self::AutoLevel,
             "window.tools" => Self::ToggleTools,
             "window.colors" => Self::ToggleColors,
             "window.layers" => Self::ToggleLayers,
@@ -139,7 +145,24 @@ impl NativeMenu {
 
         let adjustments = Submenu::new("Adjustments", true);
         let invert = MenuItem::with_id("adjust.invert", "Invert Colors", true, None);
-        adjustments.append(&invert).ok()?;
+        let brightness_contrast = MenuItem::with_id(
+            "adjust.brightness_contrast",
+            "Brightness / Contrast…",
+            true,
+            None,
+        );
+        let hue_saturation =
+            MenuItem::with_id("adjust.hue_saturation", "Hue / Saturation…", true, None);
+        let auto_level = MenuItem::with_id("adjust.auto_level", "Auto-Level…", true, None);
+        adjustments
+            .append_items(&[
+                &invert,
+                &PredefinedMenuItem::separator(),
+                &brightness_contrast,
+                &hue_saturation,
+                &auto_level,
+            ])
+            .ok()?;
 
         let effects = Submenu::new("Effects", true);
         let artistic = Submenu::new("Artistic", true);
@@ -333,6 +356,9 @@ mod tests {
             ("effects.grayscale", Grayscale),
             ("effects.sepia", Sepia),
             ("effects.gaussian_blur", GaussianBlur),
+            ("adjust.brightness_contrast", BrightnessContrast),
+            ("adjust.hue_saturation", HueSaturation),
+            ("adjust.auto_level", AutoLevel),
             ("window.tools", ToggleTools),
             ("window.colors", ToggleColors),
             ("window.layers", ToggleLayers),

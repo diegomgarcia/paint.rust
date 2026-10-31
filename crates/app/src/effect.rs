@@ -1,6 +1,7 @@
-/// A Paint.NET-style category used to group effects in the Effects menu.
+/// A Paint.NET-style category used to group adjustments and effects in menus.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum EffectCategory {
+    Adjustment,
     Artistic,
     Blurs,
     Distort,
@@ -11,7 +12,7 @@ pub enum EffectCategory {
 }
 
 impl EffectCategory {
-    /// Categories in Paint.NET menu order.
+    /// Categories shown in the Paint.NET Effects menu. Adjustment has its own top-level menu.
     pub const ALL: [Self; 7] = [
         Self::Artistic,
         Self::Blurs,
@@ -24,6 +25,7 @@ impl EffectCategory {
 
     pub const fn label(self) -> &'static str {
         match self {
+            Self::Adjustment => "Adjustment",
             Self::Artistic => "Artistic",
             Self::Blurs => "Blurs",
             Self::Distort => "Distort",
@@ -43,6 +45,19 @@ impl EffectCategory {
 pub enum Effect {
     Grayscale,
     Sepia,
+    /// Brightness and contrast deltas in -100..=100.
+    BrightnessContrast {
+        brightness: i32,
+        contrast: i32,
+    },
+    /// HSL hue rotation in degrees and saturation/lightness deltas in -100..=100.
+    HueSaturation {
+        hue: i32,
+        saturation: i32,
+        lightness: i32,
+    },
+    /// Per-channel selection-driven 0..=255 stretch.
+    AutoLevel,
     /// Separable Gaussian blur with a radius in pixels.
     GaussianBlur {
         radius: u32,
@@ -54,6 +69,9 @@ impl Effect {
         match self {
             Self::Grayscale => "Grayscale",
             Self::Sepia => "Sepia",
+            Self::BrightnessContrast { .. } => "Brightness / Contrast",
+            Self::HueSaturation { .. } => "Hue / Saturation",
+            Self::AutoLevel => "Auto-Level",
             Self::GaussianBlur { .. } => "Gaussian Blur",
         }
     }
@@ -61,6 +79,9 @@ impl Effect {
     pub const fn category(self) -> EffectCategory {
         match self {
             Self::Grayscale | Self::Sepia => EffectCategory::Photo,
+            Self::BrightnessContrast { .. } | Self::HueSaturation { .. } | Self::AutoLevel => {
+                EffectCategory::Adjustment
+            }
             Self::GaussianBlur { .. } => EffectCategory::Blurs,
         }
     }
@@ -69,8 +90,11 @@ impl Effect {
     pub fn history_label(self) -> String {
         match self {
             Self::GaussianBlur { radius } => format!("Gaussian Blur (radius {radius})"),
-            Self::Grayscale => Self::Grayscale.name().to_owned(),
-            Self::Sepia => Self::Sepia.name().to_owned(),
+            Self::Grayscale
+            | Self::Sepia
+            | Self::BrightnessContrast { .. }
+            | Self::HueSaturation { .. }
+            | Self::AutoLevel => self.name().to_owned(),
         }
     }
 }
@@ -84,10 +108,46 @@ mod tests {
         assert_eq!(Effect::Grayscale.category(), EffectCategory::Photo);
         assert_eq!(Effect::Sepia.category(), EffectCategory::Photo);
         assert_eq!(
+            Effect::BrightnessContrast {
+                brightness: 10,
+                contrast: -5
+            }
+            .category(),
+            EffectCategory::Adjustment
+        );
+        assert_eq!(
+            Effect::HueSaturation {
+                hue: 20,
+                saturation: -10,
+                lightness: 5
+            }
+            .category(),
+            EffectCategory::Adjustment
+        );
+        assert_eq!(Effect::AutoLevel.category(), EffectCategory::Adjustment);
+        assert_eq!(
             Effect::GaussianBlur { radius: 4 }.category(),
             EffectCategory::Blurs
         );
         assert_eq!(Effect::Grayscale.history_label(), "Grayscale");
+        assert_eq!(
+            Effect::BrightnessContrast {
+                brightness: 10,
+                contrast: -5
+            }
+            .history_label(),
+            "Brightness / Contrast"
+        );
+        assert_eq!(
+            Effect::HueSaturation {
+                hue: 20,
+                saturation: -10,
+                lightness: 5
+            }
+            .history_label(),
+            "Hue / Saturation"
+        );
+        assert_eq!(Effect::AutoLevel.history_label(), "Auto-Level");
         assert_eq!(
             Effect::GaussianBlur { radius: 4 }.history_label(),
             "Gaussian Blur (radius 4)"

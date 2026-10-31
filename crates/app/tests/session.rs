@@ -945,3 +945,102 @@ fn blend_mode_command_is_one_undoable_layer_property_change() {
         "normal"
     );
 }
+
+#[test]
+fn adjustment_effect_commands_are_single_undoable_mutations_and_noops_are_atomic() {
+    let mut session = session_from_pixels(
+        3,
+        1,
+        vec![
+            Bgra::new(0, 0, 255, 255),
+            Bgra::new(0, 255, 0, 128),
+            Bgra::new(255, 0, 0, 0),
+        ],
+    );
+
+    assert!(
+        !session
+            .execute(Command::ApplyEffect(Effect::BrightnessContrast {
+                brightness: 0,
+                contrast: 0,
+            }))
+            .expect("identity brightness/contrast")
+    );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::BrightnessContrast {
+                brightness: -100,
+                contrast: 0,
+            }))
+            .expect("brightness")
+    );
+    assert_eq!(pixel(&session, 0, 0), Bgra::new(0, 0, 155, 255));
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(0, 155, 0, 128));
+    assert_eq!(pixel(&session, 2, 0), Bgra::new(155, 0, 0, 0));
+    assert!(session.undo().unwrap());
+    assert!(!session.dirty());
+    assert!(session.redo().unwrap());
+    assert_eq!(pixel(&session, 0, 0), Bgra::new(0, 0, 155, 255));
+    assert!(session.undo().unwrap());
+
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::HueSaturation {
+                hue: 120,
+                saturation: 0,
+                lightness: 0,
+            }))
+            .expect("hue/saturation")
+    );
+    assert_eq!(pixel(&session, 0, 0), Bgra::new(0, 255, 0, 255));
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(255, 0, 0, 128));
+    assert_eq!(pixel(&session, 2, 0), Bgra::new(0, 0, 255, 0));
+    assert!(session.undo().unwrap());
+    assert_eq!(pixel(&session, 0, 0), Bgra::new(0, 0, 255, 255));
+
+    let mut stretched = session_from_pixels(
+        2,
+        1,
+        vec![Bgra::new(10, 20, 30, 255), Bgra::new(110, 120, 130, 255)],
+    );
+    assert!(
+        stretched
+            .execute(Command::ApplyEffect(Effect::AutoLevel))
+            .expect("auto-level")
+    );
+    assert_eq!(pixel(&stretched, 0, 0), Bgra::new(0, 0, 0, 255));
+    assert_eq!(pixel(&stretched, 1, 0), Bgra::new(255, 255, 255, 255));
+    assert!(stretched.undo().unwrap());
+    assert_eq!(pixel(&stretched, 0, 0), Bgra::new(10, 20, 30, 255));
+    assert_eq!(pixel(&stretched, 1, 0), Bgra::new(110, 120, 130, 255));
+
+    let mut flat = session_from_pixels(2, 1, vec![Bgra::new(40, 50, 60, 255); 2]);
+    assert!(
+        !flat
+            .execute(Command::ApplyEffect(Effect::AutoLevel))
+            .expect("flat auto-level")
+    );
+    assert!(!flat.dirty());
+    assert!(!flat.can_undo());
+
+    let mut single_selected = session_from_pixels(
+        2,
+        1,
+        vec![Bgra::new(10, 20, 30, 255), Bgra::new(110, 120, 130, 255)],
+    );
+    assert!(
+        single_selected
+            .execute(select_rect(Rect::new(0, 0, 1, 1).unwrap()))
+            .unwrap()
+    );
+    assert!(
+        !single_selected
+            .execute(Command::ApplyEffect(Effect::AutoLevel))
+            .expect("single-pixel auto-level")
+    );
+    assert!(!single_selected.dirty());
+    assert!(!single_selected.can_undo());
+}

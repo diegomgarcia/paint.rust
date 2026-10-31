@@ -11,8 +11,10 @@ use thiserror::Error;
 
 pub use compose::{compose, normal_over};
 pub use effects::{
-    MAX_GAUSSIAN_BLUR_RADIUS, gaussian_blur, gaussian_blur_active, grayscale, grayscale_active,
-    sepia, sepia_active,
+    MAX_ADJUSTMENT_VALUE, MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA, MIN_ADJUSTMENT_VALUE,
+    MIN_HUE_DELTA, auto_level, auto_level_active, brightness_contrast, brightness_contrast_active,
+    gaussian_blur, gaussian_blur_active, grayscale, grayscale_active, hue_saturation,
+    hue_saturation_active, sepia, sepia_active,
 };
 pub use operations::{
     BrushOptions, GradientOptions, GradientRepeat, GradientType, LineCap, LineDash, LineStyle,

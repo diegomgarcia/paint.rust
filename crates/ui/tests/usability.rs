@@ -54,6 +54,13 @@ fn click(harness: &mut Harness<'_, PaintApp>, label: &str) {
     harness.run();
 }
 
+fn set_slider(harness: &mut Harness<'_, PaintApp>, label: &str, value: f64) {
+    harness
+        .get_by_role_and_label(Role::Slider, label)
+        .set_value_accesskit(value);
+    harness.run();
+}
+
 fn replace_field(harness: &mut Harness<'_, PaintApp>, label: &str, text: &str) {
     harness.get_by_label(label).click();
     harness.run();
@@ -2222,6 +2229,207 @@ fn effects_menu_uses_paint_net_groups_and_applies_real_effects_undoably() {
             .expect("restored pixel"),
         Bgra::WHITE
     );
+}
+
+#[test]
+fn adjustments_menu_exposes_and_applies_brightness_contrast_with_live_preview_and_undo() {
+    let mut harness = app();
+    click(&mut harness, "Adjustments");
+    for label in [
+        "Invert Colors",
+        "Brightness / Contrast…",
+        "Hue / Saturation…",
+        "Auto-Level…",
+    ] {
+        assert!(
+            !button_is_disabled(&harness, label),
+            "{label} should be an enabled adjustment"
+        );
+    }
+    click(&mut harness, "Brightness / Contrast…");
+    harness.get_by_role_and_label(Role::Slider, "Brightness");
+    harness.get_by_role_and_label(Role::Slider, "Contrast");
+
+    set_slider(&mut harness, "Brightness", -100.0);
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()[0],
+        Bgra::new(155, 155, 155, 255),
+        "dialog sliders should update the canvas live"
+    );
+    assert!(
+        !harness.state().session().can_undo(),
+        "a live adjustment preview must not enter history"
+    );
+
+    click(&mut harness, "Apply");
+    assert!(harness.state().session().can_undo());
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Brightness / Contrast")
+    );
+    click(&mut harness, "Undo");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()[0],
+        Bgra::WHITE
+    );
+    assert!(harness.state().session().can_redo());
+
+    menu_item(&mut harness, "Adjustments", "Brightness / Contrast…");
+    set_slider(&mut harness, "Brightness", -50.0);
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()[0],
+        Bgra::new(205, 205, 205, 255)
+    );
+    click(&mut harness, "Cancel");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()[0],
+        Bgra::WHITE,
+        "Cancel must restore the pre-dialog pixels"
+    );
+    assert!(
+        harness.state().session().can_redo(),
+        "Cancel must not invalidate redo"
+    );
+    assert_eq!(harness.state().history_entries(), ["New Image"]);
+}
+
+#[test]
+fn hue_saturation_dialog_previews_applies_and_cancels() {
+    let mut harness = app();
+    menu_item(&mut harness, "Adjustments", "Hue / Saturation…");
+    for label in ["Hue shift", "Saturation amount", "Lightness"] {
+        harness.get_by_role_and_label(Role::Slider, label);
+    }
+
+    set_slider(&mut harness, "Lightness", -100.0);
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()[0],
+        Bgra::BLACK
+    );
+    assert!(!harness.state().session().can_undo());
+    click(&mut harness, "Apply");
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Hue / Saturation")
+    );
+    click(&mut harness, "Undo");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()[0],
+        Bgra::WHITE
+    );
+
+    menu_item(&mut harness, "Adjustments", "Hue / Saturation…");
+    set_slider(&mut harness, "Lightness", -100.0);
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()[0],
+        Bgra::BLACK
+    );
+    click(&mut harness, "Cancel");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .compose()
+            .expect("composite")
+            .pixels()[0],
+        Bgra::WHITE
+    );
+    assert!(harness.state().session().can_redo());
+    assert_eq!(harness.state().history_entries(), ["New Image"]);
+}
+
+#[test]
+fn auto_level_dialog_stretches_the_open_image_and_can_be_cancelled() {
+    let temporary = TempDir::new().expect("temporary directory");
+    let input = temporary.path().join("auto-level.png");
+    let source = write_input_png(&input);
+    let mut harness = app();
+    menu_item(&mut harness, "File", "Open PNG…");
+    enter_path(&mut harness, &input);
+    click(&mut harness, "Open PNG");
+
+    menu_item(&mut harness, "Adjustments", "Auto-Level…");
+    harness.get_by_role_and_label(Role::Button, "Apply");
+    click(&mut harness, "Apply");
+
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Auto-Level")
+    );
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixels(),
+        &[Bgra::new(0, 0, 0, 255), Bgra::new(255, 255, 255, 128)],
+        "auto-level must stretch each channel to the full range"
+    );
+    click(&mut harness, "Undo");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixels(),
+        source.pixels()
+    );
+    assert!(harness.state().session().can_redo());
+
+    menu_item(&mut harness, "Adjustments", "Auto-Level…");
+    click(&mut harness, "Cancel");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixels(),
+        source.pixels(),
+        "Cancel must restore the pre-dialog pixels"
+    );
+    assert!(harness.state().session().can_redo());
+    assert_eq!(harness.state().history_entries(), ["Open PNG"]);
 }
 
 fn alt_click_canvas_at(harness: &mut Harness<'_, PaintApp>, offset: egui::Vec2) {

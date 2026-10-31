@@ -756,17 +756,41 @@ impl AppSession {
     /// The resulting `PixelPatch` is committed as one inverse-based mutation, so undo and redo
     /// treat the complete effect as a single history entry. No-op effects return `Ok(false)`.
     pub fn apply_effect(&mut self, effect: Effect) -> Result<bool, SessionError> {
-        let layer_id = self.document.active_layer_id();
-        let patch = match effect {
-            Effect::Grayscale => paint_raster::grayscale(&self.document, layer_id)?,
-            Effect::Sepia => paint_raster::sepia(&self.document, layer_id)?,
-            Effect::GaussianBlur { radius } => {
-                paint_raster::gaussian_blur(&self.document, layer_id, radius)?
-            }
-        };
+        let patch = self.effect_patch(effect)?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
             None => Ok(false),
+        }
+    }
+
+    /// Recomputes one effect against the active live-preview snapshot without committing.
+    pub fn preview_effect(&mut self, effect: Effect) -> Result<bool, SessionError> {
+        self.rewind_preview()?;
+        let patch = self.effect_patch(effect)?;
+        self.apply_preview_patch(patch)
+    }
+
+    fn effect_patch(
+        &self,
+        effect: Effect,
+    ) -> Result<Option<PixelPatch>, paint_raster::RasterError> {
+        let layer_id = self.document.active_layer_id();
+        match effect {
+            Effect::Grayscale => paint_raster::grayscale(&self.document, layer_id),
+            Effect::Sepia => paint_raster::sepia(&self.document, layer_id),
+            Effect::BrightnessContrast {
+                brightness,
+                contrast,
+            } => paint_raster::brightness_contrast(&self.document, layer_id, brightness, contrast),
+            Effect::HueSaturation {
+                hue,
+                saturation,
+                lightness,
+            } => paint_raster::hue_saturation(&self.document, layer_id, hue, saturation, lightness),
+            Effect::AutoLevel => paint_raster::auto_level(&self.document, layer_id),
+            Effect::GaussianBlur { radius } => {
+                paint_raster::gaussian_blur(&self.document, layer_id, radius)
+            }
         }
     }
 
