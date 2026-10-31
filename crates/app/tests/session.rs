@@ -919,3 +919,29 @@ fn rename_layer_rejects_empty_and_overlong_names_without_side_effects() {
     );
     assert!(!session.can_undo());
 }
+
+#[test]
+fn blend_mode_command_is_one_undoable_layer_property_change() {
+    let mut session = session_with_color(2, 2, Bgra::WHITE);
+    assert_eq!(
+        session.snapshot().expect("snapshot").layers[0].blend_mode,
+        "normal"
+    );
+    assert!(
+        session
+            .execute(Command::SetLayerBlendMode {
+                index: 0,
+                mode: paint_document::BlendMode::Multiply,
+            })
+            .expect("set blend mode")
+    );
+    assert_eq!(
+        session.snapshot().expect("snapshot").layers[0].blend_mode,
+        "multiply"
+    );
+    assert!(session.undo().expect("undo"));
+    assert_eq!(
+        session.snapshot().expect("snapshot").layers[0].blend_mode,
+        "normal"
+    );
+}

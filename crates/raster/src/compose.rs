@@ -1,32 +1,55 @@
 use paint_core::{Bgra, Surface};
-use paint_document::Document;
+use paint_document::{BlendMode, Document};
 
 use crate::RasterError;
 
 /// Composites visible layers in bottom-to-top order onto transparent black.
 ///
-/// Background state is metadata and does not alter Normal blending. Invisible layers and
-/// zero-opacity layers have no effect. Non-Normal visible modes are explicit errors.
+/// Background state is metadata and does not alter blending. Invisible layers and
+/// zero-opacity layers have no effect. Multiply, Screen, and Overlay use the backdrop
+/// channels and then composite the blended color with the layer alpha/opacity.
 pub fn compose(document: &Document) -> Result<Surface, RasterError> {
-    for layer in document.layers() {
-        if layer.is_visible() && layer.blend_mode() != paint_document::BlendMode::Normal {
-            return Err(RasterError::UnsupportedBlendMode {
-                layer_id: layer.id(),
-                mode: layer.blend_mode(),
-            });
-        }
-    }
-
     let mut output = Surface::new(document.size())?;
     for layer in document.layers() {
         if !layer.is_visible() || layer.opacity() == 0 {
             continue;
         }
         for (destination, source) in output.pixels_mut().iter_mut().zip(layer.surface().pixels()) {
-            *destination = normal_over(*destination, *source, layer.opacity());
+            *destination = blend_over(*destination, *source, layer.opacity(), layer.blend_mode());
         }
     }
     Ok(output)
+}
+
+fn blend_over(destination: Bgra, source: Bgra, opacity: u8, mode: BlendMode) -> Bgra {
+    if mode == BlendMode::Normal {
+        return normal_over(destination, source, opacity);
+    }
+    let blended = Bgra::new(
+        blend_channel(mode, source.b, destination.b),
+        blend_channel(mode, source.g, destination.g),
+        blend_channel(mode, source.r, destination.r),
+        source.a,
+    );
+    normal_over(destination, blended, opacity)
+}
+
+fn blend_channel(mode: BlendMode, source: u8, backdrop: u8) -> u8 {
+    let source = u32::from(source);
+    let backdrop = u32::from(backdrop);
+    let value = match mode {
+        BlendMode::Normal => source,
+        BlendMode::Multiply => (source * backdrop + 127) / 255,
+        BlendMode::Screen => 255 - ((255 - source) * (255 - backdrop) + 127) / 255,
+        BlendMode::Overlay => {
+            if backdrop < 128 {
+                (2 * source * backdrop + 127) / 255
+            } else {
+                255 - (2 * (255 - source) * (255 - backdrop) + 127) / 255
+            }
+        }
+    };
+    value.min(255) as u8
 }
 
 /// Deterministic straight-alpha source-over with an additional layer-opacity multiplier.

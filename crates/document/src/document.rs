@@ -443,9 +443,6 @@ impl Document {
         mode: BlendMode,
     ) -> Result<bool, DocumentError> {
         let index = self.index_of(layer_id)?;
-        if mode != BlendMode::Normal {
-            return Err(DocumentError::UnsupportedBlendMode { layer_id, mode });
-        }
         if self.layers[index].blend_mode == mode {
             return Ok(false);
         }

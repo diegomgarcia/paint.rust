@@ -213,6 +213,10 @@ pub enum Command {
         index: usize,
         opacity: u8,
     },
+    SetLayerBlendMode {
+        index: usize,
+        mode: paint_document::BlendMode,
+    },
     Undo,
     Redo,
 }

@@ -8,7 +8,7 @@ use paint_app::{
     SelectionCombineMode,
 };
 use paint_core::{Bgra, Point, Rect, Size};
-use paint_document::{Document, LayerId};
+use paint_document::{BlendMode, Document, LayerId};
 use paint_raster::{
     BrushOptions, GradientOptions, GradientRepeat, GradientType, MAX_GAUSSIAN_BLUR_RADIUS,
     ShapeStyle, TextFontFamily, TextStyle,
@@ -182,6 +182,7 @@ pub struct PaintApp {
     layer_properties_name_error: Option<String>,
     layer_properties_opacity: u8,
     layer_properties_visible: bool,
+    layer_properties_blend_mode: BlendMode,
     gaussian_blur_open: bool,
     gaussian_blur_radius: u32,
     document_title: String,
@@ -295,6 +296,7 @@ impl PaintApp {
             layer_properties_name_error: None,
             layer_properties_opacity: u8::MAX,
             layer_properties_visible: true,
+            layer_properties_blend_mode: BlendMode::Normal,
             gaussian_blur_open: false,
             gaussian_blur_radius: 2,
             document_title: "New Image".to_owned(),
@@ -2364,6 +2366,7 @@ impl PaintApp {
         self.layer_properties_name_error = None;
         self.layer_properties_opacity = layer.opacity();
         self.layer_properties_visible = layer.is_visible();
+        self.layer_properties_blend_mode = layer.blend_mode();
     }
 
     fn layers_content(&mut self, ui: &mut egui::Ui) {
@@ -3222,10 +3225,7 @@ impl PaintApp {
             return;
         };
         self.layer_properties_index = index;
-        let (name, blend_mode) = {
-            let layer = &self.session.document().layers()[index];
-            (layer.name().to_owned(), layer.blend_mode())
-        };
+        let name = self.session.document().layers()[index].name().to_owned();
         let mut open = self.layer_properties_open;
         let mut apply = false;
         let mut close = false;
@@ -3248,7 +3248,30 @@ impl PaintApp {
                 }
                 layer_opacity_slider(ui, &mut self.layer_properties_opacity);
                 ui.checkbox(&mut self.layer_properties_visible, "Visible");
-                ui.label(format!("Blend Mode: {}", blend_mode_label(blend_mode)));
+                egui::ComboBox::from_label("Blend Mode")
+                    .selected_text(blend_mode_label(self.layer_properties_blend_mode))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.layer_properties_blend_mode,
+                            BlendMode::Normal,
+                            "Normal",
+                        );
+                        ui.selectable_value(
+                            &mut self.layer_properties_blend_mode,
+                            BlendMode::Multiply,
+                            "Multiply",
+                        );
+                        ui.selectable_value(
+                            &mut self.layer_properties_blend_mode,
+                            BlendMode::Screen,
+                            "Screen",
+                        );
+                        ui.selectable_value(
+                            &mut self.layer_properties_blend_mode,
+                            BlendMode::Overlay,
+                            "Overlay",
+                        );
+                    });
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Apply").clicked() {
@@ -3292,6 +3315,13 @@ impl PaintApp {
                     Command::SetLayerVisibility {
                         index,
                         visible: self.layer_properties_visible,
+                    },
+                    "Layer properties updated",
+                );
+                self.execute(
+                    Command::SetLayerBlendMode {
+                        index,
+                        mode: self.layer_properties_blend_mode,
                     },
                     "Layer properties updated",
                 );
@@ -5364,6 +5394,9 @@ fn history_label(command: &Command) -> Option<String> {
         }
         Command::SetLayerOpacity { index, opacity } => {
             Some(format!("Layer {index} opacity: {opacity}"))
+        }
+        Command::SetLayerBlendMode { index, mode } => {
+            Some(format!("Layer {index} blend: {mode:?}"))
         }
         Command::SelectRect { .. }
         | Command::SelectEllipse { .. }

@@ -1835,7 +1835,7 @@ fn double_clicking_a_layer_opens_properties_for_that_layer() {
     assert!(harness.state().layer_properties_open());
     assert_eq!(harness.state().layer_properties_target(), Some(0));
     harness.get_by_label("Layer: Background");
-    harness.get_by_label("Blend Mode: Normal");
+    harness.get_by_label("Blend Mode");
 }
 
 #[test]

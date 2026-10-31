@@ -78,14 +78,13 @@ fn document_tracks_order_active_selection_unicode_and_revisions() {
     assert_eq!(document.active_layer_id(), background_id);
 
     let snapshot = document.clone();
-    assert!(matches!(
-        document.set_layer_blend_mode(layer_id, BlendMode::Multiply),
-        Err(DocumentError::UnsupportedBlendMode {
-            layer_id: actual_id,
-            mode: BlendMode::Multiply,
-        }) if actual_id == layer_id
-    ));
-    assert_eq!(document, snapshot);
+    assert!(
+        document
+            .set_layer_blend_mode(layer_id, BlendMode::Multiply)
+            .expect("blend mode")
+    );
+    assert_eq!(document.layers()[1].blend_mode(), BlendMode::Multiply);
+    assert!(document.revision().get() > snapshot.revision().get());
 }
 
 #[test]

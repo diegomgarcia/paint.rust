@@ -228,6 +228,13 @@ impl AppSession {
                     value: opacity,
                 })
             }
+            Command::SetLayerBlendMode { index, mode } => {
+                let layer_id = self.layer_id(index)?;
+                self.apply_new_mutation(Mutation::SetBlendMode {
+                    layer_id,
+                    value: mode,
+                })
+            }
             Command::Undo => self.undo(),
             Command::Redo => self.redo(),
         }
@@ -1228,6 +1235,10 @@ enum Mutation {
         layer_id: LayerId,
         value: String,
     },
+    SetBlendMode {
+        layer_id: LayerId,
+        value: paint_document::BlendMode,
+    },
     MoveLayer {
         layer_id: LayerId,
         from: usize,
@@ -1427,6 +1438,22 @@ impl Mutation {
                 }
                 document.set_layer_name(*layer_id, value.clone())?;
                 Ok(Some(Self::SetName {
+                    layer_id: *layer_id,
+                    value: previous,
+                }))
+            }
+            Self::SetBlendMode { layer_id, value } => {
+                let layer = document
+                    .layer(*layer_id)
+                    .ok_or(DocumentError::LayerNotFound {
+                        layer_id: *layer_id,
+                    })?;
+                let previous = layer.blend_mode();
+                if previous == *value {
+                    return Ok(None);
+                }
+                document.set_layer_blend_mode(*layer_id, *value)?;
+                Ok(Some(Self::SetBlendMode {
                     layer_id: *layer_id,
                     value: previous,
                 }))
