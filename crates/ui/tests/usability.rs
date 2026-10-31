@@ -975,6 +975,20 @@ fn drag_canvas(harness: &mut Harness<'_, PaintApp>, start: egui::Vec2, end: egui
     harness.run();
 }
 
+fn trace_lasso(harness: &mut Harness<'_, PaintApp>, points: &[egui::Vec2]) {
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let rect = canvas.rect();
+    let (first, rest) = points.split_first().expect("lasso points");
+    harness.drag_at(rect.min + *first);
+    harness.run();
+    for point in rest {
+        harness.hover_at(rect.min + *point);
+        harness.run();
+    }
+    harness.drop_at(rect.min + *points.last().expect("last point"));
+    harness.run();
+}
+
 fn click_canvas_at(harness: &mut Harness<'_, PaintApp>, offset: egui::Vec2) {
     let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
     let rect = canvas.rect();
@@ -3372,4 +3386,91 @@ fn gradient_options_select_shape_and_repeat_modes() {
         harness.state().history_entries().last().map(String::as_str),
         Some("Gradient")
     );
+}
+
+#[test]
+fn union_mode_keeps_the_previous_selection_during_canvas_drags() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(2.0, 2.0), egui::vec2(12.0, 12.0));
+    assert!(
+        harness
+            .state()
+            .session()
+            .document()
+            .selection_mask()
+            .is_none(),
+        "first rectangle uses the fast path"
+    );
+
+    click(&mut harness, "Union");
+    drag_canvas(&mut harness, egui::vec2(20.0, 2.0), egui::vec2(30.0, 12.0));
+    let mask = harness
+        .state()
+        .session()
+        .document()
+        .selection_mask()
+        .expect("disjoint union needs a mask")
+        .clone();
+    assert!(
+        mask.contains(Point::new(5, 5)),
+        "first selection disappeared"
+    );
+    assert!(mask.contains(Point::new(25, 5)), "second selection missing");
+    assert!(
+        !mask.contains(Point::new(16, 5)),
+        "gap must stay unselected"
+    );
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .document()
+            .selection()
+            .expect("bounds"),
+        Rect::new(2, 2, 31, 13).expect("bounds")
+    );
+}
+
+#[test]
+fn two_canvas_selection_drags_in_a_row_replace_the_selection() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(2.0, 2.0), egui::vec2(12.0, 12.0));
+    drag_canvas(&mut harness, egui::vec2(20.0, 2.0), egui::vec2(30.0, 12.0));
+    assert_eq!(
+        harness.state().session().document().selection(),
+        Some(Rect::new(20, 2, 31, 13).expect("second"))
+    );
+}
+
+#[test]
+fn lasso_union_keeps_the_previous_rectangle_selection() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(2.0, 2.0), egui::vec2(12.0, 12.0));
+    click(&mut harness, "Lasso Select");
+    click(&mut harness, "Union");
+    trace_lasso(
+        &mut harness,
+        &[
+            egui::vec2(20.0, 2.0),
+            egui::vec2(30.0, 2.0),
+            egui::vec2(30.0, 12.0),
+            egui::vec2(20.0, 12.0),
+        ],
+    );
+    let mask = harness
+        .state()
+        .session()
+        .document()
+        .selection_mask()
+        .expect("lasso union mask")
+        .clone();
+    assert!(mask.contains(Point::new(5, 5)), "previous rectangle lost");
+    assert!(mask.contains(Point::new(25, 5)), "lasso region missing");
+    assert!(!mask.contains(Point::new(16, 5)), "gap selected");
 }

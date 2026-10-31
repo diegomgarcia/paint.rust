@@ -4067,7 +4067,9 @@ impl PaintApp {
                                 | Tool::Move
                         ) && self.drag_start.is_some()
                             && self.drag_current.is_some();
-                        if !dragging_selection
+                        let hide_selection_for_move = dragging_selection
+                            && matches!(self.active_tool, Tool::Move | Tool::MoveSelection);
+                        if !hide_selection_for_move
                             && let Some(selection) = self.session.document().selection_model()
                         {
                             paint_selection(ui.painter(), rect, zoom, selection, phase);
