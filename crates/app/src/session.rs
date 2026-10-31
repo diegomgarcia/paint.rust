@@ -1,5 +1,8 @@
 use paint_core::{Bgra, Point, Rect, Size, Surface};
-use paint_document::{Document, DocumentError, Layer, LayerId, PatchError, PixelPatch, Revision};
+use paint_document::{
+    Document, DocumentError, Layer, LayerId, PatchError, PixelPatch, Revision, Selection,
+    SelectionMask,
+};
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -114,6 +117,14 @@ impl AppSession {
     pub fn execute(&mut self, command: Command) -> Result<bool, SessionError> {
         match command {
             Command::SelectRect(rect) => self.select_rect(rect),
+            Command::SelectEllipse(rect) => self.select_ellipse(rect),
+            Command::SelectLasso(points) => self.select_lasso(points),
+            Command::SelectMagicWand {
+                point,
+                tolerance,
+                global,
+            } => self.select_magic_wand(point, tolerance, global),
+            Command::TranslateSelection { dx, dy } => self.translate_selection(dx, dy),
             Command::ClearSelection => self.clear_selection(),
             Command::Fill(color) => self.fill(color),
             Command::Stroke {
@@ -210,6 +221,54 @@ impl AppSession {
 
     pub fn select_rect(&mut self, rect: Rect) -> Result<bool, SessionError> {
         Ok(self.document.set_selection(Some(rect))?)
+    }
+
+    /// Replaces the selection with a real pixel-mask ellipse clipped to the canvas.
+    pub fn select_ellipse(&mut self, rect: Rect) -> Result<bool, SessionError> {
+        let Some(mask) = SelectionMask::ellipse_clipped(rect, self.document.size())? else {
+            return self.clear_selection();
+        };
+        Ok(self.document.set_selection_mask(mask)?)
+    }
+
+    /// Replaces the selection with the pixel mask enclosed by an implicitly closed lasso path.
+    pub fn select_lasso(&mut self, points: Vec<Point>) -> Result<bool, SessionError> {
+        let Some(mask) = SelectionMask::polygon(&points)? else {
+            return self.clear_selection();
+        };
+        let Some(mask) = mask.clipped_to(self.document.size())? else {
+            return self.clear_selection();
+        };
+        Ok(self.document.set_selection_mask(mask)?)
+    }
+
+    /// Replaces the selection with a magic-wand mask sampled from the active layer.
+    pub fn select_magic_wand(
+        &mut self,
+        point: Point,
+        tolerance: u8,
+        global: bool,
+    ) -> Result<bool, SessionError> {
+        let mask = paint_raster::magic_wand_mask(
+            &self.document,
+            self.document.active_layer_id(),
+            point,
+            tolerance,
+            global,
+        )?;
+        match mask {
+            Some(mask) => Ok(self.document.set_selection_mask(mask)?),
+            None => self.clear_selection(),
+        }
+    }
+
+    /// Translates the rectangle or mask selection without editing pixels or content history.
+    pub fn translate_selection(&mut self, dx: i32, dy: i32) -> Result<bool, SessionError> {
+        let Some(selection) = self.document.selection_model().cloned() else {
+            return Ok(false);
+        };
+        let translated = selection.translated(i64::from(dx), i64::from(dy))?;
+        Ok(self.document.set_selection_shape(Some(translated))?)
     }
 
     pub fn clear_selection(&mut self) -> Result<bool, SessionError> {
@@ -495,33 +554,42 @@ impl AppSession {
     }
 
     pub fn translate(&mut self, dx: i32, dy: i32) -> Result<bool, SessionError> {
-        let patch =
-            paint_raster::translate(&self.document, self.document.active_layer_id(), dx, dy)?;
-        let moved = match patch {
-            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch))?,
-            None => false,
+        let transform_selection = |selection: &Selection| {
+            selection
+                .translated(i64::from(dx), i64::from(dy))
+                .map_err(SessionError::from)
         };
-        if moved
-            && let Some(selection) = self.document.selection()
-            && let Ok(rect) = Rect::new(
-                selection.left() + i64::from(dx),
-                selection.top() + i64::from(dy),
-                selection.right() + i64::from(dx),
-                selection.bottom() + i64::from(dy),
-            )
-        {
-            self.document.set_selection(Some(rect))?;
-        }
-        Ok(moved)
+        let before_selection = self.document.selection_model().cloned();
+        let after_selection = before_selection
+            .as_ref()
+            .map(transform_selection)
+            .transpose()?;
+        let mut candidate = self.document.clone();
+        let patch = paint_raster::translate(&candidate, candidate.active_layer_id(), dx, dy)?;
+        let Some(patch) = patch else {
+            return Ok(false);
+        };
+        // Moving selected content changes both pixels and selection state. One patch mutation
+        // keeps a single undo step restoring each side, including a non-rectangular mask.
+        let mutation = Mutation::PixelsWithSelection {
+            patch,
+            before_selection,
+            after_selection,
+        };
+        let Some(inverse) = mutation.apply(&mut candidate)? else {
+            return Ok(false);
+        };
+        self.commit_new(candidate, inverse);
+        Ok(true)
     }
 
     /// Lifts the selected pixels into a floating surface and clears their source area.
+    /// Pixels outside a mask selection stay transparent in the floating surface.
     pub fn lift_selection(&mut self) -> Result<Option<FloatingSelection>, SessionError> {
-        let Some(bounds) = self
-            .document
-            .selection()
-            .and_then(|selection| selection.clip_to(self.document.size()))
-        else {
+        let Some(selection) = self.document.selection_model().cloned() else {
+            return Ok(None);
+        };
+        let Some(bounds) = selection.bounds().clip_to(self.document.size()) else {
             return Ok(None);
         };
         let layer = self.document.active_layer();
@@ -530,6 +598,11 @@ impl AppSession {
         let mut surface = Surface::new(size)?;
         for y in 0..bounds.height() {
             for x in 0..bounds.width() {
+                let canvas_x = bounds.left() + i64::from(x);
+                let canvas_y = bounds.top() + i64::from(y);
+                if !selection.contains_xy(canvas_x, canvas_y) {
+                    continue;
+                }
                 let point = Point::new(
                     (bounds.left() as u32).saturating_add(x),
                     (bounds.top() as u32).saturating_add(y),
@@ -1071,6 +1144,11 @@ impl AppSession {
 #[derive(Debug)]
 enum Mutation {
     Pixels(PixelPatch),
+    PixelsWithSelection {
+        patch: PixelPatch,
+        before_selection: Option<Selection>,
+        after_selection: Option<Selection>,
+    },
     AddLayer {
         layer: Layer,
         index: usize,
@@ -1148,26 +1226,19 @@ impl Mutation {
     /// Applies in one direction and returns a freshly validated mutation for the opposite one.
     fn apply(&self, document: &mut Document) -> Result<Option<Self>, SessionError> {
         match self {
-            Self::Pixels(patch) => {
-                let layer =
-                    document
-                        .layer(patch.layer_id())
-                        .ok_or(DocumentError::LayerNotFound {
-                            layer_id: patch.layer_id(),
-                        })?;
-                if layer.revision() == patch.expected_revision() {
-                    let inverse = patch.inverse().map_err(DocumentError::from)?;
-                    document.apply_patch(patch)?;
-                    Ok(Some(Self::Pixels(inverse)))
-                } else {
-                    // Interleaved edits advance this layer even while an older history entry is
-                    // dormant. Rebase to the current revision; Document still verifies the exact
-                    // before-pixels, so a logically stale or mismatched edit remains an error.
-                    let rebased = rebase_patch(patch, layer.revision())?;
-                    let inverse = rebased.inverse().map_err(DocumentError::from)?;
-                    document.apply_patch(&rebased)?;
-                    Ok(Some(Self::Pixels(inverse)))
-                }
+            Self::Pixels(patch) => Ok(Some(Self::Pixels(apply_pixel_patch(document, patch)?))),
+            Self::PixelsWithSelection {
+                patch,
+                before_selection,
+                after_selection,
+            } => {
+                let inverse_patch = apply_pixel_patch(document, patch)?;
+                document.set_selection_shape(after_selection.clone())?;
+                Ok(Some(Self::PixelsWithSelection {
+                    patch: inverse_patch,
+                    before_selection: after_selection.clone(),
+                    after_selection: before_selection.clone(),
+                }))
             }
             Self::AddLayer { layer, index } => {
                 let restore_active = document.active_layer_id();
@@ -1303,6 +1374,31 @@ impl Mutation {
                 }))
             }
         }
+    }
+}
+
+/// Applies one forward or inverse pixel patch and returns the opposite direction's patch.
+fn apply_pixel_patch(
+    document: &mut Document,
+    patch: &PixelPatch,
+) -> Result<PixelPatch, SessionError> {
+    let layer = document
+        .layer(patch.layer_id())
+        .ok_or(DocumentError::LayerNotFound {
+            layer_id: patch.layer_id(),
+        })?;
+    if layer.revision() == patch.expected_revision() {
+        let inverse = patch.inverse().map_err(DocumentError::from)?;
+        document.apply_patch(patch)?;
+        Ok(inverse)
+    } else {
+        // Interleaved edits advance this layer even while an older history entry is dormant.
+        // Rebase to the current revision; Document still verifies the exact before-pixels, so a
+        // logically stale or mismatched edit remains an error.
+        let rebased = rebase_patch(patch, layer.revision())?;
+        let inverse = rebased.inverse().map_err(DocumentError::from)?;
+        document.apply_patch(&rebased)?;
+        Ok(inverse)
     }
 }
 

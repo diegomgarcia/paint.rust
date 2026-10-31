@@ -1,5 +1,5 @@
 use paint_core::{GeometryError, SurfaceError};
-use paint_document::DocumentError;
+use paint_document::{DocumentError, SelectionError};
 use paint_raster::RasterError;
 use thiserror::Error;
 
@@ -36,6 +36,8 @@ pub enum SessionError {
     Raster(#[from] RasterError),
     #[error(transparent)]
     Surface(#[from] SurfaceError),
+    #[error(transparent)]
+    Selection(#[from] SelectionError),
     #[error(transparent)]
     Png(#[from] paint_image_io::PngError),
     #[error(transparent)]

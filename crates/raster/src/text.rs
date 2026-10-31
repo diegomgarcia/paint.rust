@@ -6,7 +6,7 @@ use paint_document::{Document, LayerId, PixelPatch};
 
 use crate::RasterError;
 use crate::compose::normal_over;
-use crate::operations::{clip_rect, copy_pixels, layer, operation_rect};
+use crate::operations::{clip_rect, copy_pixels, layer, operation_clip};
 
 /// Largest accepted font size in pixels.
 pub const MAX_TEXT_SIZE: u32 = 512;
@@ -90,7 +90,7 @@ pub fn text(
         });
     }
     let layer = layer(document, layer_id)?;
-    let Some(operation) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
 
@@ -153,7 +153,7 @@ pub fn text(
         return Ok(None);
     };
     let Some(rect) = clip_rect(
-        operation,
+        clip.rect,
         bounds.0 as i64,
         bounds.1 as i64,
         bounds.2 as i64,
@@ -193,7 +193,7 @@ pub fn text(
             } else {
                 0
             };
-            if value == 0 {
+            if value == 0 || !clip.selects_xy(canvas_x, canvas_y) {
                 return;
             }
             let index = ((canvas_y - top) * width + (canvas_x - left)) as usize;

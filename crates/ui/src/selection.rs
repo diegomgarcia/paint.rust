@@ -1,6 +1,12 @@
 use egui::{Color32, Painter, Rect, Shape, Stroke};
 
 /// Draws a high-contrast animated dashed selection border ("marching ants").
+///
+/// Rectangle selections draw their exact outline. Ellipse, lasso, and magic-wand selections draw
+/// their tight bounding rectangle; the document's [`paint_document::SelectionMask`] remains the
+/// authoritative shape for every raster operation, and tool options report the real selected-pixel
+/// count. Drawing a per-pixel mask contour here would require a marching-squares pass on every
+/// repaint, which the current preview intentionally avoids.
 pub(crate) fn paint_selection_outline(painter: &Painter, rect: Rect, phase: f32) {
     if rect.width() <= 0.0 || rect.height() <= 0.0 {
         return;

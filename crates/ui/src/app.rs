@@ -602,10 +602,16 @@ impl PaintApp {
     }
 
     fn execute(&mut self, command: Command, success: impl Into<String>) -> bool {
-        if !matches!(command, Command::SelectRect(_) | Command::ClearSelection) {
+        if !matches!(
+            command,
+            Command::SelectRect(_) | Command::ClearSelection | Command::TranslateSelection { .. }
+        ) {
             self.finish_active_preview();
         }
-        if !matches!(command, Command::SelectRect(_)) {
+        if !matches!(
+            command,
+            Command::SelectRect(_) | Command::TranslateSelection { .. }
+        ) {
             self.finalize_floating_selection();
         }
         let history_label = history_label(&command);
@@ -1768,7 +1774,7 @@ impl PaintApp {
                 tool!(ui, Icon::Move, "Move Selected Pixels", Tool::Move);
             });
             row(ui, &mut |ui| {
-                tool_slot!(ui, Icon::LassoSelect, "Lasso Select", false);
+                tool!(ui, Icon::LassoSelect, "Lasso Select", Tool::Lasso);
                 tool!(
                     ui,
                     Icon::MoveSelection,
@@ -1777,11 +1783,11 @@ impl PaintApp {
                 );
             });
             row(ui, &mut |ui| {
-                tool_slot!(ui, Icon::Ellipse, "Ellipse Select", false);
+                tool!(ui, Icon::Ellipse, "Ellipse Select", Tool::EllipseSelect);
                 tool!(ui, Icon::Zoom, "Zoom", Tool::Zoom);
             });
             row(ui, &mut |ui| {
-                tool_slot!(ui, Icon::MagicWand, "Magic Wand", false);
+                tool!(ui, Icon::MagicWand, "Magic Wand", Tool::MagicWand);
                 tool!(ui, Icon::Pan, "Pan", Tool::Pan);
             });
             row(ui, &mut |ui| {
@@ -1811,6 +1817,36 @@ impl PaintApp {
         });
     }
 
+    fn selection_status(&self, ui: &mut egui::Ui) {
+        let Some(selection) = self.session.document().selection_model() else {
+            ui.label("No selection");
+            return;
+        };
+        let bounds = selection.bounds();
+        match selection.mask() {
+            Some(mask) => {
+                ui.label(format!("Mask {} px", mask.selected_count()));
+                ui.label(format!(
+                    "Bounds ({}, {})..({}, {})",
+                    bounds.left(),
+                    bounds.top(),
+                    bounds.right(),
+                    bounds.bottom()
+                ));
+                ui.label("Marching ants show the selection bounds; painting uses the real mask");
+            }
+            None => {
+                ui.label(format!(
+                    "({}, {})..({}, {})",
+                    bounds.left(),
+                    bounds.top(),
+                    bounds.right(),
+                    bounds.bottom()
+                ));
+            }
+        }
+    }
+
     fn tool_options_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::top("paint-r-tool-options").show(ui, |ui| {
             ui.add_space(2.0);
@@ -1838,6 +1874,31 @@ impl PaintApp {
                         } else {
                             ui.label("No selection");
                         }
+                    }
+                    Tool::Lasso => {
+                        ui.label("Lasso Select");
+                        ui.label("Drag to trace a freehand mask; releasing closes the path");
+                        self.selection_status(ui);
+                    }
+                    Tool::EllipseSelect => {
+                        ui.label("Ellipse Select");
+                        ui.label("Drag to select an elliptical pixel mask");
+                        self.selection_status(ui);
+                    }
+                    Tool::MagicWand => {
+                        ui.label("Magic Wand");
+                        let tolerance_label = ui.label("Tolerance");
+                        ui.add(
+                            egui::DragValue::new(&mut self.fill_tolerance)
+                                .range(0..=100)
+                                .suffix("%"),
+                        )
+                        .labelled_by(tolerance_label.id);
+                        ui.label("Flood Mode");
+                        ui.selectable_value(&mut self.fill_global, false, "Contiguous");
+                        ui.selectable_value(&mut self.fill_global, true, "Global");
+                        ui.label("Sampling: Active layer");
+                        self.selection_status(ui);
                     }
                     Tool::MoveSelection => {
                         ui.label("Move Selection");
@@ -3306,7 +3367,11 @@ impl PaintApp {
                         let phase = ui.input(|input| input.time) as f32;
                         let dragging_selection = matches!(
                             self.active_tool,
-                            Tool::Select | Tool::MoveSelection | Tool::Move
+                            Tool::Select
+                                | Tool::Lasso
+                                | Tool::EllipseSelect
+                                | Tool::MoveSelection
+                                | Tool::Move
                         ) && self.drag_start.is_some()
                             && self.drag_current.is_some();
                         if !dragging_selection
@@ -3412,6 +3477,26 @@ impl PaintApp {
                                     },
                                 ));
                             }
+                        } else if self.active_tool == Tool::MagicWand {
+                            if response.clicked()
+                                && let Some(point) = pointer.and_then(|position| {
+                                    canvas_point_at(position, rect, zoom, size)
+                                })
+                            {
+                                let threshold = (u16::from(self.fill_tolerance) * 255 / 100) as u8;
+                                pending_paint = Some((
+                                    Command::SelectMagicWand {
+                                        point,
+                                        tolerance: threshold,
+                                        global: self.fill_global,
+                                    },
+                                    if self.fill_global {
+                                        "Selected matching pixels globally".to_owned()
+                                    } else {
+                                        "Selected a contiguous region".to_owned()
+                                    },
+                                ));
+                            }
                         } else if self.active_tool == Tool::Text {
                             if response.clicked()
                                 && let Some(point) = pointer.and_then(|position| {
@@ -3497,7 +3582,9 @@ impl PaintApp {
                                 self.active_tool,
                                 Tool::Pencil | Tool::Brush | Tool::Eraser
                             );
-                            let collects_points = is_paint || self.active_tool == Tool::Recolor;
+                            let collects_points = is_paint
+                                || self.active_tool == Tool::Recolor
+                                || self.active_tool == Tool::Lasso;
                             if self.drag_start.is_none()
                                 && response.is_pointer_button_down_on()
                                 && let Some(point) = point()
@@ -3553,23 +3640,41 @@ impl PaintApp {
                                     _ => self.brush_size.max(1),
                                 };
                                 pending_paint = match self.active_tool {
-                                    Tool::MoveSelection => {
-                                        if let Some(selection) = self.session.document().selection()
-                                        {
-                                            let dx = i64::from(end.x) - i64::from(start.x);
-                                            let dy = i64::from(end.y) - i64::from(start.y);
-                                            if (dx != 0 || dy != 0)
-                                                && let Ok(rect) = Rect::new(
-                                                    selection.left() + dx,
-                                                    selection.top() + dy,
-                                                    selection.right() + dx,
-                                                    selection.bottom() + dy,
-                                                )
-                                            {
-                                                pending_selection = Some(rect);
-                                            }
+                                    Tool::Lasso => {
+                                        if self.paint_points.last() != Some(&end) {
+                                            self.paint_points.push(end);
                                         }
-                                        None
+                                        let points = std::mem::take(&mut self.paint_points);
+                                        if points.len() < 3 {
+                                            Some((
+                                                Command::ClearSelection,
+                                                "Lasso selection cleared".to_owned(),
+                                            ))
+                                        } else {
+                                            Some((
+                                                Command::SelectLasso(points),
+                                                "Lasso selection updated".to_owned(),
+                                            ))
+                                        }
+                                    }
+                                    Tool::EllipseSelect => Some((
+                                        Command::SelectEllipse(bounds),
+                                        "Ellipse selection updated".to_owned(),
+                                    )),
+                                    Tool::MoveSelection => {
+                                        let dx = i64::from(end.x) - i64::from(start.x);
+                                        let dy = i64::from(end.y) - i64::from(start.y);
+                                        if dx != 0 || dy != 0 {
+                                            Some((
+                                                Command::TranslateSelection {
+                                                    dx: dx as i32,
+                                                    dy: dy as i32,
+                                                },
+                                                "Selection moved".to_owned(),
+                                            ))
+                                        } else {
+                                            None
+                                        }
                                     }
                                     Tool::Select => {
                                         pending_selection = Some(bounds);
@@ -3631,29 +3736,28 @@ impl PaintApp {
                                         ))
                                     }
                                     Tool::Move => {
-                                        if let Some(floating) = &self.floating_selection {
-                                            let bounds = floating.floating.bounds;
-                                            if let Ok(rect) = Rect::new(
-                                                bounds.left() + floating.offset_x,
-                                                bounds.top() + floating.offset_y,
-                                                bounds.right() + floating.offset_x,
-                                                bounds.bottom() + floating.offset_y,
-                                            ) {
-                                                pending_selection = Some(rect);
-                                            }
+                                        let dx = i64::from(end.x) - i64::from(start.x);
+                                        let dy = i64::from(end.y) - i64::from(start.y);
+                                        if dx == 0 && dy == 0 {
                                             None
+                                        } else if self.floating_selection.is_some() {
+                                            // The floating surface already previews the move.
+                                            // Translate the real selection model by the same delta.
+                                            Some((
+                                                Command::TranslateSelection {
+                                                    dx: dx as i32,
+                                                    dy: dy as i32,
+                                                },
+                                                "Moved selected pixels".to_owned(),
+                                            ))
                                         } else {
-                                            let dx = i64::from(end.x) - i64::from(start.x);
-                                            let dy = i64::from(end.y) - i64::from(start.y);
-                                            (dx != 0 || dy != 0).then(|| {
-                                                (
-                                                    Command::Move {
-                                                        dx: dx as i32,
-                                                        dy: dy as i32,
-                                                    },
-                                                    "Moved selected pixels".to_owned(),
-                                                )
-                                            })
+                                            Some((
+                                                Command::Move {
+                                                    dx: dx as i32,
+                                                    dy: dy as i32,
+                                                },
+                                                "Moved selected pixels".to_owned(),
+                                            ))
                                         }
                                     }
                                     Tool::Pencil | Tool::Brush | Tool::Eraser => {
@@ -3683,6 +3787,41 @@ impl PaintApp {
                                         egui::Color32::from_white_alpha(24),
                                     );
                                     paint_selection_outline(ui.painter(), marquee, phase);
+                                } else if self.active_tool == Tool::EllipseSelect {
+                                    let center = marquee.center();
+                                    let radius = marquee.size() / 2.0;
+                                    let ellipse: Vec<egui::Pos2> = (0..64)
+                                        .map(|step| {
+                                            let angle = std::f32::consts::TAU * step as f32 / 64.0;
+                                            center
+                                                + egui::vec2(
+                                                    radius.x * angle.cos(),
+                                                    radius.y * angle.sin(),
+                                                )
+                                        })
+                                        .collect();
+                                    ui.painter().add(egui::Shape::closed_line(
+                                        ellipse,
+                                        egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
+                                    ));
+                                } else if self.active_tool == Tool::Lasso
+                                    && self.paint_points.len() >= 2
+                                {
+                                    let path: Vec<egui::Pos2> = self
+                                        .paint_points
+                                        .iter()
+                                        .map(|point| {
+                                            rect.min
+                                                + egui::vec2(
+                                                    (point.x as f32 + 0.5) * zoom,
+                                                    (point.y as f32 + 0.5) * zoom,
+                                                )
+                                        })
+                                        .collect();
+                                    ui.painter().add(egui::Shape::closed_line(
+                                        path,
+                                        egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
+                                    ));
                                 } else if matches!(
                                     self.active_tool,
                                     Tool::Move | Tool::MoveSelection
@@ -4210,6 +4349,9 @@ enum ShapeMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tool {
     Select,
+    Lasso,
+    EllipseSelect,
+    MagicWand,
     MoveSelection,
     Zoom,
     Fill,
@@ -4853,6 +4995,10 @@ fn history_label(command: &Command) -> Option<String> {
             Some(format!("Layer {index} opacity: {opacity}"))
         }
         Command::SelectRect(_)
+        | Command::SelectEllipse(_)
+        | Command::SelectLasso(_)
+        | Command::SelectMagicWand { .. }
+        | Command::TranslateSelection { .. }
         | Command::ClearSelection
         | Command::SetActiveLayer { .. }
         | Command::Undo

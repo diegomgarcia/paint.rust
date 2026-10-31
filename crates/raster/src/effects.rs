@@ -2,7 +2,7 @@ use paint_core::Bgra;
 use paint_document::{Document, LayerId, PixelPatch};
 
 use crate::RasterError;
-use crate::operations::{copy_pixels, layer, operation_rect};
+use crate::operations::{copy_pixels, layer, operation_clip};
 
 /// Largest accepted Gaussian blur radius. A radius of zero is a no-op.
 pub const MAX_GAUSSIAN_BLUR_RADIUS: u32 = 200;
@@ -65,9 +65,10 @@ pub fn gaussian_blur(
         });
     }
     let layer = layer(document, layer_id)?;
-    let Some(rect) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
+    let rect = clip.rect;
     if radius == 0 {
         return Ok(None);
     }
@@ -93,6 +94,11 @@ pub fn gaussian_blur(
 
     for row in 0..rect.height() as usize {
         for column in 0..rect_width {
+            let destination_x = rect.left() + column as i64;
+            let destination_y = rect.top() + row as i64;
+            if !clip.selects_xy(destination_x, destination_y) {
+                continue;
+            }
             let pixel = blurred[(rect_top + row) * width + rect_left + column];
             let alpha = ((pixel[3] + FIXED_POINT_ROUND_U32) >> FIXED_POINT_SHIFT).min(255) as u8;
             after[row * rect_width + column] = Bgra::new(
@@ -125,14 +131,20 @@ where
     F: Fn(Bgra) -> Bgra,
 {
     let layer = layer(document, layer_id)?;
-    let Some(rect) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
+    let rect = clip.rect;
     let before = layer.surface().read_region(rect)?;
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
-    for (target, source) in after.iter_mut().zip(&before) {
-        *target = transform(*source);
+    let width = rect.width() as usize;
+    for (index, (target, source)) in after.iter_mut().zip(&before).enumerate() {
+        let x = rect.left() + (index % width) as i64;
+        let y = rect.top() + (index / width) as i64;
+        if clip.selects_xy(x, y) {
+            *target = transform(*source);
+        }
     }
     if after == before {
         return Ok(None);

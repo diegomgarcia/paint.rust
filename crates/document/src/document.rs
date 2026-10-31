@@ -1,7 +1,9 @@
 use paint_core::{Bgra, Rect, Size, Surface, SurfaceError};
 use thiserror::Error;
 
-use crate::{BlendMode, Layer, LayerId, PatchError, PixelPatch, Revision};
+use crate::{
+    BlendMode, Layer, LayerId, PatchError, PixelPatch, Revision, Selection, SelectionMask,
+};
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum DocumentError {
@@ -57,7 +59,7 @@ pub struct Document {
     size: Size,
     layers: Vec<Layer>,
     active_layer: LayerId,
-    selection: Option<Rect>,
+    selection: Option<Selection>,
     revision: Revision,
     next_layer_id: LayerId,
 }
@@ -139,8 +141,19 @@ impl Document {
             .expect("document invariant: the active layer always exists")
     }
 
-    pub const fn selection(&self) -> Option<Rect> {
-        self.selection
+    /// Returns the selection bounding rectangle, preserving the historical `Option<Rect>` view.
+    pub fn selection(&self) -> Option<Rect> {
+        self.selection.as_ref().map(Selection::bounds)
+    }
+
+    /// Returns the full selection model, including a real pixel mask for shape tools.
+    pub fn selection_model(&self) -> Option<&Selection> {
+        self.selection.as_ref()
+    }
+
+    /// Returns the pixel mask when the selection is non-rectangular.
+    pub fn selection_mask(&self) -> Option<&SelectionMask> {
+        self.selection.as_ref().and_then(Selection::mask)
     }
 
     pub const fn revision(&self) -> Revision {
@@ -312,8 +325,21 @@ impl Document {
         Ok(true)
     }
 
-    /// Sets an unbounded signed selection. Raster operations clip it to the canvas.
+    /// Sets an unbounded signed rectangular selection. Raster operations clip it to the canvas.
     pub fn set_selection(&mut self, selection: Option<Rect>) -> Result<bool, DocumentError> {
+        self.set_selection_shape(selection.map(Selection::rectangle))
+    }
+
+    /// Installs a real pixel-mask selection. Raster operations consult the mask per pixel.
+    pub fn set_selection_mask(&mut self, mask: SelectionMask) -> Result<bool, DocumentError> {
+        self.set_selection_shape(Some(Selection::from_mask(mask)))
+    }
+
+    /// Replaces the complete selection model while preserving rectangle-only fast paths.
+    pub fn set_selection_shape(
+        &mut self,
+        selection: Option<Selection>,
+    ) -> Result<bool, DocumentError> {
         if self.selection == selection {
             return Ok(false);
         }

@@ -44,8 +44,23 @@ impl CanvasAnchor {
 /// One UI-neutral operation submitted to the single-writer session.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
-    /// Sets a signed, half-open selection. Raster operations clip it to the canvas.
+    /// Sets a signed, half-open rectangular selection. Raster operations clip it to the canvas.
     SelectRect(Rect),
+    /// Replaces the selection with a pixel-mask ellipse inscribed in a canvas rectangle.
+    SelectEllipse(Rect),
+    /// Replaces the selection with the pixel mask enclosed by an implicitly closed lasso path.
+    SelectLasso(Vec<Point>),
+    /// Replaces the selection with a magic-wand mask sampled from the active layer.
+    SelectMagicWand {
+        point: Point,
+        tolerance: u8,
+        global: bool,
+    },
+    /// Translates the current rectangle or mask selection without editing pixels.
+    TranslateSelection {
+        dx: i32,
+        dy: i32,
+    },
     ClearSelection,
     /// Crops the canvas to the current selection, clipped to the canvas, and clears it.
     CropToSelection,

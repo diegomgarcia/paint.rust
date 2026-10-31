@@ -1,26 +1,55 @@
-use paint_core::{Bgra, Rect, Size, Surface};
-use paint_document::{Document, DocumentError, Layer, LayerId, PixelPatch};
+use paint_core::{Bgra, Point, Rect, Size, Surface};
+use paint_document::{Document, DocumentError, Layer, LayerId, PixelPatch, SelectionMask};
 
 use crate::RasterError;
 
+/// The canvas-clipped area an operation may touch and the optional mask inside it.
+#[derive(Clone, Copy)]
+pub(crate) struct OperationClip<'a> {
+    pub(crate) rect: Rect,
+    pub(crate) mask: Option<&'a SelectionMask>,
+}
+
+impl OperationClip<'_> {
+    pub(crate) fn selects_xy(&self, x: i64, y: i64) -> bool {
+        self.mask.is_none_or(|mask| mask.contains_xy(x, y))
+    }
+}
+
 /// Produces a solid-fill patch for the active selection, clipped to the canvas.
-/// Returns `Ok(None)` for an empty clip or when every selected pixel already has `color`.
+/// Returns `Ok(None)` when no selected pixel changes.
 pub fn fill(
     document: &Document,
     layer_id: LayerId,
     color: Bgra,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
-    let Some(rect) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
+    let rect = clip.rect;
     let before = layer.surface().read_region(rect)?;
-    if before.iter().all(|pixel| *pixel == color) {
-        return Ok(None);
-    }
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
-    after.fill(color);
+    let width = i64::from(rect.width());
+    let mut changed = false;
+    for y in 0..rect.height() {
+        for x in 0..rect.width() {
+            let pixel_x = rect.left() + i64::from(x);
+            let pixel_y = rect.top() + i64::from(y);
+            if !clip.selects_xy(pixel_x, pixel_y) {
+                continue;
+            }
+            let index = (i64::from(y) * width + i64::from(x)) as usize;
+            if after[index] != color {
+                after[index] = color;
+                changed = true;
+            }
+        }
+    }
+    if !changed {
+        return Ok(None);
+    }
     Ok(Some(PixelPatch::new(
         layer_id,
         layer.revision(),
@@ -35,17 +64,32 @@ pub fn fill_active(document: &Document, color: Bgra) -> Result<Option<PixelPatch
 }
 
 /// Produces an RGB-inversion patch for the active selection, preserving every alpha value.
-/// Returns `Ok(None)` only when the selection does not intersect the canvas.
+/// Returns `Ok(None)` only when no selected pixel is touched.
 pub fn invert(document: &Document, layer_id: LayerId) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
-    let Some(rect) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
+    let rect = clip.rect;
     let before = layer.surface().read_region(rect)?;
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
-    for pixel in &mut after {
-        *pixel = pixel.inverted_rgb();
+    let width = i64::from(rect.width());
+    let mut changed = false;
+    for y in 0..rect.height() {
+        for x in 0..rect.width() {
+            let pixel_x = rect.left() + i64::from(x);
+            let pixel_y = rect.top() + i64::from(y);
+            if !clip.selects_xy(pixel_x, pixel_y) {
+                continue;
+            }
+            let index = (i64::from(y) * width + i64::from(x)) as usize;
+            after[index] = before[index].inverted_rgb();
+            changed = true;
+        }
+    }
+    if !changed {
+        return Ok(None);
     }
     Ok(Some(PixelPatch::new(
         layer_id,
@@ -127,10 +171,16 @@ pub(crate) fn layer(document: &Document, layer_id: LayerId) -> Result<&Layer, Ra
         .map_err(RasterError::from)
 }
 
-pub(crate) fn operation_rect(document: &Document) -> Option<Rect> {
-    match document.selection() {
-        Some(selection) => selection.clip_to(document.size()),
-        None => Some(document.canvas_rect()),
+pub(crate) fn operation_clip(document: &Document) -> Option<OperationClip<'_>> {
+    match document.selection_model() {
+        Some(selection) => Some(OperationClip {
+            rect: selection.bounds().clip_to(document.size())?,
+            mask: selection.mask(),
+        }),
+        None => Some(OperationClip {
+            rect: document.canvas_rect(),
+            mask: None,
+        }),
     }
 }
 
@@ -145,17 +195,28 @@ pub(crate) fn copy_pixels(
     Ok(copy)
 }
 
+fn rgb_within_tolerance(pixel: Bgra, target: Bgra, tolerance: i16) -> bool {
+    (i16::from(pixel.r) - i16::from(target.r)).abs() <= tolerance
+        && (i16::from(pixel.g) - i16::from(target.g)).abs() <= tolerance
+        && (i16::from(pixel.b) - i16::from(target.b)).abs() <= tolerance
+}
+
+fn bgra_within_tolerance(pixel: Bgra, target: Bgra, tolerance: i16) -> bool {
+    rgb_within_tolerance(pixel, target, tolerance)
+        && (i16::from(pixel.a) - i16::from(target.a)).abs() <= tolerance
+}
+
 /// Paints a round, hard-edged stroke through canvas-space points.
-/// `color = None` erases to transparent. The patch is clipped to the active selection.
+/// `color = None` erases to transparent. The patch is clipped to the active selection mask.
 pub fn stroke(
     document: &Document,
     layer_id: LayerId,
-    points: &[paint_core::Point],
+    points: &[Point],
     size: u32,
     color: Option<Bgra>,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
-    let Some(operation) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
     let Some(first) = points.first() else {
@@ -174,7 +235,7 @@ pub fn stroke(
         max_y = max_y.max(i64::from(point.y));
     }
     let Some(rect) = clip_rect(
-        operation,
+        clip.rect,
         min_x - radius_i64,
         min_y - radius_i64,
         max_x + radius_i64 + 1,
@@ -204,6 +265,9 @@ pub fn stroke(
                 let dx = i128::from(px - x);
                 let dy = i128::from(py - y);
                 if dx * dx + dy * dy > radius_squared {
+                    continue;
+                }
+                if !clip.selects_xy(px, py) {
                     continue;
                 }
                 let index = ((py - top) * width + (px - left)) as usize;
@@ -237,7 +301,7 @@ pub fn stroke(
     )?))
 }
 
-/// Fills an ellipse inscribed in a half-open rectangle, clipped to the selection.
+/// Fills an ellipse inscribed in a half-open rectangle, clipped to the selection mask.
 pub fn fill_ellipse(
     document: &Document,
     layer_id: LayerId,
@@ -245,10 +309,10 @@ pub fn fill_ellipse(
     color: Bgra,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
-    let Some(operation) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
-    let Some(rect) = intersect(operation, ellipse)? else {
+    let Some(rect) = intersect(clip.rect, ellipse)? else {
         return Ok(None);
     };
     let before = layer.surface().read_region(rect)?;
@@ -260,14 +324,20 @@ pub fn fill_ellipse(
     let ry = f64::from(ellipse.height()) / 2.0;
     let width = i64::from(rect.width());
     for y in 0..rect.height() {
-        let py = (rect.top() + i64::from(y)) as f64 + 0.5;
+        let pixel_y = (rect.top() + i64::from(y)) as f64 + 0.5;
         for x in 0..rect.width() {
-            let px = (rect.left() + i64::from(x)) as f64 + 0.5;
-            let nx = (px - cx) / rx;
-            let ny = (py - cy) / ry;
-            if nx * nx + ny * ny <= 1.0 {
-                after[(i64::from(y) * width + i64::from(x)) as usize] = color;
+            let pixel_x = (rect.left() + i64::from(x)) as f64 + 0.5;
+            let nx = (pixel_x - cx) / rx;
+            let ny = (pixel_y - cy) / ry;
+            if nx * nx + ny * ny > 1.0 {
+                continue;
             }
+            let canvas_x = rect.left() + i64::from(x);
+            let canvas_y = rect.top() + i64::from(y);
+            if !clip.selects_xy(canvas_x, canvas_y) {
+                continue;
+            }
+            after[(i64::from(y) * width + i64::from(x)) as usize] = color;
         }
     }
     if before == after {
@@ -303,7 +373,7 @@ fn intersect(a: Rect, b: Rect) -> Result<Option<Rect>, RasterError> {
     clip_rect(a, b.left(), b.top(), b.right(), b.bottom())
 }
 
-/// Fills a half-open rectangle, clipped to the active selection.
+/// Fills a half-open rectangle, clipped to the active selection mask.
 pub fn fill_rect(
     document: &Document,
     layer_id: LayerId,
@@ -311,19 +381,34 @@ pub fn fill_rect(
     color: Bgra,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
-    let Some(operation) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
-    let Some(rect) = intersect(operation, rect)? else {
+    let Some(rect) = intersect(clip.rect, rect)? else {
         return Ok(None);
     };
     let before = layer.surface().read_region(rect)?;
-    if before.iter().all(|pixel| *pixel == color) {
-        return Ok(None);
-    }
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
-    after.fill(color);
+    let width = i64::from(rect.width());
+    let mut changed = false;
+    for y in 0..rect.height() {
+        for x in 0..rect.width() {
+            let pixel_x = rect.left() + i64::from(x);
+            let pixel_y = rect.top() + i64::from(y);
+            if !clip.selects_xy(pixel_x, pixel_y) {
+                continue;
+            }
+            let index = (i64::from(y) * width + i64::from(x)) as usize;
+            if after[index] != color {
+                after[index] = color;
+                changed = true;
+            }
+        }
+    }
+    if !changed {
+        return Ok(None);
+    }
     Ok(Some(PixelPatch::new(
         layer_id,
         layer.revision(),
@@ -333,19 +418,20 @@ pub fn fill_rect(
     )?))
 }
 
-/// Paints a straight-alpha linear gradient from `start` to `end` through the selection.
+/// Paints a straight-alpha linear gradient from `start` to `end` through the selection mask.
 pub fn linear_gradient(
     document: &Document,
     layer_id: LayerId,
-    start: paint_core::Point,
-    end: paint_core::Point,
+    start: Point,
+    end: Point,
     from: Bgra,
     to: Bgra,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
-    let Some(rect) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
+    let rect = clip.rect;
     let before = layer.surface().read_region(rect)?;
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
@@ -355,12 +441,16 @@ pub fn linear_gradient(
     let width = i64::from(rect.width());
     for y in 0..rect.height() {
         for x in 0..rect.width() {
-            let px = (rect.left() + i64::from(x)) as f64 + 0.5;
-            let py = (rect.top() + i64::from(y)) as f64 + 0.5;
+            let pixel_x = (rect.left() + i64::from(x)) as f64 + 0.5;
+            let pixel_y = (rect.top() + i64::from(y)) as f64 + 0.5;
+            if !clip.selects_xy(rect.left() + i64::from(x), rect.top() + i64::from(y)) {
+                continue;
+            }
             let t = if length_squared == 0.0 {
                 0.0
             } else {
-                (((px - f64::from(start.x)) * dx + (py - f64::from(start.y)) * dy) / length_squared)
+                (((pixel_x - f64::from(start.x)) * dx + (pixel_y - f64::from(start.y)) * dy)
+                    / length_squared)
                     .clamp(0.0, 1.0)
             };
             after[(i64::from(y) * width + i64::from(x)) as usize] = lerp_bgra(from, to, t);
@@ -378,7 +468,7 @@ pub fn linear_gradient(
     )?))
 }
 
-/// Replaces pixels close to `target` with `replacement` through the selection.
+/// Replaces pixels close to `target` with `replacement` through the selection mask.
 pub fn recolor(
     document: &Document,
     layer_id: LayerId,
@@ -387,19 +477,24 @@ pub fn recolor(
     tolerance: u8,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
-    let Some(rect) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
+    let rect = clip.rect;
     let before = layer.surface().read_region(rect)?;
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
     let tolerance = i16::from(tolerance);
-    for (before_pixel, after_pixel) in before.iter().zip(&mut after) {
-        let close = (i16::from(before_pixel.r) - i16::from(target.r)).abs() <= tolerance
-            && (i16::from(before_pixel.g) - i16::from(target.g)).abs() <= tolerance
-            && (i16::from(before_pixel.b) - i16::from(target.b)).abs() <= tolerance;
-        if close {
-            *after_pixel = replacement;
+    let width = i64::from(rect.width());
+    for y in 0..rect.height() {
+        for x in 0..rect.width() {
+            if !clip.selects_xy(rect.left() + i64::from(x), rect.top() + i64::from(y)) {
+                continue;
+            }
+            let index = (i64::from(y) * width + i64::from(x)) as usize;
+            if rgb_within_tolerance(before[index], target, tolerance) {
+                after[index] = replacement;
+            }
         }
     }
     if before == after {
@@ -415,6 +510,7 @@ pub fn recolor(
 }
 
 /// Translates the selection contents, or the complete layer without a selection.
+/// The destination is clipped to the canvas; masked pixels retain their shape.
 pub fn translate(
     document: &Document,
     layer_id: LayerId,
@@ -429,18 +525,14 @@ pub fn translate(
     let dx = i64::from(dx);
     let dy = i64::from(dy);
     let mut after = vec![Bgra::TRANSPARENT; before.len()];
-    match document.selection() {
+    match document.selection_model() {
         Some(selection) => {
             after.copy_from_slice(&before);
             for y in 0..height {
                 for x in 0..width {
                     let source_x = rect.left() + x;
                     let source_y = rect.top() + y;
-                    if source_x >= selection.left()
-                        && source_x < selection.right()
-                        && source_y >= selection.top()
-                        && source_y < selection.bottom()
-                    {
+                    if selection.contains_xy(source_x, source_y) {
                         after[(y * width + x) as usize] = Bgra::TRANSPARENT;
                     }
                 }
@@ -449,11 +541,7 @@ pub fn translate(
                 for x in 0..width {
                     let source_x = rect.left() + x;
                     let source_y = rect.top() + y;
-                    if source_x < selection.left()
-                        || source_x >= selection.right()
-                        || source_y < selection.top()
-                        || source_y >= selection.bottom()
-                    {
+                    if !selection.contains_xy(source_x, source_y) {
                         continue;
                     }
                     let dest_x = source_x + dx;
@@ -514,18 +602,20 @@ fn lerp_bgra(from: Bgra, to: Bgra, t: f64) -> Bgra {
     )
 }
 
-/// Fills the contiguous region around `start`, clipped to the active selection.
+/// Fills the contiguous region around `start`, clipped to the active selection mask.
+/// Unselected pixels inside the bounding rectangle act as barriers.
 pub fn flood_fill(
     document: &Document,
     layer_id: LayerId,
-    start: paint_core::Point,
+    start: Point,
     color: Bgra,
     tolerance: u8,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
-    let Some(rect) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
+    let rect = clip.rect;
     let width = i64::from(rect.width());
     let start_x = i64::from(start.x);
     let start_y = i64::from(start.y);
@@ -533,6 +623,7 @@ pub fn flood_fill(
         || start_x >= rect.right()
         || start_y < rect.top()
         || start_y >= rect.bottom()
+        || !clip.selects_xy(start_x, start_y)
     {
         return Ok(None);
     }
@@ -547,14 +638,12 @@ pub fn flood_fill(
     let mut queue = std::collections::VecDeque::new();
     queue.push_back((start_x, start_y));
     let tolerance = i16::from(tolerance);
-    let matches = |pixel: Bgra| {
-        (i16::from(pixel.b) - i16::from(target.b)).abs() <= tolerance
-            && (i16::from(pixel.g) - i16::from(target.g)).abs() <= tolerance
-            && (i16::from(pixel.r) - i16::from(target.r)).abs() <= tolerance
-            && (i16::from(pixel.a) - i16::from(target.a)).abs() <= tolerance
-    };
+    let matches = |pixel: Bgra| bgra_within_tolerance(pixel, target, tolerance);
     while let Some((x, y)) = queue.pop_front() {
         if x < rect.left() || x >= rect.right() || y < rect.top() || y >= rect.bottom() {
+            continue;
+        }
+        if !clip.selects_xy(x, y) {
             continue;
         }
         let index = ((y - rect.top()) * width + (x - rect.left())) as usize;
@@ -584,18 +673,19 @@ pub fn flood_fill(
     )?))
 }
 
-/// Fills every matching pixel in the selection regardless of connectivity.
+/// Fills every matching pixel in the selection mask regardless of connectivity.
 pub fn global_fill(
     document: &Document,
     layer_id: LayerId,
-    point: paint_core::Point,
+    point: Point,
     color: Bgra,
     tolerance: u8,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
-    let Some(rect) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
+    let rect = clip.rect;
     let width = i64::from(rect.width());
     let start_x = i64::from(point.x);
     let start_y = i64::from(point.y);
@@ -603,6 +693,7 @@ pub fn global_fill(
         || start_x >= rect.right()
         || start_y < rect.top()
         || start_y >= rect.bottom()
+        || !clip.selects_xy(start_x, start_y)
     {
         return Ok(None);
     }
@@ -614,13 +705,15 @@ pub fn global_fill(
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
     let tolerance = i16::from(tolerance);
-    for (before_pixel, after_pixel) in before.iter().zip(&mut after) {
-        let close = (i16::from(before_pixel.b) - i16::from(target.b)).abs() <= tolerance
-            && (i16::from(before_pixel.g) - i16::from(target.g)).abs() <= tolerance
-            && (i16::from(before_pixel.r) - i16::from(target.r)).abs() <= tolerance
-            && (i16::from(before_pixel.a) - i16::from(target.a)).abs() <= tolerance;
-        if close {
-            *after_pixel = color;
+    for y in 0..rect.height() {
+        for x in 0..rect.width() {
+            if !clip.selects_xy(rect.left() + i64::from(x), rect.top() + i64::from(y)) {
+                continue;
+            }
+            let index = (i64::from(y) * width + i64::from(x)) as usize;
+            if bgra_within_tolerance(before[index], target, tolerance) {
+                after[index] = color;
+            }
         }
     }
     if before == after {
@@ -635,18 +728,18 @@ pub fn global_fill(
     )?))
 }
 
-/// Recolors pixels near `target` only inside a round brush stroke.
+/// Recolors pixels near `target` only inside a round brush stroke and the selection mask.
 pub fn recolor_stroke(
     document: &Document,
     layer_id: LayerId,
-    points: &[paint_core::Point],
+    points: &[Point],
     size: u32,
     target: Bgra,
     replacement: Bgra,
     tolerance: u8,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
-    let Some(operation) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
     let Some(first) = points.first() else {
@@ -665,7 +758,7 @@ pub fn recolor_stroke(
         max_y = max_y.max(i64::from(point.y));
     }
     let Some(rect) = clip_rect(
-        operation,
+        clip.rect,
         min_x - radius_i64,
         min_y - radius_i64,
         max_x + radius_i64 + 1,
@@ -682,12 +775,7 @@ pub fn recolor_stroke(
     let width = i64::from(rect.width());
     let radius_squared = i128::from(radius) * i128::from(radius);
     let tolerance = i16::from(tolerance);
-    let matches = |pixel: Bgra| {
-        (i16::from(pixel.b) - i16::from(target.b)).abs() <= tolerance
-            && (i16::from(pixel.g) - i16::from(target.g)).abs() <= tolerance
-            && (i16::from(pixel.r) - i16::from(target.r)).abs() <= tolerance
-            && (i16::from(pixel.a) - i16::from(target.a)).abs() <= tolerance
-    };
+    let matches = |pixel: Bgra| bgra_within_tolerance(pixel, target, tolerance);
     let mut stamp = |x: i64, y: i64| {
         for py in (y - radius_i64)..=(y + radius_i64) {
             if py < top || py >= top + i64::from(rect.height()) {
@@ -700,6 +788,9 @@ pub fn recolor_stroke(
                 let dx = i128::from(px - x);
                 let dy = i128::from(py - y);
                 if dx * dx + dy * dy > radius_squared {
+                    continue;
+                }
+                if !clip.selects_xy(px, py) {
                     continue;
                 }
                 let index = ((py - top) * width + (px - left)) as usize;
@@ -734,10 +825,11 @@ pub fn recolor_stroke(
 }
 
 /// Composites a detached floating surface onto a layer at `dest`, clipped to the canvas.
+/// When a selection exists, destination pixels outside it are not modified.
 pub fn stamp(
     document: &Document,
     layer_id: LayerId,
-    surface: &Surface,
+    surface: &paint_core::Surface,
     dest_x: i64,
     dest_y: i64,
 ) -> Result<Option<PixelPatch>, RasterError> {
@@ -751,13 +843,21 @@ pub fn stamp(
     let Some(rect) = requested.clip_to(document.size()) else {
         return Ok(None);
     };
+    let selection = document.selection_model();
     let before = layer.surface().read_region(rect)?;
     let width = i64::from(rect.width());
     let mut after = before.clone();
     for y in 0..i64::from(rect.height()) {
         for x in 0..width {
-            let source_x = rect.left() + x - dest_x;
-            let source_y = rect.top() + y - dest_y;
+            let dest_pixel_x = rect.left() + x;
+            let dest_pixel_y = rect.top() + y;
+            if let Some(selection) = selection
+                && !selection.contains_xy(dest_pixel_x, dest_pixel_y)
+            {
+                continue;
+            }
+            let source_x = dest_pixel_x - dest_x;
+            let source_y = dest_pixel_y - dest_y;
             let source =
                 surface.pixels()[(source_y * i64::from(surface.width()) + source_x) as usize];
             if source.a == 0 {
@@ -794,6 +894,67 @@ pub fn stamp(
         before,
         after,
     )?))
+}
+
+/// Builds a magic-wand selection mask sampled from one layer.
+///
+/// Contiguous mode uses the same four-connected flood traversal and tolerance rule as
+/// [`flood_fill`]; global mode selects every matching pixel regardless of connectivity. The mask
+/// bounds are tightened to the selected pixels. `Ok(None)` means the point is outside the canvas
+/// or no pixel matched.
+pub fn magic_wand_mask(
+    document: &Document,
+    layer_id: LayerId,
+    point: Point,
+    tolerance: u8,
+    global: bool,
+) -> Result<Option<SelectionMask>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let rect = document.canvas_rect();
+    let width = i64::from(rect.width());
+    let start_x = i64::from(point.x);
+    let start_y = i64::from(point.y);
+    if start_x < rect.left()
+        || start_x >= rect.right()
+        || start_y < rect.top()
+        || start_y >= rect.bottom()
+    {
+        return Ok(None);
+    }
+    let pixels = layer.surface().read_region(rect)?;
+    let target = pixels[((start_y - rect.top()) * width + (start_x - rect.left())) as usize];
+    let tolerance = i16::from(tolerance);
+    let matches = |pixel: Bgra| bgra_within_tolerance(pixel, target, tolerance);
+    let mut flags = vec![false; pixels.len()];
+    if global {
+        for (index, pixel) in pixels.iter().copied().enumerate() {
+            flags[index] = matches(pixel);
+        }
+    } else {
+        let mut visited = vec![false; pixels.len()];
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back((start_x, start_y));
+        while let Some((x, y)) = queue.pop_front() {
+            if x < rect.left() || x >= rect.right() || y < rect.top() || y >= rect.bottom() {
+                continue;
+            }
+            let index = ((y - rect.top()) * width + (x - rect.left())) as usize;
+            if visited[index] || !matches(pixels[index]) {
+                continue;
+            }
+            visited[index] = true;
+            flags[index] = true;
+            queue.push_back((x + 1, y));
+            if x > rect.left() {
+                queue.push_back((x - 1, y));
+            }
+            queue.push_back((x, y + 1));
+            if y > rect.top() {
+                queue.push_back((x, y - 1));
+            }
+        }
+    }
+    Ok(SelectionMask::from_canvas_flags(document.size(), &flags)?)
 }
 
 /// A whole-image rotation direction.
@@ -1000,7 +1161,7 @@ pub fn clone_stamp(
     hardness: u8,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
-    let Some(operation) = operation_rect(document) else {
+    let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
     let Some(origin) = points.first().copied() else {
@@ -1019,7 +1180,7 @@ pub fn clone_stamp(
         max_y = max_y.max(i64::from(point.y));
     }
     let Some(rect) = clip_rect(
-        operation,
+        clip.rect,
         min_x - radius_i64,
         min_y - radius_i64,
         max_x + radius_i64 + 1,
@@ -1050,6 +1211,9 @@ pub fn clone_stamp(
             }
             for px in (center_x - radius_i64)..=(center_x + radius_i64) {
                 if px < left || px >= left + width {
+                    continue;
+                }
+                if !clip.selects_xy(px, py) {
                     continue;
                 }
                 let dx = (px - center_x) as f64;

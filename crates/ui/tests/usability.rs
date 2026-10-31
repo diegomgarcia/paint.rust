@@ -2524,3 +2524,285 @@ fn clone_stamp_without_a_source_does_not_edit_the_document() {
     assert!(!harness.state().session().dirty());
     assert!(!harness.state().session().can_undo());
 }
+
+#[test]
+fn ellipse_select_drag_creates_a_mask_and_fills_only_inside_it() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Ellipse Select");
+    drag_canvas(&mut harness, egui::vec2(10.0, 10.0), egui::vec2(39.0, 39.0));
+
+    let session = harness.state().session();
+    let document = session.document();
+    assert_eq!(
+        document.selection(),
+        Some(Rect::new(10, 10, 40, 40).expect("ellipse bounds"))
+    );
+    let mask = document
+        .selection_mask()
+        .expect("ellipse selection must be a real mask");
+    assert!(mask.contains(Point::new(25, 25)));
+    assert!(!mask.contains(Point::new(10, 10)));
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+
+    click(&mut harness, "Paint Bucket");
+    click_canvas_at(&mut harness, egui::vec2(25.5, 25.5));
+    let session = harness.state().session();
+    let surface = session.document().active_layer().surface();
+    assert_eq!(
+        *surface.pixel(Point::new(25, 25)).expect("ellipse center"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(10, 10)).expect("ellipse corner"),
+        Bgra::WHITE
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(0, 0)).expect("canvas corner"),
+        Bgra::WHITE
+    );
+
+    click(&mut harness, "Undo");
+    let session = harness.state().session();
+    assert_eq!(
+        *session
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(25, 25))
+            .expect("restored center"),
+        Bgra::WHITE
+    );
+    assert!(
+        session
+            .document()
+            .selection_mask()
+            .is_some_and(|mask| mask.contains(Point::new(25, 25))),
+        "undo must keep the non-rectangular selection active"
+    );
+}
+
+#[test]
+fn lasso_select_freehand_trace_masks_the_eraser() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Paint Bucket");
+    click_canvas_at(&mut harness, egui::vec2(0.5, 0.5));
+    assert_eq!(
+        *harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(0, 0))
+            .expect("black canvas"),
+        Bgra::BLACK
+    );
+
+    click(&mut harness, "Lasso Select");
+    let dirty_before = harness.state().session().dirty();
+    let undo_before = harness.state().session().can_undo();
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let rect = canvas.rect();
+    harness.drag_at(rect.min + egui::vec2(5.0, 5.0));
+    harness.run();
+    for offset in [
+        egui::vec2(40.0, 5.0),
+        egui::vec2(40.0, 40.0),
+        egui::vec2(5.0, 40.0),
+    ] {
+        harness.hover_at(rect.min + offset);
+        harness.run();
+    }
+    harness.drop_at(rect.min + egui::vec2(5.0, 40.0));
+    harness.run();
+
+    let session = harness.state().session();
+    let mask = session
+        .document()
+        .selection_mask()
+        .expect("lasso trace must produce a mask")
+        .clone();
+    assert!(mask.contains(Point::new(20, 20)));
+    assert!(!mask.contains(Point::new(1, 1)));
+    assert_eq!(session.dirty(), dirty_before);
+    assert_eq!(session.can_undo(), undo_before);
+
+    click(&mut harness, "Eraser");
+    drag_canvas(&mut harness, egui::vec2(0.0, 20.0), egui::vec2(80.0, 20.0));
+    let session = harness.state().session();
+    let surface = session.document().active_layer().surface();
+    assert_eq!(
+        *surface.pixel(Point::new(20, 20)).expect("inside lasso"),
+        Bgra::TRANSPARENT
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(0, 20)).expect("outside lasso"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(79, 20)).expect("outside lasso"),
+        Bgra::BLACK
+    );
+
+    click(&mut harness, "Undo");
+    let session = harness.state().session();
+    assert_eq!(
+        *session
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(20, 20))
+            .expect("restored by undo"),
+        Bgra::BLACK
+    );
+    assert!(
+        session.document().selection_mask().is_some(),
+        "undo keeps the lasso mask"
+    );
+}
+
+#[test]
+fn magic_wand_click_selects_a_contiguous_region_and_undo_keeps_the_mask() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Shapes");
+    drag_canvas(&mut harness, egui::vec2(20.0, 0.0), egui::vec2(30.0, 599.0));
+
+    let dirty_before = harness.state().session().dirty();
+    let undo_before = harness.state().session().can_undo();
+    click(&mut harness, "Magic Wand");
+    click_canvas_at(&mut harness, egui::vec2(0.5, 0.5));
+    let session = harness.state().session();
+    let mask = session
+        .document()
+        .selection_mask()
+        .expect("magic wand must produce a mask")
+        .clone();
+    assert!(mask.contains(Point::new(5, 5)));
+    assert!(!mask.contains(Point::new(25, 5)));
+    assert!(!mask.contains(Point::new(50, 5)));
+    assert_eq!(session.dirty(), dirty_before);
+    assert_eq!(session.can_undo(), undo_before);
+
+    click(&mut harness, "Eraser");
+    drag_canvas(&mut harness, egui::vec2(0.0, 5.0), egui::vec2(79.0, 5.0));
+    let session = harness.state().session();
+    let surface = session.document().active_layer().surface();
+    assert_eq!(
+        *surface.pixel(Point::new(5, 5)).expect("wand region"),
+        Bgra::TRANSPARENT
+    );
+    assert_eq!(
+        *surface
+            .pixel(Point::new(50, 5))
+            .expect("outside wand region"),
+        Bgra::WHITE
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(25, 5)).expect("black shape"),
+        Bgra::BLACK
+    );
+
+    click(&mut harness, "Undo");
+    let session = harness.state().session();
+    assert_eq!(
+        *session
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(5, 5))
+            .expect("restored by undo"),
+        Bgra::WHITE
+    );
+    assert!(
+        session.document().selection_mask().is_some(),
+        "undo keeps the magic wand mask"
+    );
+}
+
+#[test]
+fn moving_a_masked_selection_preserves_its_shape_and_undo_restores_content() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Ellipse Select");
+    drag_canvas(&mut harness, egui::vec2(10.0, 10.0), egui::vec2(39.0, 39.0));
+    click(&mut harness, "Paint Bucket");
+    click_canvas_at(&mut harness, egui::vec2(25.5, 25.5));
+    {
+        let session = harness.state().session();
+        let surface = session.document().active_layer().surface();
+        assert_eq!(
+            *surface.pixel(Point::new(25, 25)).expect("painted center"),
+            Bgra::BLACK
+        );
+        assert_eq!(
+            *surface.pixel(Point::new(10, 10)).expect("ellipse corner"),
+            Bgra::WHITE
+        );
+    }
+
+    click(&mut harness, "Move Selected Pixels");
+    drag_canvas(&mut harness, egui::vec2(20.0, 20.0), egui::vec2(30.0, 20.0));
+    {
+        let session = harness.state().session();
+        assert_eq!(
+            session.document().selection(),
+            Some(Rect::new(20, 10, 50, 40).expect("translated ellipse bounds"))
+        );
+        let mask = session
+            .document()
+            .selection_mask()
+            .expect("moved mask")
+            .clone();
+        assert!(mask.contains(Point::new(35, 25)));
+        assert!(!mask.contains(Point::new(15, 25)));
+    }
+
+    click(&mut harness, "Paintbrush");
+    let session = harness.state().session();
+    let surface = session.document().active_layer().surface();
+    assert_eq!(
+        *surface
+            .pixel(Point::new(25, 25))
+            .expect("moved black pixel"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        *surface
+            .pixel(Point::new(45, 25))
+            .expect("moved ellipse right edge"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        *surface
+            .pixel(Point::new(15, 25))
+            .expect("vacated mask pixel"),
+        Bgra::TRANSPARENT
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(5, 5)).expect("outside mask"),
+        Bgra::WHITE
+    );
+
+    click(&mut harness, "Undo");
+    click(&mut harness, "Undo");
+    let session = harness.state().session();
+    let surface = session.document().active_layer().surface();
+    assert_eq!(
+        *surface.pixel(Point::new(15, 25)).expect("restored source"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(25, 25)).expect("restored center"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        *surface
+            .pixel(Point::new(45, 25))
+            .expect("restored right side"),
+        Bgra::WHITE
+    );
+}

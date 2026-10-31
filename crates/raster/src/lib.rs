@@ -6,7 +6,7 @@ mod operations;
 mod text;
 
 use paint_core::{GeometryError, SurfaceError};
-use paint_document::{BlendMode, DocumentError, LayerId, PatchError};
+use paint_document::{BlendMode, DocumentError, LayerId, PatchError, SelectionError};
 use thiserror::Error;
 
 pub use compose::{compose, normal_over};
@@ -17,8 +17,8 @@ pub use effects::{
 pub use operations::{
     Rotation, canvas_surfaces, clone_stamp, crop_surfaces, fill, fill_active, fill_ellipse,
     fill_rect, flip_horizontal, flip_vertical, flood_fill, global_fill, invert, invert_active,
-    linear_gradient, recolor, recolor_stroke, resize_surfaces, rotate_surfaces, stamp, stroke,
-    translate,
+    linear_gradient, magic_wand_mask, recolor, recolor_stroke, resize_surfaces, rotate_surfaces,
+    stamp, stroke, translate,
 };
 pub use text::{MAX_TEXT_BYTES, MAX_TEXT_SIZE, TextFontFamily, TextStyle, text};
 
@@ -36,6 +36,8 @@ pub enum RasterError {
         "blend mode {mode:?} on layer {layer_id:?} is not implemented; only Normal is supported"
     )]
     UnsupportedBlendMode { layer_id: LayerId, mode: BlendMode },
+    #[error(transparent)]
+    Selection(#[from] SelectionError),
     #[error("failed to allocate {requested_bytes} bytes for a raster patch")]
     AllocationFailed { requested_bytes: usize },
     #[error("Gaussian blur radius {radius} exceeds the maximum of {max}")]
