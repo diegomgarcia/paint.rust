@@ -30,8 +30,6 @@ An original, cross-platform Rust image editor being developed against a pinned P
 - Effects/Adjustments: Invert, Grayscale, Sepia, Gaussian/Motion blur, Sharpen, Add Noise,
   Brightness/Contrast, Hue/Saturation, Auto-Level, Levels, Posterize, Black and White and
   Threshold (with previews and undo). Move supports subpixel resampling modes.
-- Clipboard Copy/Cut/Paste, Select All/Invert/Erase/Fill and Paste Into actions where
-  implemented by the current menus; keyboard shortcuts are documented in Help.
 - Grid, rulers, Pixel/Inch/Centimeter units, fit/zoom, and PNG-only document semantics.
 - Deterministic headless trace/PNG/snapshot path and macOS native keyboard/dirty-close gate.
 
