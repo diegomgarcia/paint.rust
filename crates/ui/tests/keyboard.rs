@@ -404,8 +404,8 @@ fn keyboard_layer_visibility_opacity_and_history() {
     focus(&mut harness, Role::Slider, "Layer opacity");
     for _ in 0..64 {
         harness.key_press(Key::ArrowLeft);
+        harness.run();
     }
-    harness.run();
     harness.get_by_role_and_label(Role::Button, "Apply").click();
     harness.run();
     assert_eq!(

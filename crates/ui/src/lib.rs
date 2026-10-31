@@ -14,7 +14,12 @@ pub mod native;
 mod rulers;
 mod selection;
 
-pub use app::{LayerListGeometry, LayerRowGeometry, PaintApp, ToolboxEntry};
+pub use app::{
+    COLORS_PANEL_LESS_SIZE, COLORS_PANEL_MORE_SIZE, COLORS_PANEL_TITLE, HISTORY_PANEL_SIZE,
+    HISTORY_PANEL_TITLE, LAYER_ITEM_HEIGHT, LAYERS_PANEL_SIZE, LAYERS_PANEL_TITLE,
+    LayerListGeometry, LayerRowGeometry, PaintApp, PanelLayout, TOOLS_PANEL_TITLE,
+    TOOLS_PANEL_WIDTH, ToolboxEntry, default_panel_layout,
+};
 pub use rulers::{RULER_THICKNESS, RulerLayout, RulerTick};
 
 /// Converts hue in degrees, saturation, value, and alpha into canonical BGRA.

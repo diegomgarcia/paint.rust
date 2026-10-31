@@ -24,8 +24,8 @@ use crate::colors::{
     format_hex_color, hsv_from_color, hsv_gradient_slider, mix_bgra,
 };
 use crate::icons::{
-    Icon, IconTextures, icon_button, icon_button_at, tool_button, tool_button_with_tooltip,
-    visibility_button_at,
+    Icon, IconTextures, VectorIcon, icon_button, icon_button_at, menu_button, panel_button,
+    tool_button, tool_button_with_tooltip, vector_icon_button, visibility_button_at,
 };
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
 #[cfg(target_os = "macos")]
@@ -55,10 +55,29 @@ const PREVIEW_HEIGHT: f32 = 140.0;
 const MAX_BROWSER_ENTRIES: usize = 200;
 
 /// Paint.NET LayersStrip metrics: 50 px thumbnail + 3 × 4 px padding = 62 px rows.
-const LAYER_ITEM_HEIGHT: f32 = 62.0;
+pub const LAYER_ITEM_HEIGHT: f32 = 62.0;
 const LAYER_THUMBNAIL_SIZE: f32 = 50.0;
 const LAYER_ITEM_PADDING: f32 = 4.0;
 const LAYER_VISIBILITY_HIT_WIDTH: f32 = 22.0;
+
+/// Floating window titles and default geometry, taken from the Paint.NET forms.
+pub const TOOLS_PANEL_TITLE: &str = "Tools";
+pub const COLORS_PANEL_TITLE: &str = "Colors";
+pub const LAYERS_PANEL_TITLE: &str = "Layers";
+pub const HISTORY_PANEL_TITLE: &str = "History";
+/// ToolsForm uses a 50 DIP tool grid; the egui frame adds 9 px on each side.
+pub const TOOLS_PANEL_WIDTH: f32 = 68.0;
+/// LayersForm.GetClientSizeDips() and the HistoryForm client size.
+pub const LAYERS_PANEL_SIZE: [f32; 2] = [196.0, 219.0];
+pub const HISTORY_PANEL_SIZE: [f32; 2] = [196.0, 219.0];
+/// ColorsForm stores `moreSize` from the designer and derives the less-mode
+/// width from `193 + 16` DIPs. Both modes keep the same client height so the
+/// More/Less control does not move when the form expands.
+pub const COLORS_PANEL_LESS_SIZE: [f32; 2] = [209.0, 306.0];
+pub const COLORS_PANEL_MORE_SIZE: [f32; 2] = [386.0, 306.0];
+const PANEL_SCREEN_MARGIN: f32 = 12.0;
+const PANEL_TOP_OFFSET: f32 = 200.0;
+const STATUS_BAR_HEIGHT: f32 = 24.0;
 
 /// Screen geometry of one layer row, captured for usability and geometry tests.
 #[derive(Clone, Debug)]
@@ -2073,13 +2092,13 @@ impl PaintApp {
         egui::Panel::top("paint-r-menu").show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    let new_response = ui.button("New");
+                    let new_response = menu_button(ui, &self.icons, Icon::NewDocument, "New", true);
                     focus_first_menu_item_on_keyboard_open(ui, &new_response);
                     if new_response.clicked() {
                         self.show_new_image_dialog();
                         ui.close();
                     }
-                    if ui.button("Open PNG…").clicked() {
+                    if menu_button(ui, &self.icons, Icon::OpenFile, "Open PNG…", true).clicked() {
                         self.show_path_dialog(PathDialogKind::Open);
                         ui.close();
                     }
@@ -2099,7 +2118,8 @@ impl PaintApp {
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Export PNG…").clicked() {
+                    if menu_button(ui, &self.icons, Icon::ExportFile, "Export PNG…", true).clicked()
+                    {
                         self.show_path_dialog(PathDialogKind::Export);
                         ui.close();
                     }
@@ -2114,20 +2134,14 @@ impl PaintApp {
                     }
                 });
                 ui.menu_button("Edit", |ui| {
-                    let undo = ui.add_enabled(
-                        self.session.can_undo(),
-                        egui::Button::new("Undo"),
-                    );
+                    let undo =
+                        menu_button(ui, &self.icons, Icon::Undo, "Undo", self.session.can_undo());
                     focus_first_menu_item_on_keyboard_open(ui, &undo);
                     if undo.clicked() {
                         self.execute(Command::Undo, "Undid the last edit");
                         ui.close();
                     }
-                    if ui
-                        .add_enabled(
-                            self.session.can_redo(),
-                            egui::Button::new("Redo"),
-                        )
+                    if menu_button(ui, &self.icons, Icon::Redo, "Redo", self.session.can_redo())
                         .clicked()
                     {
                         self.execute(Command::Redo, "Redid the next edit");
@@ -2359,15 +2373,20 @@ impl PaintApp {
                     )
                 };
                 ui.menu_button("Layers", |ui| {
-                    let add = ui.button("Add New Layer");
+                    let add = menu_button(ui, &self.icons, Icon::AddLayer, "Add New Layer", true);
                     focus_first_menu_item_on_keyboard_open(ui, &add);
                     if add.clicked() {
                         self.add_layer();
                         ui.close();
                     }
-                    if ui
-                        .add_enabled(layer_count > 1, egui::Button::new("Delete Layer"))
-                        .clicked()
+                    if menu_button(
+                        ui,
+                        &self.icons,
+                        Icon::LayerDelete,
+                        "Delete Layer",
+                        layer_count > 1,
+                    )
+                    .clicked()
                     {
                         self.execute(
                             Command::RemoveLayer {
@@ -2377,7 +2396,15 @@ impl PaintApp {
                         );
                         ui.close();
                     }
-                    if ui.button("Duplicate Layer").clicked() {
+                    if menu_button(
+                        ui,
+                        &self.icons,
+                        Icon::LayerDuplicate,
+                        "Duplicate Layer",
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.execute(
                             Command::DuplicateLayer {
                                 index: active_layer_index,
@@ -2386,12 +2413,14 @@ impl PaintApp {
                         );
                         ui.close();
                     }
-                    if ui
-                        .add_enabled(
-                            active_layer_index > 0,
-                            egui::Button::new("Merge Layer Down"),
-                        )
-                        .clicked()
+                    if menu_button(
+                        ui,
+                        &self.icons,
+                        Icon::LayerMerge,
+                        "Merge Layer Down",
+                        active_layer_index > 0,
+                    )
+                    .clicked()
                     {
                         self.execute(
                             Command::MergeLayerDown {
@@ -2401,12 +2430,18 @@ impl PaintApp {
                         );
                         ui.close();
                     }
-                    if ui
-                        .add_enabled(
-                            layer_count > 1,
-                            egui::Button::new("Toggle Layer Visibility"),
-                        )
-                        .clicked()
+                    if menu_button(
+                        ui,
+                        &self.icons,
+                        if active_layer_visible {
+                            Icon::Eye
+                        } else {
+                            Icon::EyeOff
+                        },
+                        "Toggle Layer Visibility",
+                        layer_count > 1,
+                    )
+                    .clicked()
                     {
                         self.execute(
                             Command::SetLayerVisibility {
@@ -2455,16 +2490,21 @@ impl PaintApp {
                         }
                     }
                     ui.separator();
-                    for (label, offset) in [
+                    for (label, icon, offset) in [
                         (
                             "Move Layer to Top",
+                            Icon::LayerUp,
                             layer_count as i32 - 1 - active_layer_index as i32,
                         ),
-                        ("Move Layer Up", 1),
-                        ("Move Layer Down", -1),
-                        ("Move Layer to Bottom", -(active_layer_index as i32)),
+                        ("Move Layer Up", Icon::LayerUp, 1),
+                        ("Move Layer Down", Icon::LayerDown, -1),
+                        (
+                            "Move Layer to Bottom",
+                            Icon::LayerDown,
+                            -(active_layer_index as i32),
+                        ),
                     ] {
-                        if ui.button(label).clicked() {
+                        if menu_button(ui, &self.icons, icon, label, true).clicked() {
                             self.execute(
                                 Command::MoveLayer {
                                     index: active_layer_index,
@@ -2476,7 +2516,15 @@ impl PaintApp {
                         }
                     }
                     ui.separator();
-                    if ui.button("Layer Properties…").clicked() {
+                    if menu_button(
+                        ui,
+                        &self.icons,
+                        Icon::LayerSettings,
+                        "Layer Properties…",
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.open_layer_properties(active_layer_index);
                         ui.close();
                     }
@@ -2829,28 +2877,21 @@ impl PaintApp {
 
     fn tools_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::left("paint-r-tools")
-            .default_size(68.0)
-            .min_size(68.0)
-            .max_size(68.0)
+            .default_size(TOOLS_PANEL_WIDTH)
+            .min_size(TOOLS_PANEL_WIDTH)
+            .max_size(TOOLS_PANEL_WIDTH)
             .resizable(false)
             .show(ui, |ui| self.tools_content(ui));
     }
 
     fn tools_content(&mut self, ui: &mut egui::Ui) {
         if self.tools_floating {
-            ui.add_space(2.0);
-            ui.horizontal(|ui| {
-                ui.strong("Tools");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if window_close_button(ui, "Close Tools window") {
-                        self.tools_close_requested = true;
-                    }
-                });
-            });
-            ui.separator();
+            if panel_header(ui, TOOLS_PANEL_TITLE, "Close Tools window") {
+                self.tools_close_requested = true;
+            }
         } else {
             ui.add_space(4.0);
-            ui.strong("Tools");
+            ui.strong(TOOLS_PANEL_TITLE);
             ui.separator();
         }
         ui.vertical_centered(|ui| {
@@ -3475,17 +3516,11 @@ impl PaintApp {
         let mut pending = None;
         self.layer_list_geometry = None;
         if self.panels_floating {
-            ui.horizontal(|ui| {
-                ui.strong("Layers");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if window_close_button(ui, "Close Layers window") {
-                        self.layers_close_requested = true;
-                    }
-                });
-            });
-            ui.separator();
+            if panel_header(ui, LAYERS_PANEL_TITLE, "Close Layers window") {
+                self.layers_close_requested = true;
+            }
         } else {
-            ui.heading("Layers");
+            ui.heading(LAYERS_PANEL_TITLE);
             ui.separator();
         }
         let (count, active_index) = {
@@ -3507,21 +3542,29 @@ impl PaintApp {
             .show(ui, |ui| {
                 ui.separator();
                 ui.horizontal(|ui| {
-                    let pad = ((ui.available_width() - 175.0) / 2.0).max(0.0);
+                    // Seven 23 px buttons, centered like Paint.NET's flow tool strip.
+                    let pad = ((ui.available_width() - 161.0) / 2.0).max(0.0);
                     ui.add_space(pad);
                     ui.spacing_mut().item_spacing.x = 0.0;
-                    if tool_button(ui, &self.icons, Icon::AddLayer, "Add Layer", true, false)
-                        .clicked()
+                    if panel_button(
+                        ui,
+                        &self.icons,
+                        Icon::AddLayer,
+                        "Add Layer",
+                        "Add a new layer",
+                        true,
+                    )
+                    .clicked()
                     {
                         self.add_layer();
                     }
-                    if tool_button(
+                    if panel_button(
                         ui,
                         &self.icons,
                         Icon::LayerDelete,
                         "Delete Layer",
+                        "Delete the active layer",
                         can_delete,
-                        false,
                     )
                     .clicked()
                     {
@@ -3529,13 +3572,13 @@ impl PaintApp {
                             index: active_index,
                         });
                     }
-                    if tool_button(
+                    if panel_button(
                         ui,
                         &self.icons,
                         Icon::LayerDuplicate,
                         "Duplicate Layer",
+                        "Duplicate the active layer",
                         true,
-                        false,
                     )
                     .clicked()
                     {
@@ -3543,13 +3586,13 @@ impl PaintApp {
                             index: active_index,
                         });
                     }
-                    if tool_button(
+                    if panel_button(
                         ui,
                         &self.icons,
                         Icon::LayerMerge,
                         "Merge Layer Down",
+                        "Merge the active layer down",
                         can_merge,
-                        false,
                     )
                     .clicked()
                     {
@@ -3557,13 +3600,13 @@ impl PaintApp {
                             index: active_index,
                         });
                     }
-                    if tool_button(
+                    if panel_button(
                         ui,
                         &self.icons,
                         Icon::LayerUp,
                         "Move Layer Up",
+                        "Move the active layer up",
                         can_up,
-                        false,
                     )
                     .clicked()
                     {
@@ -3572,13 +3615,13 @@ impl PaintApp {
                             offset: 1,
                         });
                     }
-                    if tool_button(
+                    if panel_button(
                         ui,
                         &self.icons,
                         Icon::LayerDown,
                         "Move Layer Down",
+                        "Move the active layer down",
                         can_down,
-                        false,
                     )
                     .clicked()
                     {
@@ -3587,13 +3630,13 @@ impl PaintApp {
                             offset: -1,
                         });
                     }
-                    if tool_button(
+                    if panel_button(
                         ui,
                         &self.icons,
                         Icon::LayerSettings,
                         "Layer Properties",
+                        "Open layer properties",
                         true,
-                        false,
                     )
                     .clicked()
                     {
@@ -3879,17 +3922,11 @@ impl PaintApp {
 
     fn history_content(&mut self, ui: &mut egui::Ui) {
         if self.panels_floating {
-            ui.horizontal(|ui| {
-                ui.strong("History");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if window_close_button(ui, "Close History window") {
-                        self.history_close_requested = true;
-                    }
-                });
-            });
-            ui.separator();
+            if panel_header(ui, HISTORY_PANEL_TITLE, "Close History window") {
+                self.history_close_requested = true;
+            }
         } else {
-            ui.heading("History");
+            ui.heading(HISTORY_PANEL_TITLE);
             ui.separator();
         }
         egui::Panel::bottom("paint-r-history-buttons")
@@ -3898,15 +3935,28 @@ impl PaintApp {
             .show(ui, |ui| {
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(self.session.can_undo(), egui::Button::new("Undo History"))
-                        .clicked()
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    if panel_button(
+                        ui,
+                        &self.icons,
+                        Icon::Undo,
+                        "Undo History",
+                        "Undo the last edit",
+                        self.session.can_undo(),
+                    )
+                    .clicked()
                     {
                         self.execute(Command::Undo, "Undid the last edit");
                     }
-                    if ui
-                        .add_enabled(self.session.can_redo(), egui::Button::new("Redo History"))
-                        .clicked()
+                    if panel_button(
+                        ui,
+                        &self.icons,
+                        Icon::Redo,
+                        "Redo History",
+                        "Redo the next edit",
+                        self.session.can_redo(),
+                    )
+                    .clicked()
                     {
                         self.execute(Command::Redo, "Redid the next edit");
                     }
@@ -3928,17 +3978,12 @@ impl PaintApp {
 
     fn colors_content(&mut self, ui: &mut egui::Ui) {
         if self.panels_floating {
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Colors").strong());
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if window_close_button(ui, "Close Colors window") {
-                        self.colors_close_requested = true;
-                    }
-                });
-            });
-            ui.separator();
+            if panel_header(ui, COLORS_PANEL_TITLE, "Close Colors window") {
+                self.colors_close_requested = true;
+            }
         } else {
-            ui.heading("Colors");
+            ui.heading(COLORS_PANEL_TITLE);
+            ui.separator();
         }
         let initial_slot = self.active_color_slot;
         let mut active = self.active_color();
@@ -3998,17 +4043,17 @@ impl PaintApp {
                     }
 
                     let more_rect = egui::Rect::from_min_size(
-                        area.min + egui::vec2(left_width - 60.0, 0.0),
-                        egui::vec2(60.0, 22.0),
+                        area.min + egui::vec2(left_width - 22.0, 0.0),
+                        egui::vec2(22.0, 22.0),
                     );
                     let mut more_ui = ui.new_child(egui::UiBuilder::new().max_rect(more_rect));
-                    if more_ui
-                        .add_sized(
-                            [60.0, 22.0],
-                            egui::Button::new(if self.colors_expanded { "Less" } else { "More" }),
-                        )
-                        .clicked()
-                    {
+                    let more_icon = if self.colors_expanded {
+                        VectorIcon::ChevronUp
+                    } else {
+                        VectorIcon::ChevronDown
+                    };
+                    let more_label = if self.colors_expanded { "Less" } else { "More" };
+                    if vector_icon_button(&mut more_ui, more_icon, more_label, true).clicked() {
                         self.colors_expanded = !self.colors_expanded;
                         more_ui.ctx().request_repaint();
                     }
@@ -4065,15 +4110,16 @@ impl PaintApp {
             );
             if self.colors_expanded {
                 let content = ui.max_rect();
+                let right_width = 170.0;
                 let right_rect = egui::Rect::from_min_size(
-                    egui::pos2(content.right() - 180.0, content.top()),
-                    egui::vec2(198.0, content.height()),
+                    egui::pos2(content.right() - right_width, content.top()),
+                    egui::vec2(right_width, content.height()),
                 );
                 let mut right_ui = ui.new_child(egui::UiBuilder::new().max_rect(right_rect));
                 let right_bottom = {
                     let ui = &mut right_ui;
                     ui.vertical(|ui| {
-                        ui.set_width(198.0);
+                        ui.set_width(right_width);
                         ui.strong("RGB");
                         compact_color_slider(ui, "Red", "R", &mut active.r);
                         compact_color_slider(ui, "Green", "G", &mut active.g);
@@ -4089,9 +4135,9 @@ impl PaintApp {
                             );
                             let response = ui
                                 .add_sized(
-                                    [152.0, 20.0],
+                                    [124.0, 20.0],
                                     egui::TextEdit::singleline(&mut self.hex_input)
-                                        .desired_width(152.0),
+                                        .desired_width(124.0),
                                 )
                                 .accessible_name("Hex color");
                             if response.changed() {
@@ -4222,17 +4268,24 @@ impl PaintApp {
 
     fn floating_panels(&mut self, ui: &mut egui::Ui) {
         let context = ui.ctx().clone();
+        let screen = context.viewport_rect();
+        let layout = default_panel_layout(screen, self.panels_floating, self.colors_expanded);
+        let tools_pos = layout.tools.min;
+        let history_pos = layout.history.min;
+        let colors_pos = layout.colors.min;
+        let colors_size = layout.colors.size();
+        let layers_pos = layout.layers.min;
         if self.tools_visible && self.tools_floating {
             let mut open = self.tools_visible;
             let frame = floating_window_frame(&context, self.tools_window_rect);
-            if let Some(inner) = egui::Window::new("Tools")
+            if let Some(inner) = egui::Window::new(TOOLS_PANEL_TITLE)
                 .open(&mut open)
                 .title_bar(false)
                 .frame(frame)
                 .collapsible(false)
-                .default_pos(egui::pos2(20.0, 180.0))
-                .min_width(68.0)
-                .max_width(68.0)
+                .default_pos(tools_pos)
+                .min_width(TOOLS_PANEL_WIDTH)
+                .max_width(TOOLS_PANEL_WIDTH)
                 .resizable(false)
                 .show(&context, |ui| self.tools_content(ui))
             {
@@ -4247,13 +4300,13 @@ impl PaintApp {
         if self.history_visible {
             let mut open = self.history_visible;
             let frame = floating_window_frame(&context, self.history_window_rect);
-            if let Some(inner) = egui::Window::new("History")
+            if let Some(inner) = egui::Window::new(HISTORY_PANEL_TITLE)
                 .open(&mut open)
                 .title_bar(false)
                 .frame(frame)
                 .collapsible(false)
-                .default_pos(egui::pos2(500.0, 260.0))
-                .fixed_size(egui::vec2(196.0, 219.0))
+                .default_pos(history_pos)
+                .fixed_size(egui::vec2(HISTORY_PANEL_SIZE[0], HISTORY_PANEL_SIZE[1]))
                 .show(&context, |ui| self.history_content(ui))
             {
                 self.history_window_rect = Some(inner.response.rect);
@@ -4267,24 +4320,17 @@ impl PaintApp {
         if self.panels_floating && self.colors_visible {
             let mut open = self.colors_visible;
             let frame = floating_window_frame(&context, self.colors_window_rect);
-            let colors_width = if self.colors_expanded { 402.0 } else { 206.0 };
-            if let Some(inner) = egui::Window::new("Colors")
+            if let Some(inner) = egui::Window::new(COLORS_PANEL_TITLE)
                 .open(&mut open)
                 .title_bar(false)
                 .frame(frame)
                 .collapsible(false)
-                .default_pos(egui::pos2(20.0, 470.0))
-                .fixed_size(egui::vec2(
-                    colors_width,
-                    if self.colors_expanded { 354.0 } else { 250.0 },
-                ))
+                .default_pos(colors_pos)
+                .fixed_size(egui::vec2(colors_size[0], colors_size[1]))
                 .scroll(false)
                 .show(&context, |ui| self.colors_content(ui))
             {
                 self.colors_window_rect = Some(inner.response.rect);
-                if inner.response.rect.width() + 1.0 < colors_width {
-                    context.request_repaint();
-                }
             }
             if self.colors_close_requested {
                 open = false;
@@ -4295,13 +4341,13 @@ impl PaintApp {
         if self.panels_floating && self.layers_visible {
             let mut open = self.layers_visible;
             let frame = floating_window_frame(&context, self.layers_window_rect);
-            if let Some(inner) = egui::Window::new("Layers")
+            if let Some(inner) = egui::Window::new(LAYERS_PANEL_TITLE)
                 .open(&mut open)
                 .title_bar(false)
                 .frame(frame)
                 .collapsible(false)
-                .default_pos(egui::pos2(980.0, 260.0))
-                .fixed_size(egui::vec2(196.0, 219.0))
+                .default_pos(layers_pos)
+                .fixed_size(egui::vec2(LAYERS_PANEL_SIZE[0], LAYERS_PANEL_SIZE[1]))
                 .show(&context, |ui| self.layers_content(ui))
             {
                 self.layers_window_rect = Some(inner.response.rect);
@@ -4846,49 +4892,88 @@ impl PaintApp {
     }
 
     fn status_panel(&mut self, ui: &mut egui::Ui) {
-        egui::Panel::bottom("paint-r-status").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                let dirty = if self.session.dirty() {
-                    "Modified"
-                } else {
-                    "Clean"
-                };
-                ui.strong(dirty);
-                ui.separator();
-                ui.label(&self.status);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let size = self.session.document().size();
-                    ui.label(format!(
-                        "{} × {} {}",
-                        self.unit.format_value(f64::from(size.width())),
-                        self.unit.format_value(f64::from(size.height())),
-                        self.unit.suffix()
-                    ));
-                    ui.separator();
-                    if let Some(point) = self.cursor_point {
-                        ui.label(format!(
-                            "{}, {} {}",
-                            self.unit.format_value(f64::from(point.x)),
-                            self.unit.format_value(f64::from(point.y)),
-                            self.unit.suffix()
-                        ));
+        egui::Panel::bottom("paint-r-status")
+            .exact_size(STATUS_BAR_HEIGHT)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    let dirty = self.session.dirty();
+                    let (dot, _) =
+                        ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                    ui.painter().circle_filled(
+                        dot.center(),
+                        4.0,
+                        if dirty {
+                            egui::Color32::from_rgb(240, 170, 60)
+                        } else {
+                            egui::Color32::from_rgb(90, 170, 110)
+                        },
+                    );
+                    let dirty_label = if dirty { "Modified" } else { "Clean" };
+                    ui.label(egui::RichText::new(dirty_label).strong().color(if dirty {
+                        egui::Color32::from_rgb(240, 190, 100)
                     } else {
-                        ui.label(format!("—, — {}", self.unit.suffix()));
-                    }
+                        egui::Color32::from_gray(190)
+                    }))
+                    .on_hover_text(if dirty {
+                        "The document has unsaved changes"
+                    } else {
+                        "The document has no unsaved changes"
+                    });
                     ui.separator();
-                    if labeled_button(ui, "Fit", "Fit canvas").clicked() {
-                        self.fit_canvas_requested = true;
-                    }
-                    if labeled_button(ui, "+", "Zoom in").clicked() {
-                        self.zoom = (self.zoom + 0.25).min(8.0);
-                    }
-                    ui.label(format!("{}%", (self.zoom * 100.0).round() as u32));
-                    if labeled_button(ui, "−", "Zoom out").clicked() {
-                        self.zoom = (self.zoom - 0.25).max(0.1);
-                    }
+                    ui.add(egui::Label::new(&self.status).truncate());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        let size = self.session.document().size();
+                        ui.label(format!(
+                            "{} × {} {}",
+                            self.unit.format_value(f64::from(size.width())),
+                            self.unit.format_value(f64::from(size.height())),
+                            self.unit.suffix()
+                        ))
+                        .on_hover_text("Document size");
+                        ui.separator();
+                        if vector_icon_button(ui, VectorIcon::FitWindow, "Zoom to window", true)
+                            .clicked()
+                        {
+                            self.fit_canvas_requested = true;
+                        }
+                        if vector_icon_button(ui, VectorIcon::ZoomIn, "Zoom in", true).clicked() {
+                            self.zoom = (self.zoom + 0.25).min(8.0);
+                        }
+                        ui.label(format!("{}%", (self.zoom * 100.0).round() as u32))
+                            .on_hover_text("Zoom level");
+                        if vector_icon_button(ui, VectorIcon::ZoomOut, "Zoom out", true).clicked() {
+                            self.zoom = (self.zoom - 0.25).max(0.1);
+                        }
+                        let units = ui.menu_button(self.unit.suffix(), |ui| {
+                            ui.radio_value(&mut self.unit, CanvasUnit::Pixels, "Pixels");
+                            ui.radio_value(&mut self.unit, CanvasUnit::Inches, "Inches");
+                            ui.radio_value(&mut self.unit, CanvasUnit::Centimeters, "Centimeters");
+                        });
+                        units.response.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::Role::Button,
+                                true,
+                                format!("Units: {}", self.unit.suffix()),
+                            )
+                        });
+                        units.response.on_hover_text("Measurement units");
+                        if let Some(point) = self.cursor_point {
+                            ui.label(format!(
+                                "{}, {} {}",
+                                self.unit.format_value(f64::from(point.x)),
+                                self.unit.format_value(f64::from(point.y)),
+                                self.unit.suffix()
+                            ))
+                            .on_hover_text("Cursor position");
+                        } else {
+                            ui.label(format!("—, — {}", self.unit.suffix()))
+                                .on_hover_text("Cursor position");
+                        }
+                    });
                 });
             });
-        });
     }
 
     fn canvas_panel(&mut self, ui: &mut egui::Ui) {
@@ -7275,6 +7360,64 @@ fn size_fields_ui(
     fields.validated_size(limits)
 }
 
+/// Default desktop parking slots for the four floating panels.
+///
+/// Mirrors Paint.NET's `AppWorkspace.ResetFloatingForm`:
+/// Tools top-left, History top-right, Layers bottom-right, Colors bottom-left.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PanelLayout {
+    pub tools: egui::Rect,
+    pub colors: egui::Rect,
+    pub layers: egui::Rect,
+    pub history: egui::Rect,
+}
+
+/// Computes the default floating-panel rectangles for a workspace viewport.
+///
+/// `panels_floating` mirrors the Window → Float Panels state. In the docked
+/// layout the right dock occupies the screen edge, so History is parked beside
+/// the expanded dock width to keep the dock's controls clear.
+#[must_use]
+pub fn default_panel_layout(
+    screen: egui::Rect,
+    panels_floating: bool,
+    colors_expanded: bool,
+) -> PanelLayout {
+    let left = screen.left() + PANEL_SCREEN_MARGIN;
+    let right = screen.right() - PANEL_SCREEN_MARGIN;
+    let top = screen.top() + PANEL_TOP_OFFSET;
+    let bottom = screen.bottom() - STATUS_BAR_HEIGHT - PANEL_SCREEN_MARGIN;
+    let tools_top = top.max(180.0);
+    let history_right = if panels_floating {
+        right
+    } else {
+        screen.right() - COLORS_PANEL_MORE_SIZE[0] - PANEL_SCREEN_MARGIN
+    };
+    let colors_size = if colors_expanded {
+        COLORS_PANEL_MORE_SIZE
+    } else {
+        COLORS_PANEL_LESS_SIZE
+    };
+    PanelLayout {
+        tools: egui::Rect::from_min_size(
+            egui::pos2(left, tools_top),
+            egui::vec2(TOOLS_PANEL_WIDTH, 305.0),
+        ),
+        colors: egui::Rect::from_min_size(
+            egui::pos2(left, bottom - colors_size[1]),
+            egui::vec2(colors_size[0], colors_size[1]),
+        ),
+        layers: egui::Rect::from_min_size(
+            egui::pos2(right - LAYERS_PANEL_SIZE[0], bottom - LAYERS_PANEL_SIZE[1]),
+            egui::vec2(LAYERS_PANEL_SIZE[0], LAYERS_PANEL_SIZE[1]),
+        ),
+        history: egui::Rect::from_min_size(
+            egui::pos2(history_right - HISTORY_PANEL_SIZE[0], top),
+            egui::vec2(HISTORY_PANEL_SIZE[0], HISTORY_PANEL_SIZE[1]),
+        ),
+    }
+}
+
 fn floating_window_frame(
     context: &egui::Context,
     previous_rect: Option<egui::Rect>,
@@ -7572,45 +7715,20 @@ fn blend_mode_label(mode: paint_document::BlendMode) -> &'static str {
 }
 
 fn layer_opacity_slider(ui: &mut egui::Ui, value: &mut u8) -> egui::Response {
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(170.0, 20.0), egui::Sense::click_and_drag());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, "Layer opacity"));
-    let painter = ui.painter();
-    painter.rect_filled(rect, 3, ui.visuals().extreme_bg_color);
-    let fraction = f32::from(*value) / 255.0;
-    painter.rect_filled(
-        egui::Rect::from_min_size(rect.min, egui::vec2(rect.width() * fraction, rect.height())),
-        3,
-        egui::Color32::from_rgb(31, 78, 116),
-    );
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        format!("Opacity {value}"),
-        egui::FontId::proportional(12.0),
-        egui::Color32::WHITE,
-    );
-    if (response.dragged() || response.clicked() || response.is_pointer_button_down_on())
-        && let Some(position) = response.interact_pointer_pos()
-    {
-        let fraction = ((position.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
-        *value = (fraction * 255.0).round() as u8;
-    }
-    if response.has_focus() {
-        let (left, right) = ui.input(|input| {
-            (
-                input.key_pressed(egui::Key::ArrowLeft),
-                input.key_pressed(egui::Key::ArrowRight),
-            )
+    ui.add(egui::Slider::new(value, 0..=u8::MAX).text("Layer opacity"))
+}
+
+fn panel_header(ui: &mut egui::Ui, title: &str, close_label: &'static str) -> bool {
+    let mut closed = false;
+    ui.add_space(2.0);
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(title).strong().size(13.0));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            closed = window_close_button(ui, close_label);
         });
-        if left {
-            *value = value.saturating_sub(1);
-        }
-        if right {
-            *value = value.saturating_add(1);
-        }
-    }
-    response
+    });
+    ui.separator();
+    closed
 }
 
 fn window_close_button(ui: &mut egui::Ui, label: &'static str) -> bool {

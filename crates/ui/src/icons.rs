@@ -231,6 +231,144 @@ pub(crate) fn tool_button_with_tooltip(
     response.on_hover_text(tooltip.to_owned())
 }
 
+/// Panel footer buttons use Paint.NET's 23 × 22 tool strip item metrics.
+pub(crate) fn panel_button(
+    ui: &mut Ui,
+    icons: &IconTextures,
+    icon: Icon,
+    label: &'static str,
+    tooltip: &'static str,
+    enabled: bool,
+) -> Response {
+    let response = ui
+        .add_enabled_ui(enabled, |ui| {
+            let (rect, response) = ui.allocate_exact_size(vec2(23.0, 22.0), Sense::click());
+            response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
+            if ui.is_rect_visible(rect) {
+                paint_button(ui, icons, rect, icon, enabled, false, &response);
+            }
+            response
+        })
+        .inner;
+    response.on_hover_text(tooltip)
+}
+
+/// A menu row with the same icon used by the corresponding toolbar or panel action.
+pub(crate) fn menu_button(
+    ui: &mut Ui,
+    icons: &IconTextures,
+    icon: Icon,
+    text: &str,
+    enabled: bool,
+) -> Response {
+    let tint = if enabled {
+        Color32::from_gray(235)
+    } else {
+        ui.visuals().weak_text_color()
+    };
+    let image = egui::Image::from_texture(icons.get(icon))
+        .fit_to_exact_size(vec2(16.0, 16.0))
+        .tint(tint);
+    ui.add_enabled(enabled, egui::Button::image_and_text(image, text))
+}
+
+/// Small chrome glyphs that have no dedicated Lucide asset. They are drawn as
+/// first-party vector shapes so no proprietary bitmaps enter the repository.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum VectorIcon {
+    ChevronDown,
+    ChevronUp,
+    FitWindow,
+    ZoomIn,
+    ZoomOut,
+}
+
+pub(crate) fn vector_icon_button(
+    ui: &mut Ui,
+    icon: VectorIcon,
+    label: &'static str,
+    enabled: bool,
+) -> Response {
+    let response = ui
+        .add_enabled_ui(enabled, |ui| {
+            let (rect, response) = ui.allocate_exact_size(vec2(22.0, 20.0), Sense::click());
+            response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
+            if ui.is_rect_visible(rect) {
+                let widgets = &ui.style().visuals.widgets;
+                let fill = if !enabled {
+                    Color32::TRANSPARENT
+                } else if response.is_pointer_button_down_on() {
+                    widgets.active.bg_fill
+                } else if response.hovered() {
+                    widgets.hovered.bg_fill
+                } else {
+                    Color32::TRANSPARENT
+                };
+                ui.painter().rect_filled(rect, 4, fill);
+                paint_vector_icon(ui, rect, icon, enabled);
+            }
+            response
+        })
+        .inner;
+    response.on_hover_text(label)
+}
+
+fn paint_vector_icon(ui: &Ui, rect: egui::Rect, icon: VectorIcon, enabled: bool) {
+    let color = if enabled {
+        Color32::from_gray(235)
+    } else {
+        ui.visuals().weak_text_color()
+    };
+    let stroke = Stroke::new(1.6, color);
+    let center = rect.center();
+    let painter = ui.painter();
+    match icon {
+        VectorIcon::ChevronDown => {
+            painter.line_segment([center + vec2(-4.0, -2.0), center + vec2(0.0, 2.5)], stroke);
+            painter.line_segment([center + vec2(0.0, 2.5), center + vec2(4.0, -2.0)], stroke);
+        }
+        VectorIcon::ChevronUp => {
+            painter.line_segment([center + vec2(-4.0, 2.0), center + vec2(0.0, -2.5)], stroke);
+            painter.line_segment([center + vec2(0.0, -2.5), center + vec2(4.0, 2.0)], stroke);
+        }
+        VectorIcon::FitWindow => {
+            let r = egui::Rect::from_center_size(center, vec2(12.0, 10.0));
+            let corner = 3.0;
+            for (start, end) in [
+                (r.left_top(), r.left_top() + vec2(corner, 0.0)),
+                (r.left_top(), r.left_top() + vec2(0.0, corner)),
+                (r.right_top(), r.right_top() + vec2(-corner, 0.0)),
+                (r.right_top(), r.right_top() + vec2(0.0, corner)),
+                (r.left_bottom(), r.left_bottom() + vec2(corner, 0.0)),
+                (r.left_bottom(), r.left_bottom() + vec2(0.0, -corner)),
+                (r.right_bottom(), r.right_bottom() + vec2(-corner, 0.0)),
+                (r.right_bottom(), r.right_bottom() + vec2(0.0, -corner)),
+            ] {
+                painter.line_segment([start, end], stroke);
+            }
+        }
+        VectorIcon::ZoomIn | VectorIcon::ZoomOut => {
+            let radius = 4.5;
+            let lens_center = center + vec2(-1.5, -1.5);
+            painter.circle_stroke(lens_center, radius, stroke);
+            painter.line_segment(
+                [lens_center + vec2(3.2, 3.2), lens_center + vec2(6.2, 6.2)],
+                stroke,
+            );
+            painter.line_segment(
+                [lens_center + vec2(-2.0, 0.0), lens_center + vec2(2.0, 0.0)],
+                stroke,
+            );
+            if icon == VectorIcon::ZoomIn {
+                painter.line_segment(
+                    [lens_center + vec2(0.0, -2.0), lens_center + vec2(0.0, 2.0)],
+                    stroke,
+                );
+            }
+        }
+    }
+}
+
 fn paint_button(
     ui: &Ui,
     icons: &IconTextures,

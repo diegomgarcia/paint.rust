@@ -18,6 +18,17 @@ fn app() -> Harness<'static, PaintApp> {
     harness
 }
 
+/// Floating-panel harness whose first frame already uses the target viewport.
+/// This matches the desktop app, where `default_pos` is evaluated once on the
+/// real window size instead of a transient test size.
+fn floating_app() -> Harness<'static, PaintApp> {
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1_400.0, 1_000.0))
+        .build_eframe(|cc| PaintApp::new(cc));
+    harness.run();
+    harness
+}
+
 /// A docked app whose simulated frames are close enough together for double-click detection.
 fn fast_app() -> Harness<'static, PaintApp> {
     let mut harness = Harness::builder()
@@ -62,6 +73,16 @@ fn set_slider(harness: &mut Harness<'_, PaintApp>, label: &str, value: f64) {
 }
 
 fn replace_field(harness: &mut Harness<'_, PaintApp>, label: &str, text: &str) {
+    if label == "Text content" {
+        let field = harness.get_by_role(Role::MultilineTextInput);
+        field.click();
+        harness.run();
+        harness
+            .get_by_role(Role::MultilineTextInput)
+            .type_text(text);
+        harness.run();
+        return;
+    }
     harness.get_by_label(label).click();
     harness.run();
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
@@ -277,9 +298,7 @@ fn new_invert_undo_and_redo_operate_on_the_real_session() {
 
 #[test]
 fn dirty_new_opens_a_new_tab_and_preserves_the_old_document() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
     menu_item(&mut harness, "Adjustments", "Invert Colors");
     let before_document = harness.state().session().document().clone();
     let before = harness.state().session().snapshot().expect("snapshot");
@@ -845,9 +864,7 @@ fn dirty_open_adds_a_new_tab_and_preserves_the_old_session() {
     let temporary = TempDir::new().expect("temporary directory");
     let input = temporary.path().join("replacement.png");
     let source = write_input_png(&input);
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
     menu_item(&mut harness, "Adjustments", "Invert Colors");
     let before_document = harness.state().session().document().clone();
     let before = harness.state().session().snapshot().expect("snapshot");
@@ -1268,9 +1285,7 @@ fn pan_tool_drags_without_editing_the_document() {
 
 #[test]
 fn default_shell_uses_floating_compact_side_windows() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let harness = floating_app();
     assert!(harness.state().panels_floating());
     harness.get_by_role_and_label(Role::Button, "Swap colors");
     harness.get_by_role_and_label(Role::Button, "Add Layer");
@@ -1298,22 +1313,17 @@ fn color_wheel_updates_primary_color_continuously_while_dragging() {
 
 #[test]
 fn colors_more_click_expands_the_whole_window_chrome() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
     assert!(harness.state().panels_floating());
 
     click(&mut harness, "More");
-    for _ in 0..5 {
-        harness.run();
-    }
 
     let bounds = harness
         .state()
         .colors_window_bounds()
         .expect("Colors window bounds");
     assert!(
-        bounds.width() >= 400.0,
+        (380.0..=392.0).contains(&bounds.width()),
         "expanded width was {}",
         bounds.width()
     );
@@ -1331,9 +1341,7 @@ fn colors_more_click_expands_the_whole_window_chrome() {
 
 #[test]
 fn hsv_gradient_sliders_react_to_drag_and_window_size_stays_stable() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
     click(&mut harness, "More");
     for _ in 0..4 {
         harness.run();
@@ -1402,9 +1410,7 @@ fn hsv_gradient_sliders_react_to_drag_and_window_size_stays_stable() {
 
 #[test]
 fn color_value_fields_keep_fixed_width_when_entering_long_values() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
     click(&mut harness, "More");
     for _ in 0..4 {
         harness.run();
@@ -1443,9 +1449,7 @@ fn color_value_fields_keep_fixed_width_when_entering_long_values() {
 
 #[test]
 fn color_controls_share_right_edge_and_more_less_keep_position() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
 
     let more = harness.get_by_role_and_label(Role::Button, "More").rect();
     click(&mut harness, "More");
@@ -1491,9 +1495,7 @@ fn color_controls_share_right_edge_and_more_less_keep_position() {
 
 #[test]
 fn expanded_colors_controls_stay_inside_the_window() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
     click(&mut harness, "More");
     for _ in 0..4 {
         harness.run();
@@ -1724,9 +1726,7 @@ fn layers_bottom_bar_adds_duplicates_moves_deletes_and_merges() {
 
 #[test]
 fn layers_window_margins_and_bottom_bar_are_symmetric() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let harness = floating_app();
     let bounds = harness
         .state()
         .layers_window_bounds()
@@ -2018,9 +2018,7 @@ fn image_effects_menus_and_panel_toggles_are_available() {
 
 #[test]
 fn panel_toggle_buttons_hide_and_restore_floating_windows() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
     harness.get_by_role_and_label(Role::Button, "Colors panel");
     click(&mut harness, "Colors panel");
     assert!(
@@ -2066,9 +2064,7 @@ fn document_tab_shows_a_preview_and_the_opened_filename() {
     let temporary = TempDir::new().expect("temporary directory");
     let path = temporary.path().join("tab-document.png");
     write_input_png(&path);
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
     harness.get_by_role_and_label(Role::Image, "Document tab preview");
     menu_item(&mut harness, "File", "Open PNG…");
     enter_path(&mut harness, &path);
@@ -2079,9 +2075,7 @@ fn document_tab_shows_a_preview_and_the_opened_filename() {
 
 #[test]
 fn history_scrollbar_sits_at_the_window_edge_and_footer_is_flush() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
     for _ in 0..14 {
         click(&mut harness, "Add Layer");
     }
@@ -2109,9 +2103,7 @@ fn history_scrollbar_sits_at_the_window_edge_and_footer_is_flush() {
 
 #[test]
 fn document_tab_strip_keeps_the_file_actions_in_a_fixed_tab() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let harness = floating_app();
     for label in [
         "New document",
         "Open PNG file",
@@ -2130,9 +2122,7 @@ fn document_tab_strip_keeps_the_file_actions_in_a_fixed_tab() {
 
 #[test]
 fn new_documents_create_switchable_independent_tabs() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
     click(&mut harness, "Add Layer");
     assert_eq!(harness.state().document_tab_count(), 1);
     assert_eq!(harness.state().session().document().layers().len(), 2);
@@ -2160,9 +2150,7 @@ fn new_documents_create_switchable_independent_tabs() {
 
 #[test]
 fn toolbar_icons_are_vertically_centered_with_the_document_tab() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let harness = floating_app();
     let mut centers = Vec::new();
     for label in [
         "New document",
@@ -2889,6 +2877,12 @@ fn text_tool_previews_commits_and_undoes_real_layer_pixels() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Text");
+    let canvas_dbg = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    eprintln!(
+        "canvas={:?} tools={:?}",
+        canvas_dbg.rect(),
+        harness.state().tools_window_bounds()
+    );
     replace_field(&mut harness, "Text content", "Ag");
     let before = harness
         .state()
@@ -2901,6 +2895,11 @@ fn text_tool_previews_commits_and_undoes_real_layer_pixels() {
 
     click_canvas_at(&mut harness, egui::vec2(10.0, 10.0));
     harness.run();
+    eprintln!(
+        "status={} preview={}",
+        harness.state().status(),
+        harness.state().session().has_preview()
+    );
     let preview = harness
         .state()
         .session()
@@ -3492,9 +3491,7 @@ fn moving_a_masked_selection_preserves_its_shape_and_undo_restores_content() {
 
 #[test]
 fn document_tabs_can_be_closed_individually_with_a_dirty_guard() {
-    let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
-    harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
-    harness.run();
+    let mut harness = floating_app();
     click(&mut harness, "New document");
     click(&mut harness, "Apply");
     assert_eq!(harness.state().document_tab_count(), 2);
@@ -3920,7 +3917,14 @@ fn gradient_options_select_shape_and_repeat_modes() {
         harness.get_by_role_and_label(Role::Button, label);
     }
 
-    click(&mut harness, "Repeat");
+    let repeat_center = harness
+        .get_by_role_and_label(Role::Button, "Repeat")
+        .rect()
+        .center();
+    harness.drag_at(repeat_center);
+    harness.run();
+    harness.drop_at(repeat_center);
+    harness.run();
     assert_eq!(harness.state().gradient_repeat(), GradientRepeat::Repeat);
     drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(25.0, 6.0));
     {
@@ -4452,4 +4456,273 @@ fn moving_the_layer_out_and_back_preserves_the_original_pixels() {
         Bgra::WHITE,
         "dragging back must restore pixels preserved outside the canvas"
     );
+}
+
+#[test]
+fn floating_panels_use_paintnet_default_sizes_titles_and_corner_slots() {
+    let harness = floating_app();
+    assert!(harness.state().panels_floating());
+
+    let tools = harness.state().tools_window_bounds().expect("Tools bounds");
+    let colors = harness
+        .state()
+        .colors_window_bounds()
+        .expect("Colors bounds");
+    let layers = harness
+        .state()
+        .layers_window_bounds()
+        .expect("Layers bounds");
+    let history = harness
+        .state()
+        .history_window_bounds()
+        .expect("History bounds");
+
+    assert!(
+        (48.0..=68.0).contains(&tools.width()),
+        "Tools must stay a two-column 48–68 px strip: {tools:?}"
+    );
+    assert!((colors.width() - paint_ui::COLORS_PANEL_LESS_SIZE[0]).abs() < 2.0);
+    assert!(
+        (240.0..=320.0).contains(&colors.height()),
+        "Colors must expose the compact client height: {colors:?}"
+    );
+    assert!((layers.width() - paint_ui::LAYERS_PANEL_SIZE[0]).abs() < 2.0);
+    assert!((layers.height() - paint_ui::LAYERS_PANEL_SIZE[1]).abs() < 2.0);
+    assert!((history.width() - paint_ui::HISTORY_PANEL_SIZE[0]).abs() < 2.0);
+    assert!((history.height() - paint_ui::HISTORY_PANEL_SIZE[1]).abs() < 2.0);
+
+    assert!(
+        tools.left() < 40.0,
+        "Tools should hug the left edge: {tools:?}"
+    );
+    assert!(
+        (96.0..300.0).contains(&tools.top()),
+        "Tools should start below the application chrome: {tools:?}"
+    );
+
+    for (title, close_label) in [
+        ("Tools", "Close Tools window"),
+        ("Colors", "Close Colors window"),
+        ("Layers", "Close Layers window"),
+        ("History", "Close History window"),
+    ] {
+        let title_rect = harness.get_by_role_and_label(Role::Label, title).rect();
+        let close_rect = harness
+            .get_by_role_and_label(Role::Button, close_label)
+            .rect();
+        assert!(
+            close_rect.left() > title_rect.right(),
+            "{title} header must place Close after the title: {title_rect:?} vs {close_rect:?}"
+        );
+        assert!(
+            (close_rect.center().y - title_rect.center().y).abs() < 14.0,
+            "{title} header controls are not on one row"
+        );
+    }
+}
+
+#[test]
+fn panel_footers_are_compact_icon_only_actions_in_paintnet_order() {
+    let mut harness = floating_app();
+
+    let undo = harness
+        .get_by_role_and_label(Role::Button, "Undo History")
+        .rect();
+    let redo = harness
+        .get_by_role_and_label(Role::Button, "Redo History")
+        .rect();
+    assert!(
+        undo.width() <= 24.0,
+        "Undo History must be icon-only: {undo:?}"
+    );
+    assert!(
+        redo.width() <= 24.0,
+        "Redo History must be icon-only: {redo:?}"
+    );
+    assert!(
+        undo.left() < redo.left(),
+        "Undo must precede Redo: {undo:?} {redo:?}"
+    );
+    assert!((undo.center().y - redo.center().y).abs() < 1.0);
+
+    let layer_actions = [
+        "Add Layer",
+        "Delete Layer",
+        "Duplicate Layer",
+        "Merge Layer Down",
+        "Move Layer Up",
+        "Move Layer Down",
+        "Layer Properties",
+    ];
+    let mut previous_right = f32::NEG_INFINITY;
+    for label in layer_actions {
+        let rect = harness.get_by_role_and_label(Role::Button, label).rect();
+        assert!(rect.width() <= 24.0, "{label} must be icon-only: {rect:?}");
+        assert!(
+            rect.left() >= previous_right - 0.5,
+            "{label} is out of Paint.NET toolbar order: {rect:?}"
+        );
+        previous_right = rect.left();
+    }
+
+    let more = harness.get_by_role_and_label(Role::Button, "More").rect();
+    assert!(
+        more.width() <= 24.0,
+        "More colors must be icon-only: {more:?}"
+    );
+    click(&mut harness, "More");
+    let less = harness.get_by_role_and_label(Role::Button, "Less").rect();
+    assert!(
+        less.width() <= 24.0,
+        "Less colors must be icon-only: {less:?}"
+    );
+    assert!(
+        (more.min.x - less.min.x).abs() < 0.5 && (more.min.y - less.min.y).abs() < 0.5,
+        "the disclosure control must not move when Colors expands: {more:?} vs {less:?}"
+    );
+}
+
+#[test]
+fn status_bar_groups_context_left_and_metrics_right_with_icon_only_zoom() {
+    let harness = app();
+    let dirty = harness.get_by_label("Clean").rect();
+    let context = harness
+        .get_by_label("New 800×600 opaque-white document")
+        .rect();
+    let size = harness.get_by_label("800 × 600 px").rect();
+    let cursor = harness.get_by_label("—, — px").rect();
+    let units = harness
+        .get_by_role_and_label(Role::Button, "Units: px")
+        .rect();
+    let zoom_out = harness
+        .get_by_role_and_label(Role::Button, "Zoom out")
+        .rect();
+    let zoom_level = harness.get_by_label("100%").rect();
+    let zoom_in = harness
+        .get_by_role_and_label(Role::Button, "Zoom in")
+        .rect();
+    let fit = harness
+        .get_by_role_and_label(Role::Button, "Zoom to window")
+        .rect();
+
+    assert!(
+        dirty.left() < context.left() && context.left() < 300.0,
+        "dirty/status text must form the left group: {dirty:?} {context:?}"
+    );
+    assert!(
+        cursor.left() > 600.0,
+        "cursor coordinates belong to the right group: {cursor:?}"
+    );
+    assert!(cursor.right() < units.left(), "units follow coordinates");
+    assert!(units.right() < zoom_out.left(), "zoom follows units");
+    assert!(
+        zoom_out.right() < zoom_level.left(),
+        "zoom out precedes the percent"
+    );
+    assert!(
+        zoom_level.right() < zoom_in.left(),
+        "percent precedes zoom in"
+    );
+    assert!(zoom_in.right() < fit.left(), "Fit follows the zoom pair");
+    assert!(
+        fit.right() < size.left(),
+        "document size is the rightmost group"
+    );
+    assert!(
+        size.right() > 1_350.0,
+        "document size should hug the right edge: {size:?}"
+    );
+
+    for (label, rect) in [
+        ("Zoom out", zoom_out),
+        ("Zoom in", zoom_in),
+        ("Zoom to window", fit),
+    ] {
+        assert!(
+            rect.width() <= 24.0,
+            "{label} must be icon-only, not a text button: {rect:?}"
+        );
+    }
+}
+
+#[test]
+fn status_units_picker_updates_coordinates_and_document_measurements() {
+    let mut harness = app();
+    harness
+        .get_by_role_and_label(Role::Button, "Units: px")
+        .click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Inches")
+        .click();
+    harness.run();
+
+    harness.get_by_label("—, — in");
+    harness.get_by_label("8.33 × 6.25 in");
+    harness.get_by_role_and_label(Role::Button, "Units: in");
+    assert!(harness.query_by_label("—, — px").is_none());
+}
+
+#[test]
+fn icon_menu_actions_keep_their_accessible_labels() {
+    let mut harness = floating_app();
+
+    click(&mut harness, "File");
+    for label in ["New", "Open PNG…", "Export PNG…"] {
+        assert!(
+            harness
+                .get_all_by_role_and_label(Role::Button, label)
+                .count()
+                >= 1,
+            "the File menu lost the accessible action {label}"
+        );
+    }
+    click(&mut harness, "File");
+
+    click(&mut harness, "Add Layer");
+    click(&mut harness, "Layers");
+    for label in [
+        "Add New Layer",
+        "Delete Layer",
+        "Duplicate Layer",
+        "Merge Layer Down",
+        "Toggle Layer Visibility",
+        "Move Layer Up",
+        "Move Layer Down",
+        "Layer Properties…",
+    ] {
+        assert!(
+            harness
+                .get_all_by_role_and_label(Role::Button, label)
+                .count()
+                >= 1,
+            "the Layers menu lost the accessible action {label}"
+        );
+    }
+}
+
+#[test]
+fn default_panel_layout_parks_forms_in_paintnet_corners() {
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1_400.0, 1_000.0));
+    let layout = paint_ui::default_panel_layout(screen, true, false);
+    assert!((layout.tools.width() - paint_ui::TOOLS_PANEL_WIDTH).abs() < f32::EPSILON);
+    assert!(layout.tools.left() < 40.0 && layout.tools.top() >= 100.0);
+    assert!((layout.colors.width() - paint_ui::COLORS_PANEL_LESS_SIZE[0]).abs() < f32::EPSILON);
+    assert!((layout.colors.height() - paint_ui::COLORS_PANEL_LESS_SIZE[1]).abs() < f32::EPSILON);
+    assert!(layout.colors.left() < 40.0);
+    assert!(layout.colors.bottom() <= 1_000.0 - 24.0);
+    assert!((layout.layers.width() - paint_ui::LAYERS_PANEL_SIZE[0]).abs() < f32::EPSILON);
+    assert!((layout.layers.height() - paint_ui::LAYERS_PANEL_SIZE[1]).abs() < f32::EPSILON);
+    assert!(layout.layers.right() > 1_350.0 && layout.layers.bottom() > 950.0);
+    assert!((layout.history.width() - paint_ui::HISTORY_PANEL_SIZE[0]).abs() < f32::EPSILON);
+    assert!(layout.history.right() > 1_350.0 && layout.history.top() < 260.0);
+
+    let expanded = paint_ui::default_panel_layout(screen, true, true);
+    assert!((expanded.colors.width() - paint_ui::COLORS_PANEL_MORE_SIZE[0]).abs() < f32::EPSILON);
+    assert_eq!(expanded.colors.top(), layout.colors.top());
+    assert_eq!(expanded.history, layout.history);
+
+    // In the docked layout History sits beside the expanded right dock.
+    let docked = paint_ui::default_panel_layout(screen, false, false);
+    assert!(docked.history.right() <= 1_400.0 - paint_ui::COLORS_PANEL_MORE_SIZE[0]);
 }

@@ -327,12 +327,19 @@ fn value_field(ui: &mut egui::Ui, label: &'static str, text: &str, width: f32) -
     (up.clicked(), down.clicked())
 }
 
+/// Keeps Paint.NET's 26 px label + flexible gradient + 44 px value field layout
+/// inside the compact ColorsForm width.
+fn slider_width(ui: &egui::Ui) -> f32 {
+    (ui.available_width() - 26.0 - 44.0 - 8.0).clamp(64.0, 120.0)
+}
+
 pub(crate) fn compact_color_slider(
     ui: &mut egui::Ui,
     label: &'static str,
     short: &'static str,
     value: &mut u8,
 ) {
+    let slider_width = slider_width(ui);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         ui.allocate_ui_with_layout(
@@ -348,7 +355,7 @@ pub(crate) fn compact_color_slider(
             "B" => GradientChannel::Blue,
             _ => GradientChannel::Alpha,
         };
-        gradient_slider(ui, label, value, channel);
+        gradient_slider(ui, label, value, channel, slider_width);
         let (up, down) = value_field(
             ui,
             match label {
@@ -385,6 +392,7 @@ pub(crate) fn hsv_gradient_slider(
     maximum: f32,
     color_at: impl Fn(f32) -> egui::Color32,
 ) {
+    let width = slider_width(ui);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         ui.allocate_ui_with_layout(
@@ -394,7 +402,6 @@ pub(crate) fn hsv_gradient_slider(
                 ui.label(short);
             },
         );
-        let width = 120.0;
         let (rect, response) =
             ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
         response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, label));
@@ -463,8 +470,8 @@ fn gradient_slider(
     label: &'static str,
     value: &mut u8,
     channel: GradientChannel,
+    width: f32,
 ) {
-    let width = 120.0;
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, label));
