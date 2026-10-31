@@ -104,3 +104,12 @@ File: New Image dialog, Open Recent; Edit: Select All, Invert Selection, Erase S
 Fill Selection, Copy Merged, Paste Into New Layer/Image; View: grid settings; Image: Color
 Profile; Layers: Import From File, Rotate/Zoom; Adjustments: Levels/Posterize/Black&White;
 Effects: representative real effects only.
+
+## Batch status (0.1.0)
+
+Implemented in this batch: exact 19-tool strip/hotkeys; Move 4 real resampling modes plus
+Enter/Finish; New Image dialog; Select All/Invert/Erase/Fill/Paste Into; Fill sampling/blend;
+Gradient blend/transparency-only; Text alignment/blend; Clone spacing; Recolor sampling;
+Picker 11/31/51; Levels/Posterize/Black and White/Threshold; panel geometry, Layers footer,
+icon-only History/Colors actions and grouped status bar. Remaining gaps are listed above and
+in the release notes.
