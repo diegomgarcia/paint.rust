@@ -2835,3 +2835,16 @@ fn document_tabs_can_be_closed_individually_with_a_dirty_guard() {
     assert_eq!(harness.state().document_tab_count(), 1);
     assert_eq!(harness.state().document_titles(), ["New Image"]);
 }
+
+#[test]
+fn view_menu_grid_toggle_enables_the_overlay() {
+    let mut harness = app();
+    assert!(!harness.state().grid_enabled());
+    harness.get_by_role_and_label(Role::Button, "View").click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::CheckBox, "Grid")
+        .click();
+    harness.run();
+    assert!(harness.state().grid_enabled());
+}

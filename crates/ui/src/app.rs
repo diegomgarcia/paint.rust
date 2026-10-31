@@ -153,6 +153,7 @@ pub struct PaintApp {
     zoom: f32,
     fit_canvas_requested: bool,
     zoom_to_selection_requested: bool,
+    show_grid: bool,
     layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
     floating_selection: Option<FloatingSelectionState>,
     floating_generation: u64,
@@ -256,6 +257,7 @@ impl PaintApp {
             zoom: 1.0,
             fit_canvas_requested: false,
             zoom_to_selection_requested: false,
+            show_grid: false,
             layer_thumbnails: HashMap::new(),
             floating_selection: None,
             floating_generation: 0,
@@ -358,6 +360,11 @@ impl PaintApp {
     #[doc(hidden)]
     pub const fn zoom(&self) -> f32 {
         self.zoom
+    }
+
+    #[doc(hidden)]
+    pub const fn grid_enabled(&self) -> bool {
+        self.show_grid
     }
 
     #[doc(hidden)]
@@ -1299,8 +1306,8 @@ impl PaintApp {
                         ui.close();
                     }
                     ui.separator();
-                    ui.add_enabled(false, egui::Button::new("Show Grid"));
-                    ui.add_enabled(false, egui::Button::new("Show Rulers"));
+                    ui.checkbox(&mut self.show_grid, "Grid");
+                    ui.add_enabled(false, egui::Button::new("Rulers"));
                 });
                 ui.menu_button("Image", |ui| {
                     let has_selection = self.session.document().selection().is_some();
@@ -3429,6 +3436,26 @@ impl PaintApp {
                             );
                             egui::Image::from_texture(&floating.texture)
                                 .paint_at(ui, egui::Rect::from_min_size(min, size));
+                        }
+                        if self.show_grid {
+                            let step = (8.0 * zoom).max(4.0);
+                            let grid = egui::Color32::from_rgba_unmultiplied(128, 128, 128, 110);
+                            let mut x = rect.left();
+                            while x <= rect.right() {
+                                ui.painter().line_segment(
+                                    [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
+                                    egui::Stroke::new(1.0, grid),
+                                );
+                                x += step;
+                            }
+                            let mut y = rect.top();
+                            while y <= rect.bottom() {
+                                ui.painter().line_segment(
+                                    [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+                                    egui::Stroke::new(1.0, grid),
+                                );
+                                y += step;
+                            }
                         }
                         let phase = ui.input(|input| input.time) as f32;
                         let dragging_selection = matches!(
