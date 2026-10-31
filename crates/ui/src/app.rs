@@ -163,6 +163,8 @@ pub struct PaintApp {
     fill_global: bool,
     selection_combine_mode: SelectionCombineMode,
     selection_fields_open: bool,
+    layer_move_base: (i32, i32),
+    layer_move_offset: (i32, i32),
     magic_wand_sampling: MagicWandSampling,
     paint_points: Vec<Point>,
     icons: IconTextures,
@@ -293,6 +295,8 @@ impl PaintApp {
             fill_global: false,
             selection_combine_mode: SelectionCombineMode::Replace,
             selection_fields_open: false,
+            layer_move_base: (0, 0),
+            layer_move_offset: (0, 0),
             magic_wand_sampling: MagicWandSampling::ActiveLayer,
             paint_points: Vec::new(),
             icons,
@@ -1183,8 +1187,15 @@ impl PaintApp {
         let (Some(start), Some(end)) = (self.drag_start, self.drag_current) else {
             return;
         };
-        let dx = i32::try_from(i64::from(end.x) - i64::from(start.x)).unwrap_or(0);
-        let dy = i32::try_from(i64::from(end.y) - i64::from(start.y)).unwrap_or(0);
+        let dx = self
+            .layer_move_base
+            .0
+            .saturating_add(i32::try_from(i64::from(end.x) - i64::from(start.x)).unwrap_or(0));
+        let dy = self
+            .layer_move_base
+            .1
+            .saturating_add(i32::try_from(i64::from(end.y) - i64::from(start.y)).unwrap_or(0));
+        self.layer_move_offset = (dx, dy);
         match self.session.preview_translate(dx, dy) {
             Ok(_) => self.texture_dirty = true,
             Err(error) => self.status = format!("Move preview failed: {error}"),
@@ -1248,10 +1259,11 @@ impl PaintApp {
             }
             Tool::CloneStamp => self.finish_live_clone(),
             Tool::Pencil | Tool::Brush | Tool::Eraser => self.finish_live_stroke(),
-            Tool::Gradient | Tool::Move => {
+            Tool::Gradient => {
                 self.session.cancel_preview();
                 self.texture_dirty = true;
             }
+            Tool::Move => self.finish_layer_move_preview(),
             _ => {}
         }
     }
@@ -1262,6 +1274,8 @@ impl PaintApp {
         self.clone_source = None;
         self.clone_offset = None;
         self.clone_alt_down = false;
+        self.layer_move_base = (0, 0);
+        self.layer_move_offset = (0, 0);
         if self.session.has_preview() {
             self.session.cancel_preview();
             self.texture_dirty = true;
@@ -2749,17 +2763,43 @@ impl PaintApp {
 
     fn move_tool_options(&mut self, ui: &mut egui::Ui) {
         let floating = self.floating_selection.is_some();
+        let previewing_layer = self.session.has_preview();
+        let finishable = floating || previewing_layer;
         // Keep this row present even when nothing is floating: adding/removing it mid-drag
         // changes the tool strip height and shifts the canvas under the pointer.
         tool_option_row(ui, |ui| {
             if ui
-                .add_enabled(floating, egui::Button::new("Finish"))
-                .on_hover_text("Place the floating selection")
+                .add_enabled(finishable, egui::Button::new("Finish"))
+                .on_hover_text("Place the moved pixels")
                 .clicked()
             {
-                self.finalize_floating_selection();
+                self.finish_move();
             }
         });
+    }
+
+    fn finish_move(&mut self) {
+        if self.floating_selection.is_some() {
+            self.finalize_floating_selection();
+        } else if self.session.has_preview() {
+            self.finish_layer_move_preview();
+        }
+    }
+
+    fn finish_layer_move_preview(&mut self) {
+        match self.session.finish_preview() {
+            Ok(true) => {
+                self.history_entries
+                    .push("Moved selected pixels".to_owned());
+                self.redo_entries.clear();
+                self.texture_dirty = true;
+                self.status = "Placed the moved layer".to_owned();
+            }
+            Ok(false) => {}
+            Err(error) => self.status = format!("Could not place the moved layer: {error}"),
+        }
+        self.layer_move_offset = (0, 0);
+        self.layer_move_base = (0, 0);
     }
 
     fn move_selection_tool_options(&mut self, ui: &mut egui::Ui) {
@@ -4604,7 +4644,11 @@ impl PaintApp {
                                             floating.base_y = floating.offset_y;
                                         }
                                     } else {
-                                        self.session.begin_preview();
+                                        if !self.session.has_preview() {
+                                            self.layer_move_offset = (0, 0);
+                                            self.session.begin_preview();
+                                        }
+                                        self.layer_move_base = self.layer_move_offset;
                                     }
                                 }
                             }
@@ -4909,15 +4953,10 @@ impl PaintApp {
                                                 "Moved selected pixels".to_owned(),
                                             ))
                                         } else {
-                                            self.session.cancel_preview();
-                                            self.texture_dirty = true;
-                                            Some((
-                                                Command::Move {
-                                                    dx: dx as i32,
-                                                    dy: dy as i32,
-                                                },
-                                                "Moved selected pixels".to_owned(),
-                                            ))
+                                            self.status =
+                                                "Moved the layer; click Finish to place it"
+                                                    .to_owned();
+                                            None
                                         }
                                     }
                                     Tool::Pencil | Tool::Brush | Tool::Eraser => {

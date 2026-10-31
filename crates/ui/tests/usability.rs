@@ -1159,7 +1159,8 @@ fn move_tool_shifts_the_active_layer_and_is_undoable() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Move Selected Pixels");
-    drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(6.0, 6.0));
+    drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(25.0, 16.0));
+    click(&mut harness, "Finish");
     {
         let session = harness.state().session();
         let surface = session.document().active_layer().surface();
@@ -1168,7 +1169,7 @@ fn move_tool_shifts_the_active_layer_and_is_undoable() {
             Bgra::TRANSPARENT
         );
         assert_eq!(
-            *surface.pixel(Point::new(1, 0)).expect("shifted pixel"),
+            *surface.pixel(Point::new(20, 10)).expect("shifted pixel"),
             Bgra::WHITE
         );
         assert!(session.can_undo());
@@ -4056,5 +4057,56 @@ fn move_selected_pixels_previews_the_whole_layer_before_release() {
     assert!(!session.can_undo());
     harness.drop_at(rect.min + egui::vec2(25.0, 16.0));
     harness.run_steps(2);
+    assert!(
+        !harness.state().session().can_undo(),
+        "release keeps the move preview"
+    );
+    click(&mut harness, "Finish");
     assert!(harness.state().session().can_undo());
+}
+
+#[test]
+fn moving_the_layer_out_and_back_preserves_the_original_pixels() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Move Selected Pixels");
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let rect = canvas.rect();
+    harness.drag_at(rect.min + egui::vec2(400.0, 300.0));
+    harness.run_steps(1);
+    harness.hover_at(rect.min + egui::vec2(799.0, 300.0));
+    harness.run();
+    harness.drop_at(rect.min + egui::vec2(799.0, 300.0));
+    harness.run_steps(2);
+    assert_eq!(
+        *harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(0, 300))
+            .expect("vacated pixel"),
+        Bgra::TRANSPARENT,
+        "the left edge is vacated by the preview"
+    );
+
+    harness.drag_at(rect.min + egui::vec2(400.0, 300.0));
+    harness.run_steps(1);
+    harness.hover_at(rect.min + egui::vec2(1.0, 300.0));
+    harness.run();
+    harness.drop_at(rect.min + egui::vec2(1.0, 300.0));
+    harness.run_steps(2);
+    assert_eq!(
+        *harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(0, 300))
+            .expect("restored pixel"),
+        Bgra::WHITE,
+        "dragging back must restore pixels preserved outside the canvas"
+    );
 }
