@@ -14,7 +14,7 @@ pub mod native;
 mod rulers;
 mod selection;
 
-pub use app::{LayerListGeometry, LayerRowGeometry, PaintApp};
+pub use app::{LayerListGeometry, LayerRowGeometry, PaintApp, ToolboxEntry};
 pub use rulers::{RULER_THICKNESS, RulerLayout, RulerTick};
 
 /// Converts hue in degrees, saturation, value, and alpha into canonical BGRA.

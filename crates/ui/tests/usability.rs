@@ -509,10 +509,15 @@ fn paint_net_style_layout_exposes_tools_options_colors_and_layers() {
         "Text",
         "Line / Curve",
         "Shapes",
-        "Shapes (Freeform)",
     ] {
         harness.get_by_role_and_label(Role::Button, label);
     }
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Button, "Shapes (Freeform)")
+            .is_none(),
+        "the disabled 20th Freeform cell must be gone"
+    );
 }
 
 #[test]
@@ -1526,7 +1531,7 @@ fn expanded_colors_controls_stay_inside_the_window() {
 }
 
 #[test]
-fn toolbox_has_twenty_aligned_two_column_cells() {
+fn toolbox_has_nineteen_aligned_two_column_cells() {
     let harness = app();
     let labels = [
         "Rectangle Select",
@@ -1548,19 +1553,27 @@ fn toolbox_has_twenty_aligned_two_column_cells() {
         "Text",
         "Line / Curve",
         "Shapes",
-        "Shapes (Freeform)",
     ];
     let mut rects = Vec::new();
     for label in labels {
         rects.push(harness.get_by_role_and_label(Role::Button, label).rect());
     }
-    for pair in rects.chunks_exact(2) {
+    assert_eq!(rects.len(), 19);
+    for pair in rects[..18].chunks_exact(2) {
         assert!((pair[0].min.y - pair[1].min.y).abs() < 0.5);
         assert!((pair[1].min.x - pair[0].min.x - 26.0).abs() < 0.5);
     }
-    for rows in rects.chunks_exact(4) {
+    for rows in rects[..18].chunks_exact(4) {
         assert!((rows[2].min.y - rows[0].min.y - 25.0).abs() < 0.5);
     }
+    // The nineteenth tool keeps the left column; the right cell is empty, not disabled.
+    assert!((rects[18].min.x - rects[16].min.x).abs() < 0.5);
+    assert!((rects[18].min.y - rects[16].min.y - 25.0).abs() < 0.5);
+    assert!(
+        harness
+            .query_by_role_and_label(Role::Button, "Shapes (Freeform)")
+            .is_none()
+    );
     assert!((rects[0].width() - 25.0).abs() < 0.5);
     assert!((rects[0].height() - 25.0).abs() < 0.5);
     let bounds = harness.state().tools_window_bounds().expect("Tools bounds");

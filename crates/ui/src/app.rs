@@ -14,8 +14,8 @@ use paint_raster::{
     LineCap, LineDash, LineStyle, MAX_ADJUSTMENT_VALUE, MAX_BLACK_AND_WHITE_WEIGHT,
     MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA, MAX_LEVELS_GAMMA_HUNDREDTHS, MAX_MOTION_BLUR_DISTANCE,
     MAX_NOISE_INTENSITY, MAX_POSTERIZE_LEVELS, MAX_SHARPEN_AMOUNT, MIN_ADJUSTMENT_VALUE,
-    MIN_HUE_DELTA, MIN_LEVELS_GAMMA_HUNDREDTHS, MIN_POSTERIZE_LEVELS, ShapeStyle, TextAlignment,
-    TextFontFamily, TextStyle,
+    MIN_HUE_DELTA, MIN_LEVELS_GAMMA_HUNDREDTHS, MIN_POSTERIZE_LEVELS, ResampleMode, ShapeStyle,
+    TextAlignment, TextFontFamily, TextStyle,
 };
 
 use crate::checkerboard::paint_checkerboard;
@@ -24,7 +24,8 @@ use crate::colors::{
     format_hex_color, hsv_from_color, hsv_gradient_slider, mix_bgra,
 };
 use crate::icons::{
-    Icon, IconTextures, icon_button, icon_button_at, tool_button, visibility_button_at,
+    Icon, IconTextures, icon_button, icon_button_at, tool_button, tool_button_with_tooltip,
+    visibility_button_at,
 };
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
 #[cfg(target_os = "macos")]
@@ -103,6 +104,8 @@ struct DocumentTabState {
     selection_input: SelectionInput,
     drag_start: Option<Point>,
     drag_current: Option<Point>,
+    move_drag_origin: Option<(f64, f64)>,
+    move_drag_current: Option<(f64, f64)>,
     paint_points: Vec<Point>,
     floating_selection: Option<FloatingSelectionState>,
     next_layer_number: usize,
@@ -111,10 +114,10 @@ struct DocumentTabState {
 struct FloatingSelectionState {
     floating: paint_app::FloatingSelection,
     texture: egui::TextureHandle,
-    offset_x: i64,
-    offset_y: i64,
-    base_x: i64,
-    base_y: i64,
+    offset_x: f64,
+    offset_y: f64,
+    base_x: f64,
+    base_y: f64,
     pasted: bool,
 }
 
@@ -178,8 +181,11 @@ pub struct PaintApp {
     gradient_alpha_only: bool,
     selection_combine_mode: SelectionCombineMode,
     selection_fields_open: bool,
-    layer_move_base: (i32, i32),
-    layer_move_offset: (i32, i32),
+    layer_move_base: (f64, f64),
+    layer_move_offset: (f64, f64),
+    move_drag_origin: Option<(f64, f64)>,
+    move_drag_current: Option<(f64, f64)>,
+    resample_mode: ResampleMode,
     magic_wand_sampling: MagicWandSampling,
     paint_points: Vec<Point>,
     icons: IconTextures,
@@ -319,8 +325,11 @@ impl PaintApp {
             gradient_alpha_only: false,
             selection_combine_mode: SelectionCombineMode::Replace,
             selection_fields_open: false,
-            layer_move_base: (0, 0),
-            layer_move_offset: (0, 0),
+            layer_move_base: (0.0, 0.0),
+            layer_move_offset: (0.0, 0.0),
+            move_drag_origin: None,
+            move_drag_current: None,
+            resample_mode: ResampleMode::Bicubic,
             magic_wand_sampling: MagicWandSampling::ActiveLayer,
             paint_points: Vec::new(),
             icons,
@@ -674,6 +683,32 @@ impl PaintApp {
         &self.status
     }
 
+    /// Reference toolbox order, labels, hotkeys, and tooltip hints.
+    ///
+    /// Kept public so parity tests assert the exact Paint.NET strip without scraping hover
+    /// rendering internals.
+    pub fn toolbox_entries() -> Vec<ToolboxEntry> {
+        TOOLBOX.iter().map(|spec| spec.entry).collect()
+    }
+
+    /// Accessible label of the currently active tool.
+    pub fn active_tool_label(&self) -> &'static str {
+        TOOLBOX
+            .iter()
+            .find(|spec| spec.tool == self.active_tool)
+            .map_or("", |spec| spec.entry.label)
+    }
+
+    /// Reference Move sampling mode currently selected in Tool Options.
+    pub fn move_resample_mode(&self) -> ResampleMode {
+        self.resample_mode
+    }
+
+    /// Display label of the active Move sampling mode.
+    pub fn move_resample_mode_label(&self) -> &'static str {
+        resample_label(self.resample_mode)
+    }
+
     #[doc(hidden)]
     pub const fn close_approved(&self) -> bool {
         self.close_approved
@@ -695,6 +730,8 @@ impl PaintApp {
             selection_input: self.selection_input,
             drag_start: self.drag_start.take(),
             drag_current: self.drag_current.take(),
+            move_drag_origin: self.move_drag_origin.take(),
+            move_drag_current: self.move_drag_current.take(),
             paint_points: std::mem::take(&mut self.paint_points),
             floating_selection: self.floating_selection.take(),
             next_layer_number: self.next_layer_number,
@@ -717,6 +754,8 @@ impl PaintApp {
         self.selection_input = state.selection_input;
         self.drag_start = state.drag_start;
         self.drag_current = state.drag_current;
+        self.move_drag_origin = state.move_drag_origin;
+        self.move_drag_current = state.move_drag_current;
         self.paint_points = state.paint_points;
         self.floating_selection = state.floating_selection;
         self.next_layer_number = state.next_layer_number;
@@ -1309,19 +1348,16 @@ impl PaintApp {
     }
 
     fn preview_live_translate(&mut self) {
-        let (Some(start), Some(end)) = (self.drag_start, self.drag_current) else {
+        let (Some(origin), Some(current)) = (self.move_drag_origin, self.move_drag_current) else {
             return;
         };
-        let dx = self
-            .layer_move_base
-            .0
-            .saturating_add(i32::try_from(i64::from(end.x) - i64::from(start.x)).unwrap_or(0));
-        let dy = self
-            .layer_move_base
-            .1
-            .saturating_add(i32::try_from(i64::from(end.y) - i64::from(start.y)).unwrap_or(0));
+        let dx = self.layer_move_base.0 + (current.0 - origin.0);
+        let dy = self.layer_move_base.1 + (current.1 - origin.1);
         self.layer_move_offset = (dx, dy);
-        match self.session.preview_translate(dx, dy) {
+        match self
+            .session
+            .preview_translate_resampled(dx, dy, self.resample_mode)
+        {
             Ok(_) => self.texture_dirty = true,
             Err(error) => self.status = format!("Move preview failed: {error}"),
         }
@@ -1402,8 +1438,10 @@ impl PaintApp {
         self.clone_source = None;
         self.clone_offset = None;
         self.clone_alt_down = false;
-        self.layer_move_base = (0, 0);
-        self.layer_move_offset = (0, 0);
+        self.layer_move_base = (0.0, 0.0);
+        self.layer_move_offset = (0.0, 0.0);
+        self.move_drag_origin = None;
+        self.move_drag_current = None;
         if self.session.has_preview() {
             self.session.cancel_preview();
             self.texture_dirty = true;
@@ -1551,8 +1589,8 @@ impl PaintApp {
             surface.width() as f32,
             surface.height() as f32,
         );
-        let offset_x = dest_x - bounds.left();
-        let offset_y = dest_y - bounds.top();
+        let offset_x = (dest_x - bounds.left()) as f64;
+        let offset_y = (dest_y - bounds.top()) as f64;
         self.clipboard = Some(content);
         self.floating_selection = Some(FloatingSelectionState {
             floating: paint_app::FloatingSelection { surface, bounds },
@@ -1701,10 +1739,10 @@ impl PaintApp {
                 self.floating_selection = Some(FloatingSelectionState {
                     floating,
                     texture,
-                    offset_x: 0,
-                    offset_y: 0,
-                    base_x: 0,
-                    base_y: 0,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
+                    base_x: 0.0,
+                    base_y: 0.0,
                     pasted: false,
                 });
                 self.history_entries
@@ -1726,17 +1764,19 @@ impl PaintApp {
         let Some(floating) = self.floating_selection.take() else {
             return;
         };
-        let dest_x = floating.floating.bounds.left() + floating.offset_x;
-        let dest_y = floating.floating.bounds.top() + floating.offset_y;
+        let dest_x = floating.floating.bounds.left() as f64 + floating.offset_x;
+        let dest_y = floating.floating.bounds.top() as f64 + floating.offset_y;
         let label = if floating.pasted {
             "Paste"
         } else {
             "Moved selected pixels"
         };
-        match self
-            .session
-            .stamp_floating(&floating.floating.surface, dest_x, dest_y)
-        {
+        match self.session.stamp_floating_resampled(
+            &floating.floating.surface,
+            dest_x,
+            dest_y,
+            self.resample_mode,
+        ) {
             Ok(changed) => {
                 if changed {
                     self.history_entries.push(label.to_owned());
@@ -2813,91 +2853,48 @@ impl PaintApp {
             ui.strong("Tools");
             ui.separator();
         }
-        macro_rules! tool_slot {
-            ($ui:expr, $icon:expr, $label:expr, $enabled:expr) => {
-                let _ = tool_button($ui, &self.icons, $icon, $label, $enabled, false);
-            };
-        }
-        macro_rules! tool {
-            ($ui:expr, $icon:expr, $label:expr, $tool:expr) => {
-                if tool_button(
-                    $ui,
-                    &self.icons,
-                    $icon,
-                    $label,
-                    true,
-                    self.active_tool == $tool,
-                )
-                .clicked()
-                {
-                    if self.active_tool != $tool {
-                        if $tool == Tool::Picker {
-                            self.previous_tool_before_picker = Some(self.active_tool);
-                        }
-                        if self.active_tool == Tool::Text {
-                            self.commit_text_preview();
-                        }
-                        self.finalize_floating_selection();
-                    }
-                    self.active_tool = $tool;
-                    self.picking_color = $tool == Tool::Picker;
-                }
-            };
-        }
         ui.vertical_centered(|ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            let row = |ui: &mut egui::Ui, draw: &mut dyn FnMut(&mut egui::Ui)| {
+            for row in TOOLBOX.chunks(2) {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 1.0;
-                    draw(ui);
+                    for spec in row {
+                        let selected = self.active_tool == spec.tool;
+                        let tooltip = spec.entry.tooltip();
+                        let clicked = tool_button_with_tooltip(
+                            ui,
+                            &self.icons,
+                            spec.icon,
+                            spec.entry.label,
+                            &tooltip,
+                            true,
+                            selected,
+                        )
+                        .clicked();
+                        if clicked {
+                            self.select_tool(spec.tool);
+                        }
+                    }
                 });
-            };
-            row(ui, &mut |ui| {
-                tool!(ui, Icon::SelectRectangle, "Rectangle Select", Tool::Select);
-                tool!(ui, Icon::Move, "Move Selected Pixels", Tool::Move);
-            });
-            row(ui, &mut |ui| {
-                tool!(ui, Icon::LassoSelect, "Lasso Select", Tool::Lasso);
-                tool!(
-                    ui,
-                    Icon::MoveSelection,
-                    "Move Selection",
-                    Tool::MoveSelection
-                );
-            });
-            row(ui, &mut |ui| {
-                tool!(ui, Icon::Ellipse, "Ellipse Select", Tool::EllipseSelect);
-                tool!(ui, Icon::Zoom, "Zoom", Tool::Zoom);
-            });
-            row(ui, &mut |ui| {
-                tool!(ui, Icon::MagicWand, "Magic Wand", Tool::MagicWand);
-                tool!(ui, Icon::Pan, "Pan", Tool::Pan);
-            });
-            row(ui, &mut |ui| {
-                tool!(ui, Icon::Fill, "Paint Bucket", Tool::Fill);
-                tool!(ui, Icon::Gradient, "Gradient", Tool::Gradient);
-            });
-            row(ui, &mut |ui| {
-                tool!(ui, Icon::Brush, "Paintbrush", Tool::Brush);
-                tool!(ui, Icon::Eraser, "Eraser", Tool::Eraser);
-            });
-            row(ui, &mut |ui| {
-                tool!(ui, Icon::Pencil, "Pencil", Tool::Pencil);
-                tool!(ui, Icon::EyeDropper, "Color Picker", Tool::Picker);
-            });
-            row(ui, &mut |ui| {
-                tool!(ui, Icon::CloneStamp, "Clone Stamp", Tool::CloneStamp);
-                tool!(ui, Icon::Recolor, "Recolor", Tool::Recolor);
-            });
-            row(ui, &mut |ui| {
-                tool!(ui, Icon::Text, "Text", Tool::Text);
-                tool!(ui, Icon::Line, "Line / Curve", Tool::Line);
-            });
-            row(ui, &mut |ui| {
-                tool!(ui, Icon::Shapes, "Shapes", Tool::Shapes);
-                tool_slot!(ui, Icon::Freeform, "Shapes (Freeform)", false);
-            });
+            }
         });
+    }
+
+    /// Switches tools with the same commit side effects as clicking a toolbox cell.
+    fn select_tool(&mut self, tool: Tool) {
+        if self.active_tool != tool {
+            if tool == Tool::Picker {
+                self.previous_tool_before_picker = Some(self.active_tool);
+            }
+            if self.active_tool == Tool::Text {
+                self.commit_text_preview();
+            }
+            self.finalize_floating_selection();
+            self.move_drag_origin = None;
+            self.move_drag_current = None;
+        }
+        self.active_tool = tool;
+        self.picking_color = tool == Tool::Picker;
     }
 
     fn selection_combine_options(&mut self, ui: &mut egui::Ui) {
@@ -3084,15 +3081,53 @@ impl PaintApp {
         let finishable = floating || previewing_layer;
         // Keep this row present even when nothing is floating: adding/removing it mid-drag
         // changes the tool strip height and shifts the canvas under the pointer.
+        // Reference ToolConfigStrip order: resampling section first, Commit/Finish last.
         tool_option_row(ui, |ui| {
+            ui.label("Sampling:");
+            for mode in RESAMPLE_MODES {
+                if mode == ResampleMode::Anisotropic {
+                    ui.add_enabled(false, egui::Button::new(resample_label(mode)))
+                        .on_disabled_hover_text(
+                            "Anisotropic sampling only differs under non-uniform scaling, which \
+                             Move does not perform. It is disabled rather than approximated.",
+                        );
+                    continue;
+                }
+                let selected = self.resample_mode == mode;
+                let response = ui.selectable_label(selected, resample_label(mode));
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::Role::Button,
+                        true,
+                        selected,
+                        resample_label(mode),
+                    )
+                });
+                if response.on_hover_text(resample_hint(mode)).clicked() {
+                    self.set_resample_mode(mode);
+                }
+            }
+            ui.separator();
             if ui
                 .add_enabled(finishable, egui::Button::new("Finish"))
-                .on_hover_text("Place the moved pixels")
+                .on_hover_text("Place the moved pixels\nShortcut key: Enter")
                 .clicked()
             {
                 self.finish_move();
             }
         });
+    }
+
+    /// Applies a sampling mode and refreshes an already-lifted whole-layer preview.
+    fn set_resample_mode(&mut self, mode: ResampleMode) {
+        self.resample_mode = mode;
+        if self.floating_selection.is_none() && self.session.has_preview() {
+            let (dx, dy) = self.layer_move_offset;
+            match self.session.preview_translate_resampled(dx, dy, mode) {
+                Ok(_) => self.texture_dirty = true,
+                Err(error) => self.status = format!("Move preview failed: {error}"),
+            }
+        }
     }
 
     fn finish_move(&mut self) {
@@ -3115,8 +3150,10 @@ impl PaintApp {
             Ok(false) => {}
             Err(error) => self.status = format!("Could not place the moved layer: {error}"),
         }
-        self.layer_move_offset = (0, 0);
-        self.layer_move_base = (0, 0);
+        self.layer_move_offset = (0.0, 0.0);
+        self.layer_move_base = (0.0, 0.0);
+        self.move_drag_origin = None;
+        self.move_drag_current = None;
     }
 
     fn move_selection_tool_options(&mut self, ui: &mut egui::Ui) {
@@ -4947,9 +4984,11 @@ impl PaintApp {
                         if let Some(floating) = &self.floating_selection {
                             let min = rect.min
                                 + egui::vec2(
-                                    (floating.floating.bounds.left() + floating.offset_x) as f32
+                                    (floating.floating.bounds.left() as f64 + floating.offset_x)
+                                        as f32
                                         * zoom,
-                                    (floating.floating.bounds.top() + floating.offset_y) as f32
+                                    (floating.floating.bounds.top() as f64 + floating.offset_y)
+                                        as f32
                                         * zoom,
                                 );
                             let size = egui::vec2(
@@ -5182,6 +5221,11 @@ impl PaintApp {
                                     canvas_point_at(position, rect, zoom, size)
                                 })
                             };
+                            let canvas_position = || {
+                                pointer.and_then(|position| {
+                                    canvas_position_at(position, rect, zoom, size)
+                                })
+                            };
                             let is_paint = matches!(
                                 self.active_tool,
                                 Tool::Pencil | Tool::Brush | Tool::Eraser
@@ -5208,6 +5252,8 @@ impl PaintApp {
                                     self.preview_live_gradient();
                                 }
                                 if self.active_tool == Tool::Move {
+                                    self.move_drag_origin = canvas_position();
+                                    self.move_drag_current = self.move_drag_origin;
                                     if self.session.document().selection().is_some() {
                                         self.lift_floating_selection(ui.ctx());
                                         if let Some(floating) = self.floating_selection.as_mut() {
@@ -5216,7 +5262,7 @@ impl PaintApp {
                                         }
                                     } else {
                                         if !self.session.has_preview() {
-                                            self.layer_move_offset = (0, 0);
+                                            self.layer_move_offset = (0.0, 0.0);
                                             self.session.begin_preview();
                                         }
                                         self.layer_move_base = self.layer_move_offset;
@@ -5228,14 +5274,21 @@ impl PaintApp {
                             {
                                 let drag_point_changed = self.drag_current != Some(point);
                                 self.drag_current = Some(point);
+                                let previous_move_position = self.move_drag_current;
                                 if self.active_tool == Tool::Move
-                                    && let (Some(start), Some(floating)) =
-                                        (self.drag_start.as_ref(), self.floating_selection.as_mut())
+                                    && let Some(position) = canvas_position()
                                 {
-                                    floating.offset_x =
-                                        floating.base_x + i64::from(point.x) - i64::from(start.x);
-                                    floating.offset_y =
-                                        floating.base_y + i64::from(point.y) - i64::from(start.y);
+                                    self.move_drag_current = Some(position);
+                                }
+                                let move_position_changed =
+                                    self.move_drag_current != previous_move_position;
+                                if self.active_tool == Tool::Move
+                                    && let (Some(origin), Some(current)) =
+                                        (self.move_drag_origin, self.move_drag_current)
+                                    && let Some(floating) = self.floating_selection.as_mut()
+                                {
+                                    floating.offset_x = floating.base_x + (current.0 - origin.0);
+                                    floating.offset_y = floating.base_y + (current.1 - origin.1);
                                 }
                                 if collects_points && self.paint_points.last() != Some(&point) {
                                     self.paint_points.push(point);
@@ -5248,7 +5301,7 @@ impl PaintApp {
                                 }
                                 if self.active_tool == Tool::Move
                                     && self.floating_selection.is_none()
-                                    && drag_point_changed
+                                    && move_position_changed
                                 {
                                     self.preview_live_translate();
                                 }
@@ -5317,21 +5370,22 @@ impl PaintApp {
                                     if let Some(floating) = &self.floating_selection {
                                         let min = rect.min
                                             + egui::vec2(
-                                                (floating.floating.bounds.left()
+                                                (floating.floating.bounds.left() as f64
                                                     + floating.offset_x)
                                                     as f32
                                                     * zoom,
-                                                (floating.floating.bounds.top() + floating.offset_y)
+                                                (floating.floating.bounds.top() as f64
+                                                    + floating.offset_y)
                                                     as f32
                                                     * zoom,
                                             );
                                         let max = rect.min
                                             + egui::vec2(
-                                                (floating.floating.bounds.right()
+                                                (floating.floating.bounds.right() as f64
                                                     + floating.offset_x)
                                                     as f32
                                                     * zoom,
-                                                (floating.floating.bounds.bottom()
+                                                (floating.floating.bounds.bottom() as f64
                                                     + floating.offset_y)
                                                     as f32
                                                     * zoom,
@@ -5512,8 +5566,19 @@ impl PaintApp {
                                         ))
                                     }
                                     Tool::Move => {
-                                        let dx = i64::from(end.x) - i64::from(start.x);
-                                        let dy = i64::from(end.y) - i64::from(start.y);
+                                        let (dx, dy) =
+                                            match (self.move_drag_origin, self.move_drag_current) {
+                                                (Some(origin), Some(current)) => (
+                                                    (current.0 - origin.0).round() as i64,
+                                                    (current.1 - origin.1).round() as i64,
+                                                ),
+                                                _ => (
+                                                    i64::from(end.x) - i64::from(start.x),
+                                                    i64::from(end.y) - i64::from(start.y),
+                                                ),
+                                            };
+                                        self.move_drag_origin = None;
+                                        self.move_drag_current = None;
                                         if dx == 0 && dy == 0 {
                                             None
                                         } else if self.floating_selection.is_some() {
@@ -5940,6 +6005,14 @@ impl PaintApp {
             self.cancel_text_preview();
             return;
         }
+        // Paint.NET's Commit button advertises Enter as "Finish" while Move is previewing.
+        if self.active_tool == Tool::Move
+            && (self.floating_selection.is_some() || self.session.has_preview())
+            && context.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
+        {
+            self.finish_move();
+            return;
+        }
         let command = egui::Modifiers::COMMAND;
         let command_shift = command | egui::Modifiers::SHIFT;
         let command_alt = command | egui::Modifiers::ALT;
@@ -6069,7 +6142,56 @@ impl PaintApp {
         }
         if shortcut_pressed(context, command, egui::Key::Z) {
             self.execute(Command::Undo, "Undid the last edit");
+            return;
         }
+        self.handle_tool_hotkeys(context);
+    }
+
+    /// Reference plain-key tool shortcuts. Tools sharing a key cycle in toolbox order.
+    fn handle_tool_hotkeys(&mut self, context: &egui::Context) {
+        if context.input(|input| input.pointer.any_down()) {
+            return;
+        }
+        for shortcut in TOOL_HOTKEYS {
+            let key = hotkey_key(shortcut);
+            let reverse = context.input_mut(|input| {
+                if input.consume_key(egui::Modifiers::SHIFT, key) {
+                    Some(true)
+                } else if input.consume_key(egui::Modifiers::NONE, key) {
+                    Some(false)
+                } else {
+                    None
+                }
+            });
+            if let Some(reverse) = reverse {
+                self.cycle_tool_hotkey(shortcut, reverse);
+                return;
+            }
+        }
+    }
+
+    fn cycle_tool_hotkey(&mut self, shortcut: char, reverse: bool) {
+        let candidates: Vec<usize> = TOOLBOX
+            .iter()
+            .enumerate()
+            .filter(|(_, spec)| spec.entry.shortcut == shortcut)
+            .map(|(index, _)| index)
+            .collect();
+        if candidates.is_empty() {
+            return;
+        }
+        let current = TOOLBOX
+            .iter()
+            .position(|spec| spec.tool == self.active_tool)
+            .and_then(|index| candidates.iter().position(|candidate| *candidate == index));
+        let next = match current {
+            Some(index) if reverse => (index + candidates.len() - 1) % candidates.len(),
+            Some(index) => (index + 1) % candidates.len(),
+            None if reverse => candidates.len() - 1,
+            None => 0,
+        };
+        let tool = TOOLBOX[candidates[next]].tool;
+        self.select_tool(tool);
     }
 
     fn handle_close_request(&mut self, context: &egui::Context) {
@@ -6158,6 +6280,170 @@ enum Tool {
     Picker,
     Text,
     CloneStamp,
+}
+
+/// One cell in the Paint.NET two-column toolbox.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ToolboxEntry {
+    /// Accessible button label, matching the reference tool name.
+    pub label: &'static str,
+    /// Reference hotkey. Tools sharing a key cycle in toolbox order.
+    pub shortcut: char,
+    /// Tooltip hint describing the shortcut or the cycle it belongs to.
+    pub hint: &'static str,
+}
+
+impl ToolboxEntry {
+    /// Two-line hover text: the tool name and its reference shortcut hint.
+    pub fn tooltip(self) -> String {
+        format!("{}\nShortcut: {}", self.label, self.hint)
+    }
+}
+
+struct ToolSpec {
+    entry: ToolboxEntry,
+    tool: Tool,
+    icon: Icon,
+}
+
+macro_rules! tool_spec {
+    ($tool:ident, $icon:expr, $label:expr, $shortcut:expr, $hint:expr) => {
+        ToolSpec {
+            entry: ToolboxEntry {
+                label: $label,
+                shortcut: $shortcut,
+                hint: $hint,
+            },
+            tool: Tool::$tool,
+            icon: $icon,
+        }
+    };
+}
+
+/// Exact Paint.NET `DocumentWorkspace` static-constructor order: 19 enabled tools.
+const TOOLBOX: [ToolSpec; 19] = [
+    tool_spec!(
+        Select,
+        Icon::SelectRectangle,
+        "Rectangle Select",
+        'S',
+        "S cycles selection tools"
+    ),
+    tool_spec!(
+        Move,
+        Icon::Move,
+        "Move Selected Pixels",
+        'M',
+        "M cycles move tools"
+    ),
+    tool_spec!(
+        Lasso,
+        Icon::LassoSelect,
+        "Lasso Select",
+        'S',
+        "S cycles selection tools"
+    ),
+    tool_spec!(
+        MoveSelection,
+        Icon::MoveSelection,
+        "Move Selection",
+        'M',
+        "M cycles move tools"
+    ),
+    tool_spec!(
+        EllipseSelect,
+        Icon::Ellipse,
+        "Ellipse Select",
+        'S',
+        "S cycles selection tools"
+    ),
+    tool_spec!(Zoom, Icon::Zoom, "Zoom", 'Z', "Z"),
+    tool_spec!(
+        MagicWand,
+        Icon::MagicWand,
+        "Magic Wand",
+        'S',
+        "S cycles selection tools"
+    ),
+    tool_spec!(Pan, Icon::Pan, "Pan", 'H', "H"),
+    tool_spec!(Fill, Icon::Fill, "Paint Bucket", 'F', "F"),
+    tool_spec!(Gradient, Icon::Gradient, "Gradient", 'G', "G"),
+    tool_spec!(Brush, Icon::Brush, "Paintbrush", 'B', "B"),
+    tool_spec!(Eraser, Icon::Eraser, "Eraser", 'E', "E"),
+    tool_spec!(Pencil, Icon::Pencil, "Pencil", 'P', "P"),
+    tool_spec!(Picker, Icon::EyeDropper, "Color Picker", 'K', "K"),
+    tool_spec!(CloneStamp, Icon::CloneStamp, "Clone Stamp", 'L', "L"),
+    tool_spec!(Recolor, Icon::Recolor, "Recolor", 'R', "R"),
+    tool_spec!(Text, Icon::Text, "Text", 'T', "T"),
+    tool_spec!(
+        Line,
+        Icon::Line,
+        "Line / Curve",
+        'O',
+        "O cycles line and shapes"
+    ),
+    tool_spec!(
+        Shapes,
+        Icon::Shapes,
+        "Shapes",
+        'O',
+        "O cycles line and shapes"
+    ),
+];
+
+/// Every reference toolbox hotkey, in the order Shift reverses each cycle.
+const TOOL_HOTKEYS: [char; 14] = [
+    'S', 'M', 'Z', 'H', 'F', 'G', 'B', 'E', 'P', 'K', 'L', 'R', 'T', 'O',
+];
+
+fn hotkey_key(shortcut: char) -> egui::Key {
+    match shortcut {
+        'S' => egui::Key::S,
+        'M' => egui::Key::M,
+        'Z' => egui::Key::Z,
+        'H' => egui::Key::H,
+        'F' => egui::Key::F,
+        'G' => egui::Key::G,
+        'B' => egui::Key::B,
+        'E' => egui::Key::E,
+        'P' => egui::Key::P,
+        'K' => egui::Key::K,
+        'L' => egui::Key::L,
+        'R' => egui::Key::R,
+        'T' => egui::Key::T,
+        'O' => egui::Key::O,
+        _ => unreachable!("every toolbox hotkey has an egui key"),
+    }
+}
+
+const RESAMPLE_MODES: [ResampleMode; 5] = [
+    ResampleMode::NearestNeighbor,
+    ResampleMode::Bilinear,
+    ResampleMode::MultisampleBilinear,
+    ResampleMode::Anisotropic,
+    ResampleMode::Bicubic,
+];
+
+/// Reference labels from `MoveToolInterpolationMode`; `HighQualityCubic` displays as
+/// "Bicubic" and is Paint.NET's default.
+const fn resample_label(mode: ResampleMode) -> &'static str {
+    match mode {
+        ResampleMode::NearestNeighbor => "Nearest Neighbor",
+        ResampleMode::Bilinear => "Bilinear",
+        ResampleMode::MultisampleBilinear => "Multisample Bilinear",
+        ResampleMode::Anisotropic => "Anisotropic",
+        ResampleMode::Bicubic => "Bicubic",
+    }
+}
+
+const fn resample_hint(mode: ResampleMode) -> &'static str {
+    match mode {
+        ResampleMode::NearestNeighbor => "Snap to whole source pixels; no blending",
+        ResampleMode::Bilinear => "Bilinear filtering with premultiplied alpha",
+        ResampleMode::MultisampleBilinear => "Four bilinear samples per destination pixel",
+        ResampleMode::Anisotropic => "Not supported by translate-only Move",
+        ResampleMode::Bicubic => "Catmull-Rom bicubic; Paint.NET's default mode",
+    }
 }
 
 /// What the color picker does after a click samples a color.
@@ -7522,6 +7808,21 @@ fn canvas_point_at(position: egui::Pos2, rect: egui::Rect, zoom: f32, size: Size
         return None;
     }
     Some(Point::new(x as u32, y as u32))
+}
+
+/// Continuous canvas coordinates for subpixel Move drags.
+fn canvas_position_at(
+    position: egui::Pos2,
+    rect: egui::Rect,
+    zoom: f32,
+    size: Size,
+) -> Option<(f64, f64)> {
+    let x = f64::from(position.x - rect.left()) / f64::from(zoom);
+    let y = f64::from(position.y - rect.top()) / f64::from(zoom);
+    if x < 0.0 || y < 0.0 || x >= f64::from(size.width()) || y >= f64::from(size.height()) {
+        return None;
+    }
+    Some((x, y))
 }
 
 fn selection_rect_from_drag(start: Point, end: Point) -> Rect {

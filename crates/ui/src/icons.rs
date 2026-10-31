@@ -204,6 +204,20 @@ pub(crate) fn tool_button(
     enabled: bool,
     selected: bool,
 ) -> Response {
+    tool_button_with_tooltip(ui, icons, icon, label, label, enabled, selected)
+}
+
+/// A tool button whose hover tooltip can carry a shortcut hint while its accessible name
+/// stays the plain Paint.NET tool label.
+pub(crate) fn tool_button_with_tooltip(
+    ui: &mut Ui,
+    icons: &IconTextures,
+    icon: Icon,
+    label: &'static str,
+    tooltip: &str,
+    enabled: bool,
+    selected: bool,
+) -> Response {
     let response = ui
         .add_enabled_ui(enabled, |ui| {
             let (rect, response) = ui.allocate_exact_size(vec2(25.0, 25.0), Sense::click());
@@ -214,7 +228,7 @@ pub(crate) fn tool_button(
             response
         })
         .inner;
-    response.on_hover_text(label)
+    response.on_hover_text(tooltip.to_owned())
 }
 
 fn paint_button(

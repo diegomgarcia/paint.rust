@@ -473,6 +473,24 @@ impl AppSession {
         self.apply_preview_patch(patch)
     }
 
+    /// Recomputes a possibly subpixel whole-layer translation against the preview snapshot.
+    pub fn preview_translate_resampled(
+        &mut self,
+        dx: f64,
+        dy: f64,
+        mode: paint_raster::ResampleMode,
+    ) -> Result<bool, SessionError> {
+        self.rewind_preview()?;
+        let patch = paint_raster::translate_resampled(
+            &self.document,
+            self.document.active_layer_id(),
+            dx,
+            dy,
+            mode,
+        )?;
+        self.apply_preview_patch(patch)
+    }
+
     /// Recomputes a gradient against the preview snapshot for a live drag preview.
     pub fn preview_gradient(
         &mut self,
@@ -921,6 +939,28 @@ impl AppSession {
             surface,
             dest_x,
             dest_y,
+        )?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    /// Composites a floating surface, resampling when the destination is fractional.
+    pub fn stamp_floating_resampled(
+        &mut self,
+        surface: &Surface,
+        dest_x: f64,
+        dest_y: f64,
+        mode: paint_raster::ResampleMode,
+    ) -> Result<bool, SessionError> {
+        let patch = paint_raster::stamp_resampled(
+            &self.document,
+            self.document.active_layer_id(),
+            surface,
+            dest_x,
+            dest_y,
+            mode,
         )?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),

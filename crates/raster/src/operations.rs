@@ -1,6 +1,6 @@
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{
-    BlendMode, Document, DocumentError, Layer, LayerId, PixelPatch, SelectionMask,
+    BlendMode, Document, DocumentError, Layer, LayerId, PixelPatch, Selection, SelectionMask,
 };
 
 use crate::RasterError;
@@ -37,6 +37,21 @@ pub struct LineStyle {
     pub start_cap: LineCap,
     pub end_cap: LineCap,
     pub dash: LineDash,
+}
+
+/// Interpolation used when Move Selected Pixels translates content by a fractional offset.
+///
+/// The variants and their order mirror Paint.NET's `MoveToolInterpolationMode`. Anisotropic
+/// sampling depends on a non-uniform scale, which the current translate-only Move does not
+/// produce, so it is rejected instead of being silently approximated.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ResampleMode {
+    NearestNeighbor,
+    Bilinear,
+    MultisampleBilinear,
+    Anisotropic,
+    #[default]
+    Bicubic,
 }
 
 /// The canvas-clipped area an operation may touch and the optional mask inside it.
@@ -1200,6 +1215,246 @@ pub fn translate(
     )?))
 }
 
+/// Translates content by a possibly fractional offset with the requested interpolation.
+///
+/// Integer offsets delegate to [`translate`], so every mode stays byte-identical to the
+/// established move behavior when there is no subpixel component. Fractional offsets sample
+/// the source in premultiplied space so translucent edges do not darken.
+pub fn translate_resampled(
+    document: &Document,
+    layer_id: LayerId,
+    dx: f64,
+    dy: f64,
+    mode: ResampleMode,
+) -> Result<Option<PixelPatch>, RasterError> {
+    validate_resample(mode, dx, dy)?;
+    if let Some((dx, dy)) = integral_translation(dx, dy) {
+        return translate(document, layer_id, dx, dy);
+    }
+    let layer = layer(document, layer_id)?;
+    let rect = document.canvas_rect();
+    let before = layer.surface().read_region(rect)?;
+    let width = i64::from(rect.width());
+    let height = i64::from(rect.height());
+    let source = ResampleSource {
+        pixels: &before,
+        width,
+        height,
+        selection: document.selection_model(),
+        mode,
+    };
+    let mut after = vec![Bgra::TRANSPARENT; before.len()];
+    if source.selection.is_some() {
+        after.copy_from_slice(&before);
+        for y in 0..height {
+            for x in 0..width {
+                let source_x = rect.left() + x;
+                let source_y = rect.top() + y;
+                if source
+                    .selection
+                    .is_some_and(|selection| selection.contains_xy(source_x, source_y))
+                {
+                    after[(y * width + x) as usize] = Bgra::TRANSPARENT;
+                }
+            }
+        }
+    }
+    for y in 0..height {
+        for x in 0..width {
+            let dest_x = rect.left() + x;
+            let dest_y = rect.top() + y;
+            let sampled = source.sample(dest_x as f64 - dx, dest_y as f64 - dy);
+            if sampled.a == 0 {
+                continue;
+            }
+            after[(y * width + x) as usize] = sampled;
+        }
+    }
+    if before == after {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+/// A straight-alpha pixel accumulated in premultiplied space.
+#[derive(Clone, Copy, Debug, Default)]
+struct Premultiplied {
+    b: f64,
+    g: f64,
+    r: f64,
+    a: f64,
+}
+
+impl Premultiplied {
+    fn from_pixel(pixel: Bgra) -> Self {
+        let alpha = f64::from(pixel.a) / 255.0;
+        Self {
+            b: f64::from(pixel.b) / 255.0 * alpha,
+            g: f64::from(pixel.g) / 255.0 * alpha,
+            r: f64::from(pixel.r) / 255.0 * alpha,
+            a: alpha,
+        }
+    }
+
+    fn scaled(self, weight: f64) -> Self {
+        Self {
+            b: self.b * weight,
+            g: self.g * weight,
+            r: self.r * weight,
+            a: self.a * weight,
+        }
+    }
+
+    fn added(self, other: Self) -> Self {
+        Self {
+            b: self.b + other.b,
+            g: self.g + other.g,
+            r: self.r + other.r,
+            a: self.a + other.a,
+        }
+    }
+
+    fn to_bgra(self) -> Bgra {
+        if self.a <= 1e-6 {
+            return Bgra::TRANSPARENT;
+        }
+        let channel = |value: f64| (value / self.a * 255.0).round().clamp(0.0, 255.0) as u8;
+        Bgra::new(
+            channel(self.b),
+            channel(self.g),
+            channel(self.r),
+            (self.a * 255.0).round().clamp(0.0, 255.0) as u8,
+        )
+    }
+}
+
+/// One source surface plus the optional selection coverage used while sampling.
+struct ResampleSource<'a> {
+    pixels: &'a [Bgra],
+    width: i64,
+    height: i64,
+    selection: Option<&'a Selection>,
+    mode: ResampleMode,
+}
+
+impl ResampleSource<'_> {
+    fn fetch(&self, x: i64, y: i64) -> Premultiplied {
+        if x < 0 || y < 0 || x >= self.width || y >= self.height {
+            return Premultiplied::default();
+        }
+        if self
+            .selection
+            .is_some_and(|selection| !selection.contains_xy(x, y))
+        {
+            return Premultiplied::default();
+        }
+        Premultiplied::from_pixel(self.pixels[(y * self.width + x) as usize])
+    }
+
+    fn bilinear(&self, sx: f64, sy: f64) -> Premultiplied {
+        let x0 = sx.floor();
+        let y0 = sy.floor();
+        let fx = sx - x0;
+        let fy = sy - y0;
+        let (x0, y0) = (x0 as i64, y0 as i64);
+        let top = self
+            .fetch(x0, y0)
+            .scaled(1.0 - fx)
+            .added(self.fetch(x0 + 1, y0).scaled(fx));
+        let bottom = self
+            .fetch(x0, y0 + 1)
+            .scaled(1.0 - fx)
+            .added(self.fetch(x0 + 1, y0 + 1).scaled(fx));
+        top.scaled(1.0 - fy).added(bottom.scaled(fy))
+    }
+
+    /// Averages four bilinear samples across the destination pixel footprint.
+    fn multisample_bilinear(&self, sx: f64, sy: f64) -> Premultiplied {
+        // The samples span most of the pixel footprint so the box average can differ from a
+        // single bilinear tap when a footprint crosses a source-pixel boundary.
+        const OFFSETS: [f64; 2] = [-0.375, 0.375];
+        let mut total = Premultiplied::default();
+        for oy in OFFSETS {
+            for ox in OFFSETS {
+                total = total.added(self.bilinear(sx + ox, sy + oy).scaled(0.25));
+            }
+        }
+        total
+    }
+
+    /// Catmull-Rom bicubic interpolation with a 4×4 tap.
+    fn bicubic(&self, sx: f64, sy: f64) -> Premultiplied {
+        let x0 = sx.floor() as i64;
+        let y0 = sy.floor() as i64;
+        let mut total = Premultiplied::default();
+        for offset_y in -1..=2 {
+            let wy = cubic_weight(sy - (y0 + offset_y) as f64);
+            if wy == 0.0 {
+                continue;
+            }
+            for offset_x in -1..=2 {
+                let wx = cubic_weight(sx - (x0 + offset_x) as f64);
+                if wx == 0.0 {
+                    continue;
+                }
+                total = total.added(self.fetch(x0 + offset_x, y0 + offset_y).scaled(wx * wy));
+            }
+        }
+        total
+    }
+
+    fn sample(&self, sx: f64, sy: f64) -> Bgra {
+        let value = match self.mode {
+            ResampleMode::NearestNeighbor => self.fetch(sx.round() as i64, sy.round() as i64),
+            ResampleMode::Bilinear => self.bilinear(sx, sy),
+            ResampleMode::MultisampleBilinear => self.multisample_bilinear(sx, sy),
+            ResampleMode::Bicubic => self.bicubic(sx, sy),
+            ResampleMode::Anisotropic => unreachable!("Anisotropic is rejected before sampling"),
+        };
+        value.to_bgra()
+    }
+}
+
+fn cubic_weight(distance: f64) -> f64 {
+    let distance = distance.abs();
+    if distance <= 1.0 {
+        1.5 * distance.powi(3) - 2.5 * distance.powi(2) + 1.0
+    } else if distance < 2.0 {
+        -0.5 * distance.powi(3) + 2.5 * distance.powi(2) - 4.0 * distance + 2.0
+    } else {
+        0.0
+    }
+}
+
+fn validate_resample(mode: ResampleMode, dx: f64, dy: f64) -> Result<(), RasterError> {
+    if !dx.is_finite() || !dy.is_finite() {
+        return Err(RasterError::NonFiniteResampleOffset);
+    }
+    if mode == ResampleMode::Anisotropic {
+        return Err(RasterError::UnsupportedResampleMode { mode });
+    }
+    Ok(())
+}
+
+fn integral_translation(dx: f64, dy: f64) -> Option<(i32, i32)> {
+    if dx.fract() != 0.0 || dy.fract() != 0.0 {
+        return None;
+    }
+    if dx < f64::from(i32::MIN) || dx > f64::from(i32::MAX) {
+        return None;
+    }
+    if dy < f64::from(i32::MIN) || dy > f64::from(i32::MAX) {
+        return None;
+    }
+    Some((dx as i32, dy as i32))
+}
+
 fn lerp_bgra(from: Bgra, to: Bgra, t: f64) -> Bgra {
     let channel = |a: u8, b: u8| {
         (f64::from(a) + (f64::from(b) - f64::from(a)) * t)
@@ -1627,6 +1882,94 @@ pub fn stamp(
         before,
         after,
     )?))
+}
+
+/// Composites a detached floating surface at a possibly fractional destination.
+///
+/// Integer destinations delegate to [`stamp`] for exact parity. Fractional destinations
+/// sample the floating surface in premultiplied space and composite the result with the same
+/// Normal source-over rule as [`stamp`]. The floating surface already carries the selection
+/// mask in its alpha channel, so no additional destination clipping is applied.
+pub fn stamp_resampled(
+    document: &Document,
+    layer_id: LayerId,
+    surface: &Surface,
+    dest_x: f64,
+    dest_y: f64,
+    mode: ResampleMode,
+) -> Result<Option<PixelPatch>, RasterError> {
+    validate_resample(mode, dest_x, dest_y)?;
+    if let Some((dest_x, dest_y)) = integral_translation(dest_x, dest_y) {
+        return stamp(
+            document,
+            layer_id,
+            surface,
+            i64::from(dest_x),
+            i64::from(dest_y),
+        );
+    }
+    let layer = layer(document, layer_id)?;
+    let requested = Rect::new(
+        dest_x.floor() as i64 - 2,
+        dest_y.floor() as i64 - 2,
+        (dest_x + f64::from(surface.width())).ceil() as i64 + 2,
+        (dest_y + f64::from(surface.height())).ceil() as i64 + 2,
+    )?;
+    let Some(rect) = requested.clip_to(document.size()) else {
+        return Ok(None);
+    };
+    let source = ResampleSource {
+        pixels: surface.pixels(),
+        width: i64::from(surface.width()),
+        height: i64::from(surface.height()),
+        selection: None,
+        mode,
+    };
+    let before = layer.surface().read_region(rect)?;
+    let width = i64::from(rect.width());
+    let mut after = before.clone();
+    for y in 0..i64::from(rect.height()) {
+        for x in 0..width {
+            let dest_pixel_x = rect.left() + x;
+            let dest_pixel_y = rect.top() + y;
+            let sampled = source.sample(dest_pixel_x as f64 - dest_x, dest_pixel_y as f64 - dest_y);
+            if sampled.a == 0 {
+                continue;
+            }
+            let index = (y * width + x) as usize;
+            after[index] = normal_over_pixel(after[index], sampled);
+        }
+    }
+    if after == before {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+/// Normal source-over for straight-alpha pixels, matching [`stamp`].
+fn normal_over_pixel(target: Bgra, source: Bgra) -> Bgra {
+    let source_a = u16::from(source.a);
+    let target_a = u16::from(target.a);
+    let inverse = 255 - source_a;
+    let out_a = source_a + target_a * inverse / 255;
+    if out_a == 0 {
+        return Bgra::TRANSPARENT;
+    }
+    let blend = |s: u8, t: u8| {
+        ((u16::from(s) * source_a + u16::from(t) * target_a * inverse / 255) / out_a) as u8
+    };
+    Bgra::new(
+        blend(source.r, target.r),
+        blend(source.g, target.g),
+        blend(source.b, target.b),
+        out_a as u8,
+    )
 }
 
 /// Which surface the magic wand samples when matching colors.
