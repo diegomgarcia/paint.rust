@@ -232,3 +232,17 @@ Zoom to Window/Selection and outlines Grid/Rulers; the Layers menu now exposes a
 delete, duplicate, merge, visibility, flips, go-to, move, and properties entries in the
 Paint.NET order. Proprietary Paint.NET icon bitmaps are used only as visual reference and
 are not embedded.
+
+
+### Parallel tool-options pass
+
+Integrated lanes added brush hardness/spacing with Paint.NET defaults (45/75/15),
+shape Outline/Fill/Both plus border width, and gradient types Linear/Reflected/
+Diamond/Radial/Conical with None/Repeat modes. Rectangle, Ellipse, Lasso, and
+Magic Wand now expose Replace/Union/Subtract/Intersect/Xor combine modes, with
+Shift/Alt modifiers and Active Layer/Image magic-wand sampling. Document tabs
+close individually with a dirty guard, View exposes a real grid and pixel/inch/cm
+units, and Layer Properties supports Multiply/Screen/Overlay blend modes that are
+composited for real. Selection remains replace-only at the trace-wire boundary
+and marching ants still use the mask bounding box; shape `Both` currently paints
+the interior with the primary color instead of the secondary.
