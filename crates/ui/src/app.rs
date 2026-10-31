@@ -1179,6 +1179,18 @@ impl PaintApp {
         });
     }
 
+    fn preview_live_translate(&mut self) {
+        let (Some(start), Some(end)) = (self.drag_start, self.drag_current) else {
+            return;
+        };
+        let dx = i32::try_from(i64::from(end.x) - i64::from(start.x)).unwrap_or(0);
+        let dy = i32::try_from(i64::from(end.y) - i64::from(start.y)).unwrap_or(0);
+        match self.session.preview_translate(dx, dy) {
+            Ok(_) => self.texture_dirty = true,
+            Err(error) => self.status = format!("Move preview failed: {error}"),
+        }
+    }
+
     fn preview_live_gradient(&mut self) {
         let (Some(start), Some(end)) = (self.drag_start, self.drag_current) else {
             return;
@@ -1236,7 +1248,7 @@ impl PaintApp {
             }
             Tool::CloneStamp => self.finish_live_clone(),
             Tool::Pencil | Tool::Brush | Tool::Eraser => self.finish_live_stroke(),
-            Tool::Gradient => {
+            Tool::Gradient | Tool::Move => {
                 self.session.cancel_preview();
                 self.texture_dirty = true;
             }
@@ -4584,13 +4596,15 @@ impl PaintApp {
                                     self.session.begin_preview();
                                     self.preview_live_gradient();
                                 }
-                                if self.active_tool == Tool::Move
-                                    && self.session.document().selection().is_some()
-                                {
-                                    self.lift_floating_selection(ui.ctx());
-                                    if let Some(floating) = self.floating_selection.as_mut() {
-                                        floating.base_x = floating.offset_x;
-                                        floating.base_y = floating.offset_y;
+                                if self.active_tool == Tool::Move {
+                                    if self.session.document().selection().is_some() {
+                                        self.lift_floating_selection(ui.ctx());
+                                        if let Some(floating) = self.floating_selection.as_mut() {
+                                            floating.base_x = floating.offset_x;
+                                            floating.base_y = floating.offset_y;
+                                        }
+                                    } else {
+                                        self.session.begin_preview();
                                     }
                                 }
                             }
@@ -4616,6 +4630,12 @@ impl PaintApp {
                                 }
                                 if self.active_tool == Tool::Gradient && drag_point_changed {
                                     self.preview_live_gradient();
+                                }
+                                if self.active_tool == Tool::Move
+                                    && self.floating_selection.is_none()
+                                    && drag_point_changed
+                                {
+                                    self.preview_live_translate();
                                 }
                             }
                             if let (Some(start), Some(end)) = (self.drag_start, self.drag_current) {
@@ -4889,6 +4909,8 @@ impl PaintApp {
                                                 "Moved selected pixels".to_owned(),
                                             ))
                                         } else {
+                                            self.session.cancel_preview();
+                                            self.texture_dirty = true;
                                             Some((
                                                 Command::Move {
                                                     dx: dx as i32,

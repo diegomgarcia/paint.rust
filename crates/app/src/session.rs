@@ -395,6 +395,14 @@ impl AppSession {
         self.apply_preview_patch(patch)
     }
 
+    /// Recomputes a whole-layer translation against the preview snapshot.
+    pub fn preview_translate(&mut self, dx: i32, dy: i32) -> Result<bool, SessionError> {
+        self.rewind_preview()?;
+        let patch =
+            paint_raster::translate(&self.document, self.document.active_layer_id(), dx, dy)?;
+        self.apply_preview_patch(patch)
+    }
+
     /// Recomputes a gradient against the preview snapshot for a live drag preview.
     pub fn preview_gradient(
         &mut self,

@@ -4021,3 +4021,40 @@ fn gradient_tool_previews_pixels_during_the_drag() {
     assert_eq!(preview, committed);
     assert!(harness.state().session().can_undo());
 }
+
+#[test]
+fn move_selected_pixels_previews_the_whole_layer_before_release() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Move Selected Pixels");
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let rect = canvas.rect();
+    harness.drag_at(rect.min + egui::vec2(5.0, 6.0));
+    harness.run_steps(1);
+    harness.hover_at(rect.min + egui::vec2(25.0, 16.0));
+    harness.run();
+    let session = harness.state().session();
+    assert_eq!(
+        *session
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(0, 0))
+            .expect("vacated preview pixel"),
+        Bgra::TRANSPARENT,
+        "whole-layer move must show the vacated area during the drag"
+    );
+    assert_eq!(
+        *session
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(20, 10))
+            .expect("moved preview pixel"),
+        Bgra::WHITE
+    );
+    assert!(!session.can_undo());
+    harness.drop_at(rect.min + egui::vec2(25.0, 16.0));
+    harness.run_steps(2);
+    assert!(harness.state().session().can_undo());
+}
