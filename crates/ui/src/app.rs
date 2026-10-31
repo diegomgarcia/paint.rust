@@ -2092,14 +2092,14 @@ impl PaintApp {
 
     fn selection_combine_options(&mut self, ui: &mut egui::Ui) {
         ui.label("Selection Mode");
-        for mode in SelectionCombineMode::ALL {
-            if ui
-                .selectable_value(&mut self.selection_combine_mode, mode, mode.label())
-                .clicked()
-            {
-                self.status = format!("Selection mode: {}", mode.label());
+        ui.horizontal(|ui| {
+            for mode in SelectionCombineMode::ALL {
+                if selection_mode_button(ui, mode, self.selection_combine_mode == mode).clicked() {
+                    self.selection_combine_mode = mode;
+                    self.status = format!("Selection mode: {}", mode.label());
+                }
             }
-        }
+        });
         ui.label("Modifiers: Shift adds, Alt subtracts");
     }
 
@@ -5811,6 +5811,105 @@ fn open_png_preview(
         PREVIEW_HEIGHT,
     );
     Ok(DialogPreview { label, texture })
+}
+
+fn selection_mode_button(
+    ui: &mut egui::Ui,
+    mode: SelectionCombineMode,
+    selected: bool,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::click());
+    let visuals = ui.style().interact_selectable(&response, selected);
+    let background = if selected || response.hovered() {
+        visuals.bg_fill
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+    let painter = ui.painter();
+    painter.rect_filled(rect, 3, background);
+    if selected {
+        painter.rect_stroke(
+            rect,
+            3,
+            egui::Stroke::new(1.0, visuals.bg_stroke.color),
+            egui::StrokeKind::Inside,
+        );
+    }
+    let icon = rect.shrink(3.0);
+    let outline = if selected {
+        egui::Color32::WHITE
+    } else {
+        ui.visuals().strong_text_color()
+    };
+    paint_selection_mode_icon(painter, icon, mode, outline);
+    let response = response.on_hover_text(format!("{} selection mode", mode.label()));
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::Role::Button, true, selected, mode.label())
+    });
+    response
+}
+
+fn paint_selection_mode_icon(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    mode: SelectionCombineMode,
+    outline: egui::Color32,
+) {
+    let side = (rect.width() * 0.62).round().max(8.0);
+    let offset = (rect.width() - side).round().max(3.0);
+    let a = egui::Rect::from_min_size(rect.min, egui::vec2(side, side));
+    let b = egui::Rect::from_min_size(
+        rect.min + egui::vec2(offset, offset),
+        egui::vec2(side, side),
+    );
+    let fill = egui::Color32::from_rgb(120, 190, 255);
+    let stroke = egui::Stroke::new(1.0, outline);
+    let fill_rect = |target: egui::Rect| {
+        painter.rect_filled(target, 0, fill);
+    };
+    match mode {
+        SelectionCombineMode::Replace => fill_rect(a),
+        SelectionCombineMode::Union => {
+            fill_rect(a);
+            fill_rect(b);
+        }
+        SelectionCombineMode::Subtract => {
+            let overlap_left = b.left().max(a.left());
+            let overlap_top = b.top().max(a.top());
+            fill_rect(egui::Rect::from_min_max(
+                a.min,
+                egui::pos2(a.right(), overlap_top),
+            ));
+            fill_rect(egui::Rect::from_min_max(
+                egui::pos2(a.left(), overlap_top),
+                egui::pos2(overlap_left, a.bottom()),
+            ));
+        }
+        SelectionCombineMode::Intersect => {
+            fill_rect(a.intersect(b));
+        }
+        SelectionCombineMode::Xor => {
+            let overlap = a.intersect(b);
+            fill_rect(egui::Rect::from_min_max(
+                a.min,
+                egui::pos2(a.right(), overlap.top()),
+            ));
+            fill_rect(egui::Rect::from_min_max(
+                egui::pos2(a.left(), overlap.top()),
+                egui::pos2(overlap.left(), a.bottom()),
+            ));
+            fill_rect(egui::Rect::from_min_max(
+                egui::pos2(overlap.right(), b.top()),
+                egui::pos2(b.right(), b.bottom()),
+            ));
+            fill_rect(egui::Rect::from_min_max(
+                egui::pos2(b.left(), overlap.bottom()),
+                egui::pos2(b.right(), b.bottom()),
+            ));
+        }
+    }
+    painter.rect_stroke(a, 0, stroke, egui::StrokeKind::Inside);
+    painter.rect_stroke(b, 0, stroke, egui::StrokeKind::Inside);
 }
 
 fn blend_mode_label(mode: paint_document::BlendMode) -> &'static str {
