@@ -56,3 +56,51 @@ grid, units, blend modes, text/clone/line/gradient/brush options.
 6. `release`: version metadata, README/known-gaps, screenshots, tag `v0.1.0` after integration.
 
 Every lane: TDD, strict clippy, full workspace tests, no proprietary assets, no fake controls.
+
+## Appendix A — reference ToolBarConfigItems by tool
+
+Extracted from `decompiled/paintdotnet/PaintDotNet/Tools/*` constructors:
+
+- Rectangle Select: SelectionCombineMode + SelectionDrawMode.
+- Move Selected Pixels: GammaMode + Resampling; commits with Finish/Enter.
+- Lasso/Ellipse Select: SelectionCombineMode.
+- Move Selection: no resampling; Finish/Enter.
+- Magic Wand: FloodMode + SampleImageOrLayer + SelectionCombineMode + Tolerance.
+- Paint Bucket: FloodMode + SampleImageOrLayer + Tolerance (plus Fill/Blend controls in newer builds).
+- Gradient: Antialiasing + BlendMode + Gradient (type/colors/repeat/alpha).
+- Paintbrush: BrushType/BrushSize/BrushPressure/BrushHardness/BrushSpacing + InputPathSmoothing +
+  Antialiasing + BlendMode + BrushFill.
+- Eraser: BrushSize/Pressure/Hardness/Spacing family (BrushBase), no fixed 1 px.
+- Pencil: BlendMode only (fixed 1 px).
+- Color Picker: ColorPickerBehavior + PixelSampleMode + SampleImageOrLayer.
+- Clone Stamp: BlendMode + BrushSize/Hardness/Spacing/Source.
+- Recolor: RecolorToolSamplingMode + Tolerance + BrushSize/Hardness/Spacing.
+- Text: Antialiasing + BlendMode + Text (font/size/style/align).
+- Line/Curve: LineCurveShapeType + Antialiasing + BlendMode + BrushFill + BrushSize +
+  PenStartCap/PenDashStyle/PenEndCap (+ Radius).
+- Shapes: Antialiasing + BlendMode + BrushFill + BrushSize + ShapeDrawType + shape geometry
+  (line caps/dash/radius/freeform).
+
+## Appendix B — toolbox hotkeys
+
+From tool constructors: S cycles Rectangle/Lasso/Ellipse/Magic Wand; M cycles Move
+Selected Pixels/Move Selection; Z Zoom; H Pan; F Paint Bucket; G Gradient; B Paintbrush;
+E Eraser; P Pencil; K Color Picker; L Clone Stamp; R Recolor; T Text; O Line/Shapes.
+Tooltips use `ToolsControl.ToolToolTip.Format` with shortcut chord and `skipIfActiveOnHotKey`
+cycles.
+
+## Appendix C — panel geometry
+
+- ToolsControl: two columns; `Size = 48×328` before per-tool padding; tool button padding
+  2 px; margin `toolStripPaddingDip`; large image only for final tool.
+- LayersForm: `layersStrip.ItemSize` 62 px; thumbnail edge 50 + 4 px padding; bottom
+  `LayersToolStrip` with add/delete/duplicate/merge/up/down/properties.
+- Main toolbar: menu + tool chooser + tool config strip + app actions; commit button
+  “Finish”, tooltip “Commits the tool's changes.”, Enter shortcut.
+
+## Appendix D — menu gaps to close before tagging
+
+File: New Image dialog, Open Recent; Edit: Select All, Invert Selection, Erase Selection,
+Fill Selection, Copy Merged, Paste Into New Layer/Image; View: grid settings; Image: Color
+Profile; Layers: Import From File, Rotate/Zoom; Adjustments: Levels/Posterize/Black&White;
+Effects: representative real effects only.
