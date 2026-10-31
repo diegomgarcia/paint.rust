@@ -206,13 +206,100 @@ fn bgra_within_tolerance(pixel: Bgra, target: Bgra, tolerance: i16) -> bool {
         && (i16::from(pixel.a) - i16::from(target.a)).abs() <= tolerance
 }
 
-/// Paints a round, hard-edged stroke through canvas-space points.
-/// `color = None` erases to transparent. The patch is clipped to the active selection mask.
+/// Round brush geometry shared by the paint, erase, and recolor strokes.
+///
+/// `hardness` and `spacing` are percentages. Hardness 100 is a hard edge and 0 fades from
+/// the centre to the radius; spacing is the distance between stamps as a percentage of the
+/// brush diameter. Paint.NET defaults are 75% hardness and 15% spacing.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BrushOptions {
+    /// Brush diameter in pixels.
+    pub size: u32,
+    /// Edge hardness percentage in `0..=100`.
+    pub hardness: u8,
+    /// Stamp spacing percentage in `1..=100`.
+    pub spacing: u8,
+}
+
+impl BrushOptions {
+    pub const fn new(size: u32, hardness: u8, spacing: u8) -> Self {
+        Self {
+            size,
+            hardness,
+            spacing,
+        }
+    }
+
+    fn normalized(self) -> Self {
+        Self {
+            size: if self.size == 0 { 1 } else { self.size },
+            hardness: self.hardness.min(100),
+            spacing: self.spacing.clamp(1, 100),
+        }
+    }
+}
+
+impl Default for BrushOptions {
+    fn default() -> Self {
+        Self {
+            size: 45,
+            hardness: 75,
+            spacing: 15,
+        }
+    }
+}
+
+/// Coverage of one brush pixel, fading from 255 at the hard core to 0 at the radius.
+fn brush_coverage(distance: f64, radius: f64, hardness: f64) -> u8 {
+    let inner_radius = radius * hardness;
+    if radius <= 0.0 || distance <= inner_radius {
+        return u8::MAX;
+    }
+    let t = ((distance - inner_radius) / (radius - inner_radius)).clamp(0.0, 1.0);
+    let smooth = t * t * (3.0 - 2.0 * t);
+    ((1.0 - smooth) * 255.0).round() as u8
+}
+
+/// Calls `stamp` at evenly spaced positions along a polyline, always including its start.
+fn for_each_stamp(points: &[Point], step: f64, mut stamp: impl FnMut(f64, f64)) {
+    let Some(first) = points.first() else {
+        return;
+    };
+    stamp(f64::from(first.x), f64::from(first.y));
+    if points.len() < 2 {
+        return;
+    }
+    let step = step.max(1.0);
+    let mut travelled = 0.0;
+    let mut next = step;
+    for pair in points.windows(2) {
+        let start_x = f64::from(pair[0].x);
+        let start_y = f64::from(pair[0].y);
+        let dx = f64::from(pair[1].x) - start_x;
+        let dy = f64::from(pair[1].y) - start_y;
+        let length = dx.hypot(dy);
+        if length <= f64::EPSILON {
+            continue;
+        }
+        while next <= travelled + length {
+            let ratio = (next - travelled) / length;
+            stamp(start_x + dx * ratio, start_y + dy * ratio);
+            next += step;
+        }
+        travelled += length;
+    }
+}
+
+/// Paints a round brush stroke through canvas-space points.
+///
+/// Hardness softens the stamp edge and spacing controls how far apart stamps are placed.
+/// `color = None` erases to transparent, preserving a partial alpha for soft coverage. The
+/// patch is clipped to the active selection mask.
 pub fn stroke(
     document: &Document,
     layer_id: LayerId,
     points: &[Point],
-    size: u32,
+    brush: BrushOptions,
     color: Option<Bgra>,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
@@ -222,7 +309,9 @@ pub fn stroke(
     let Some(first) = points.first() else {
         return Ok(None);
     };
-    let radius = size.max(1).saturating_sub(1) / 2;
+    let brush = brush.normalized();
+    let radius = brush.size.saturating_sub(1) / 2;
+    let radius_f = f64::from(radius);
     let radius_i64 = i64::from(radius);
     let mut min_x = i64::from(first.x);
     let mut min_y = i64::from(first.y);
@@ -247,47 +336,57 @@ pub fn stroke(
     let before = layer.surface().read_region(rect)?;
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
-    let target = color.unwrap_or(Bgra::TRANSPARENT);
     let left = rect.left();
     let top = rect.top();
     let width = i64::from(rect.width());
-    let radius_squared = i128::from(radius) * i128::from(radius);
+    let height = i64::from(rect.height());
+    let hardness = f64::from(brush.hardness) / 100.0;
+    let step = f64::from(brush.size) * f64::from(brush.spacing) / 100.0;
 
-    let mut stamp = |x: i64, y: i64| {
-        for py in (y - radius_i64)..=(y + radius_i64) {
-            if py < top || py >= top + i64::from(rect.height()) {
-                continue;
-            }
-            for px in (x - radius_i64)..=(x + radius_i64) {
-                if px < left || px >= left + width {
-                    continue;
-                }
-                let dx = i128::from(px - x);
-                let dy = i128::from(py - y);
-                if dx * dx + dy * dy > radius_squared {
+    for_each_stamp(points, step, |center_x, center_y| {
+        let x0 = (center_x - radius_f).floor() as i64;
+        let x1 = (center_x + radius_f).ceil() as i64;
+        let y0 = (center_y - radius_f).floor() as i64;
+        let y1 = (center_y + radius_f).ceil() as i64;
+        for py in y0.max(top)..=y1.min(top + height - 1) {
+            for px in x0.max(left)..=x1.min(left + width - 1) {
+                let dx = px as f64 - center_x;
+                let dy = py as f64 - center_y;
+                let distance = dx.hypot(dy);
+                if distance > radius_f {
                     continue;
                 }
                 if !clip.selects_xy(px, py) {
                     continue;
                 }
+                let coverage = brush_coverage(distance, radius_f, hardness);
+                if coverage == 0 {
+                    continue;
+                }
                 let index = ((py - top) * width + (px - left)) as usize;
-                after[index] = target;
+                match color {
+                    Some(source) if coverage == u8::MAX => after[index] = source,
+                    Some(source) => {
+                        let alpha =
+                            (u16::from(source.a) * u16::from(coverage) + 127) / u16::from(u8::MAX);
+                        let blended = Bgra::new(source.b, source.g, source.r, alpha as u8);
+                        after[index] = crate::normal_over(after[index], blended, u8::MAX);
+                    }
+                    None => {
+                        let remaining = (u16::from(after[index].a) * u16::from(u8::MAX - coverage)
+                            + 127)
+                            / u16::from(u8::MAX);
+                        after[index] = if remaining == 0 {
+                            Bgra::TRANSPARENT
+                        } else {
+                            let pixel = after[index];
+                            Bgra::new(pixel.b, pixel.g, pixel.r, remaining as u8)
+                        };
+                    }
+                }
             }
         }
-    };
-
-    stamp(i64::from(first.x), i64::from(first.y));
-    for pair in points.windows(2) {
-        let (a, b) = (pair[0], pair[1]);
-        let dx = i64::from(b.x) - i64::from(a.x);
-        let dy = i64::from(b.y) - i64::from(a.y);
-        let steps = dx.unsigned_abs().max(dy.unsigned_abs());
-        for step in 1..=steps {
-            let x = i64::from(a.x) + (dx * i64::from(step as u32)) / i64::from(steps as u32);
-            let y = i64::from(a.y) + (dy * i64::from(step as u32)) / i64::from(steps as u32);
-            stamp(x, y);
-        }
-    }
+    });
 
     if before == after {
         return Ok(None);
@@ -301,46 +400,91 @@ pub fn stroke(
     )?))
 }
 
-/// Fills an ellipse inscribed in a half-open rectangle, clipped to the selection mask.
-pub fn fill_ellipse(
+/// How a shape is painted: only its outline, only its interior, or both.
+///
+/// Paint.NET's `ShapeDrawType` uses the same three values. `Fill` covers the whole inscribed
+/// shape so it includes the border pixels; `Both` is the union of the outline and the interior.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShapeStyle {
+    Outline,
+    Fill,
+    Both,
+}
+
+fn ellipse_contains(px: i64, py: i64, ellipse: Rect) -> bool {
+    let cx = (ellipse.left() as f64 + ellipse.right() as f64) / 2.0;
+    let cy = (ellipse.top() as f64 + ellipse.bottom() as f64) / 2.0;
+    let rx = f64::from(ellipse.width()) / 2.0;
+    let ry = f64::from(ellipse.height()) / 2.0;
+    let nx = (px as f64 + 0.5 - cx) / rx;
+    let ny = (py as f64 + 0.5 - cy) / ry;
+    nx * nx + ny * ny <= 1.0
+}
+
+fn ellipse_outline(px: i64, py: i64, ellipse: Rect, border_width: u32) -> bool {
+    if border_width == 0 || !ellipse_contains(px, py, ellipse) {
+        return false;
+    }
+    let cx = (ellipse.left() as f64 + ellipse.right() as f64) / 2.0;
+    let cy = (ellipse.top() as f64 + ellipse.bottom() as f64) / 2.0;
+    let inner_rx = f64::from(ellipse.width()) / 2.0 - f64::from(border_width);
+    let inner_ry = f64::from(ellipse.height()) / 2.0 - f64::from(border_width);
+    if inner_rx <= 0.0 || inner_ry <= 0.0 {
+        return true;
+    }
+    let nx = (px as f64 + 0.5 - cx) / inner_rx;
+    let ny = (py as f64 + 0.5 - cy) / inner_ry;
+    nx * nx + ny * ny > 1.0
+}
+
+fn rectangle_outline(px: i64, py: i64, rect: Rect, border_width: u32) -> bool {
+    if border_width == 0 {
+        return false;
+    }
+    let border = i64::from(border_width);
+    px < rect.left() + border
+        || px >= rect.right() - border
+        || py < rect.top() + border
+        || py >= rect.bottom() - border
+}
+
+fn shape_pixels(
     document: &Document,
     layer_id: LayerId,
-    ellipse: Rect,
+    requested: Rect,
     color: Bgra,
+    painted: impl Fn(i64, i64) -> bool,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
     let Some(clip) = operation_clip(document) else {
         return Ok(None);
     };
-    let Some(rect) = intersect(clip.rect, ellipse)? else {
+    let Some(rect) = intersect(clip.rect, requested)? else {
         return Ok(None);
     };
     let before = layer.surface().read_region(rect)?;
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
-    let cx = (ellipse.left() as f64 + ellipse.right() as f64) / 2.0;
-    let cy = (ellipse.top() as f64 + ellipse.bottom() as f64) / 2.0;
-    let rx = f64::from(ellipse.width()) / 2.0;
-    let ry = f64::from(ellipse.height()) / 2.0;
     let width = i64::from(rect.width());
+    let mut changed = false;
     for y in 0..rect.height() {
-        let pixel_y = (rect.top() + i64::from(y)) as f64 + 0.5;
         for x in 0..rect.width() {
-            let pixel_x = (rect.left() + i64::from(x)) as f64 + 0.5;
-            let nx = (pixel_x - cx) / rx;
-            let ny = (pixel_y - cy) / ry;
-            if nx * nx + ny * ny > 1.0 {
+            let pixel_x = rect.left() + i64::from(x);
+            let pixel_y = rect.top() + i64::from(y);
+            if !clip.selects_xy(pixel_x, pixel_y) {
                 continue;
             }
-            let canvas_x = rect.left() + i64::from(x);
-            let canvas_y = rect.top() + i64::from(y);
-            if !clip.selects_xy(canvas_x, canvas_y) {
+            if !painted(pixel_x, pixel_y) {
                 continue;
             }
-            after[(i64::from(y) * width + i64::from(x)) as usize] = color;
+            let index = (i64::from(y) * width + i64::from(x)) as usize;
+            if after[index] != color {
+                after[index] = color;
+                changed = true;
+            }
         }
     }
-    if before == after {
+    if !changed {
         return Ok(None);
     }
     Ok(Some(PixelPatch::new(
@@ -350,6 +494,46 @@ pub fn fill_ellipse(
         before,
         after,
     )?))
+}
+
+/// Paints a rectangle with an explicit outline/fill style and inside border width.
+pub fn shape_rect(
+    document: &Document,
+    layer_id: LayerId,
+    rect: Rect,
+    color: Bgra,
+    style: ShapeStyle,
+    border_width: u32,
+) -> Result<Option<PixelPatch>, RasterError> {
+    shape_pixels(document, layer_id, rect, color, |px, py| match style {
+        ShapeStyle::Outline => rectangle_outline(px, py, rect, border_width),
+        ShapeStyle::Fill | ShapeStyle::Both => true,
+    })
+}
+
+/// Paints an ellipse with an explicit outline/fill style and inside border width.
+pub fn shape_ellipse(
+    document: &Document,
+    layer_id: LayerId,
+    ellipse: Rect,
+    color: Bgra,
+    style: ShapeStyle,
+    border_width: u32,
+) -> Result<Option<PixelPatch>, RasterError> {
+    shape_pixels(document, layer_id, ellipse, color, |px, py| match style {
+        ShapeStyle::Outline => ellipse_outline(px, py, ellipse, border_width),
+        ShapeStyle::Fill | ShapeStyle::Both => ellipse_contains(px, py, ellipse),
+    })
+}
+
+/// Fills an ellipse inscribed in a half-open rectangle, clipped to the selection mask.
+pub fn fill_ellipse(
+    document: &Document,
+    layer_id: LayerId,
+    ellipse: Rect,
+    color: Bgra,
+) -> Result<Option<PixelPatch>, RasterError> {
+    shape_ellipse(document, layer_id, ellipse, color, ShapeStyle::Fill, 0)
 }
 
 pub(crate) fn clip_rect(
@@ -380,52 +564,104 @@ pub fn fill_rect(
     rect: Rect,
     color: Bgra,
 ) -> Result<Option<PixelPatch>, RasterError> {
-    let layer = layer(document, layer_id)?;
-    let Some(clip) = operation_clip(document) else {
-        return Ok(None);
-    };
-    let Some(rect) = intersect(clip.rect, rect)? else {
-        return Ok(None);
-    };
-    let before = layer.surface().read_region(rect)?;
-    let requested_bytes = rect.size().checked_buffer_len()?;
-    let mut after = copy_pixels(&before, requested_bytes)?;
-    let width = i64::from(rect.width());
-    let mut changed = false;
-    for y in 0..rect.height() {
-        for x in 0..rect.width() {
-            let pixel_x = rect.left() + i64::from(x);
-            let pixel_y = rect.top() + i64::from(y);
-            if !clip.selects_xy(pixel_x, pixel_y) {
-                continue;
-            }
-            let index = (i64::from(y) * width + i64::from(x)) as usize;
-            if after[index] != color {
-                after[index] = color;
-                changed = true;
-            }
-        }
-    }
-    if !changed {
-        return Ok(None);
-    }
-    Ok(Some(PixelPatch::new(
-        layer_id,
-        layer.revision(),
-        rect,
-        before,
-        after,
-    )?))
+    shape_rect(document, layer_id, rect, color, ShapeStyle::Fill, 0)
 }
 
-/// Paints a straight-alpha linear gradient from `start` to `end` through the selection mask.
-pub fn linear_gradient(
+/// The gradient shape sampled across the drag, matching Paint.NET's five shape buttons.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GradientType {
+    Linear,
+    Reflected,
+    Diamond,
+    Radial,
+    Conical,
+}
+
+/// How far outside the drag range the gradient keeps sampling.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GradientRepeat {
+    /// Clamp to the from/to colours outside the drag.
+    None,
+    /// Wrap around so the gradient repeats beyond the drag.
+    Repeat,
+}
+
+/// Gradient shape and repeat mode selected in Tool Options.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GradientOptions {
+    pub kind: GradientType,
+    pub repeat: GradientRepeat,
+}
+
+impl GradientOptions {
+    pub const fn new(kind: GradientType, repeat: GradientRepeat) -> Self {
+        Self { kind, repeat }
+    }
+}
+
+impl Default for GradientOptions {
+    fn default() -> Self {
+        Self {
+            kind: GradientType::Linear,
+            repeat: GradientRepeat::None,
+        }
+    }
+}
+
+fn gradient_lerp(
+    kind: GradientType,
+    repeat: GradientRepeat,
+    start: Point,
+    end: Point,
+    pixel_x: f64,
+    pixel_y: f64,
+) -> f64 {
+    let start_x = f64::from(start.x);
+    let start_y = f64::from(start.y);
+    let dx = f64::from(end.x) - start_x;
+    let dy = f64::from(end.y) - start_y;
+    let length_squared = dx * dx + dy * dy;
+    let length = length_squared.sqrt();
+    let offset_x = pixel_x - start_x;
+    let offset_y = pixel_y - start_y;
+    let raw = match kind {
+        GradientType::Linear if length_squared == 0.0 => 0.0,
+        GradientType::Linear => (offset_x * dx + offset_y * dy) / length_squared,
+        GradientType::Reflected if length_squared == 0.0 => 0.0,
+        GradientType::Reflected => ((offset_x * dx + offset_y * dy) / length_squared).abs(),
+        GradientType::Diamond if length_squared == 0.0 => 0.0,
+        GradientType::Diamond => {
+            let along = (offset_x * dx + offset_y * dy) / length_squared;
+            let across = (offset_x * dy - offset_y * dx) / length_squared;
+            along.abs() + across.abs()
+        }
+        GradientType::Radial if length == 0.0 => 0.0,
+        GradientType::Radial => offset_x.hypot(offset_y) / length,
+        GradientType::Conical if length == 0.0 => 0.0,
+        GradientType::Conical => {
+            let direction = dy.atan2(dx);
+            let angle = (offset_y.atan2(offset_x) - direction).rem_euclid(std::f64::consts::TAU);
+            match repeat {
+                GradientRepeat::None => angle / std::f64::consts::TAU,
+                GradientRepeat::Repeat => angle / std::f64::consts::PI,
+            }
+        }
+    };
+    match repeat {
+        GradientRepeat::None => raw.clamp(0.0, 1.0),
+        GradientRepeat::Repeat => raw.rem_euclid(1.0),
+    }
+}
+
+/// Paints a straight-alpha gradient with the selected shape and repeat mode.
+pub fn gradient(
     document: &Document,
     layer_id: LayerId,
     start: Point,
     end: Point,
     from: Bgra,
     to: Bgra,
+    options: GradientOptions,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
     let Some(clip) = operation_clip(document) else {
@@ -435,9 +671,6 @@ pub fn linear_gradient(
     let before = layer.surface().read_region(rect)?;
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
-    let dx = f64::from(end.x) - f64::from(start.x);
-    let dy = f64::from(end.y) - f64::from(start.y);
-    let length_squared = dx * dx + dy * dy;
     let width = i64::from(rect.width());
     for y in 0..rect.height() {
         for x in 0..rect.width() {
@@ -446,13 +679,7 @@ pub fn linear_gradient(
             if !clip.selects_xy(rect.left() + i64::from(x), rect.top() + i64::from(y)) {
                 continue;
             }
-            let t = if length_squared == 0.0 {
-                0.0
-            } else {
-                (((pixel_x - f64::from(start.x)) * dx + (pixel_y - f64::from(start.y)) * dy)
-                    / length_squared)
-                    .clamp(0.0, 1.0)
-            };
+            let t = gradient_lerp(options.kind, options.repeat, start, end, pixel_x, pixel_y);
             after[(i64::from(y) * width + i64::from(x)) as usize] = lerp_bgra(from, to, t);
         }
     }
@@ -466,6 +693,26 @@ pub fn linear_gradient(
         before,
         after,
     )?))
+}
+
+/// Paints the default linear, non-repeating gradient between two canvas points.
+pub fn linear_gradient(
+    document: &Document,
+    layer_id: LayerId,
+    start: Point,
+    end: Point,
+    from: Bgra,
+    to: Bgra,
+) -> Result<Option<PixelPatch>, RasterError> {
+    gradient(
+        document,
+        layer_id,
+        start,
+        end,
+        from,
+        to,
+        GradientOptions::default(),
+    )
 }
 
 /// Replaces pixels close to `target` with `replacement` through the selection mask.
@@ -729,11 +976,13 @@ pub fn global_fill(
 }
 
 /// Recolors pixels near `target` only inside a round brush stroke and the selection mask.
+///
+/// The stroke honours `BrushOptions` hardness and spacing exactly like [`stroke`].
 pub fn recolor_stroke(
     document: &Document,
     layer_id: LayerId,
     points: &[Point],
-    size: u32,
+    brush: BrushOptions,
     target: Bgra,
     replacement: Bgra,
     tolerance: u8,
@@ -745,7 +994,9 @@ pub fn recolor_stroke(
     let Some(first) = points.first() else {
         return Ok(None);
     };
-    let radius = size.max(1).saturating_sub(1) / 2;
+    let brush = brush.normalized();
+    let radius = brush.size.saturating_sub(1) / 2;
+    let radius_f = f64::from(radius);
     let radius_i64 = i64::from(radius);
     let mut min_x = i64::from(first.x);
     let mut min_y = i64::from(first.y);
@@ -773,45 +1024,49 @@ pub fn recolor_stroke(
     let left = rect.left();
     let top = rect.top();
     let width = i64::from(rect.width());
-    let radius_squared = i128::from(radius) * i128::from(radius);
+    let height = i64::from(rect.height());
+    let hardness = f64::from(brush.hardness) / 100.0;
+    let step = f64::from(brush.size) * f64::from(brush.spacing) / 100.0;
     let tolerance = i16::from(tolerance);
     let matches = |pixel: Bgra| bgra_within_tolerance(pixel, target, tolerance);
-    let mut stamp = |x: i64, y: i64| {
-        for py in (y - radius_i64)..=(y + radius_i64) {
-            if py < top || py >= top + i64::from(rect.height()) {
-                continue;
-            }
-            for px in (x - radius_i64)..=(x + radius_i64) {
-                if px < left || px >= left + width {
-                    continue;
-                }
-                let dx = i128::from(px - x);
-                let dy = i128::from(py - y);
-                if dx * dx + dy * dy > radius_squared {
+
+    for_each_stamp(points, step, |center_x, center_y| {
+        let x0 = (center_x - radius_f).floor() as i64;
+        let x1 = (center_x + radius_f).ceil() as i64;
+        let y0 = (center_y - radius_f).floor() as i64;
+        let y1 = (center_y + radius_f).ceil() as i64;
+        for py in y0.max(top)..=y1.min(top + height - 1) {
+            for px in x0.max(left)..=x1.min(left + width - 1) {
+                let dx = px as f64 - center_x;
+                let dy = py as f64 - center_y;
+                let distance = dx.hypot(dy);
+                if distance > radius_f {
                     continue;
                 }
                 if !clip.selects_xy(px, py) {
                     continue;
                 }
+                let coverage = brush_coverage(distance, radius_f, hardness);
+                if coverage == 0 {
+                    continue;
+                }
                 let index = ((py - top) * width + (px - left)) as usize;
-                if matches(before[index]) {
+                if !matches(before[index]) {
+                    continue;
+                }
+                if coverage == u8::MAX {
                     after[index] = replacement;
+                } else {
+                    let alpha =
+                        (u16::from(replacement.a) * u16::from(coverage) + 127) / u16::from(u8::MAX);
+                    let blended =
+                        Bgra::new(replacement.b, replacement.g, replacement.r, alpha as u8);
+                    after[index] = crate::normal_over(after[index], blended, u8::MAX);
                 }
             }
         }
-    };
-    stamp(i64::from(first.x), i64::from(first.y));
-    for pair in points.windows(2) {
-        let (a, b) = (pair[0], pair[1]);
-        let dx = i64::from(b.x) - i64::from(a.x);
-        let dy = i64::from(b.y) - i64::from(a.y);
-        let steps = dx.unsigned_abs().max(dy.unsigned_abs());
-        for step in 1..=steps {
-            let x = i64::from(a.x) + (dx * i64::from(step as u32)) / i64::from(steps as u32);
-            let y = i64::from(a.y) + (dy * i64::from(step as u32)) / i64::from(steps as u32);
-            stamp(x, y);
-        }
-    }
+    });
+
     if before == after {
         return Ok(None);
     }

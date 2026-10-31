@@ -7,6 +7,7 @@ use egui_kittest::{
     kittest::{NodeT as _, Queryable as _},
 };
 use paint_core::{Bgra, Point, Rect, Size, Surface};
+use paint_raster::{GradientRepeat, GradientType, ShapeStyle};
 use paint_ui::PaintApp;
 use tempfile::TempDir;
 
@@ -407,6 +408,7 @@ fn rectangle_shape_tool_drag_fills_and_remains_undoable() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Shapes");
+    click(&mut harness, "Fill");
     let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
     let rect = canvas.rect();
     harness.drag_at(rect.min + egui::vec2(5.0, 6.0));
@@ -968,6 +970,7 @@ fn line_and_ellipse_shapes_fill_pixels_without_setting_a_selection() {
     click(&mut harness, "Undo");
 
     click(&mut harness, "Shapes");
+    click(&mut harness, "Fill");
     click(&mut harness, "Ellipse");
     drag_canvas(&mut harness, egui::vec2(10.0, 10.0), egui::vec2(30.0, 30.0));
     let session = harness.state().session();
@@ -2083,6 +2086,7 @@ fn effects_menu_uses_paint_net_groups_and_applies_real_effects_undoably() {
     );
 
     click(&mut harness, "Shapes");
+    click(&mut harness, "Fill");
     drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(14.0, 15.0));
     menu_item(&mut harness, "Effects", "Blurs");
     harness.get_by_role_and_label(Role::Button, "Gaussian Blur…");
@@ -2669,6 +2673,7 @@ fn magic_wand_click_selects_a_contiguous_region_and_undo_keeps_the_mask() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Shapes");
+    click(&mut harness, "Fill");
     drag_canvas(&mut harness, egui::vec2(20.0, 0.0), egui::vec2(30.0, 599.0));
 
     let dirty_before = harness.state().session().dirty();
@@ -2868,4 +2873,210 @@ fn view_units_change_status_coordinates() {
         .click();
     harness.run();
     harness.get_by_label("—, — cm");
+}
+
+#[test]
+fn brush_options_expose_paint_net_hardness_spacing_and_size_defaults() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Paintbrush");
+    assert_eq!(harness.state().brush_size(), 45);
+    assert_eq!(harness.state().brush_hardness(), 75);
+    assert_eq!(harness.state().brush_spacing(), 15);
+    harness.get_by_label("Hardness");
+    harness.get_by_label("Spacing");
+    harness.get_by_label("Width");
+
+    click(&mut harness, "Eraser");
+    harness.get_by_label("Hardness");
+    harness.get_by_label("Spacing");
+
+    click(&mut harness, "Recolor");
+    harness.get_by_label("Hardness");
+    harness.get_by_label("Spacing");
+    harness.get_by_label("Tolerance");
+}
+
+#[test]
+fn brush_hardness_and_spacing_options_change_painted_pixels() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Paintbrush");
+    harness.state_mut().set_brush_options(8, 0, 100);
+    drag_canvas(&mut harness, egui::vec2(5.0, 50.0), egui::vec2(45.0, 50.0));
+    let surface = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface();
+    assert_eq!(
+        *surface.pixel(Point::new(17, 50)).expect("spacing gap"),
+        Bgra::WHITE,
+        "spacing 100% should leave a gap between stamps"
+    );
+    let soft = *surface.pixel(Point::new(15, 50)).expect("soft edge");
+    assert!(
+        (60..=200).contains(&soft.r),
+        "hardness 0 should blend the edge instead of painting it solid: {soft:?}"
+    );
+
+    click(&mut harness, "Undo");
+    harness.state_mut().set_brush_options(8, 100, 10);
+    drag_canvas(&mut harness, egui::vec2(5.0, 50.0), egui::vec2(45.0, 50.0));
+    let surface = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface();
+    assert_eq!(
+        *surface.pixel(Point::new(17, 50)).expect("dense bridge"),
+        Bgra::BLACK,
+        "spacing 10% and hardness 100 should paint a connected hard stroke"
+    );
+}
+
+#[test]
+fn shape_options_support_outline_fill_both_and_border_width() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Shapes");
+    assert_eq!(harness.state().shape_style(), ShapeStyle::Outline);
+    assert_eq!(harness.state().shape_border_width(), 2);
+    harness.get_by_label("Fill style");
+    harness.get_by_label("Border width");
+    for label in ["Outline", "Fill", "Both", "Rectangle", "Ellipse"] {
+        harness.get_by_role_and_label(Role::Button, label);
+    }
+
+    drag_canvas(&mut harness, egui::vec2(5.0, 5.0), egui::vec2(15.0, 15.0));
+    {
+        let session = harness.state().session();
+        let surface = session.document().active_layer().surface();
+        assert_eq!(
+            *surface.pixel(Point::new(5, 5)).expect("outline corner"),
+            Bgra::BLACK
+        );
+        assert_eq!(
+            *surface.pixel(Point::new(10, 10)).expect("hollow centre"),
+            Bgra::WHITE
+        );
+        assert_eq!(
+            harness.state().history_entries().last().map(String::as_str),
+            Some("Rectangle"),
+            "history should record the rectangle"
+        );
+    }
+    click(&mut harness, "Undo");
+
+    click(&mut harness, "Both");
+    drag_canvas(&mut harness, egui::vec2(5.0, 5.0), egui::vec2(15.0, 15.0));
+    let surface = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface();
+    assert_eq!(
+        *surface.pixel(Point::new(5, 5)).expect("both outline"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(10, 10)).expect("both interior"),
+        Bgra::BLACK
+    );
+    click(&mut harness, "Undo");
+
+    harness
+        .state_mut()
+        .set_shape_options(ShapeStyle::Outline, 3);
+    drag_canvas(&mut harness, egui::vec2(5.0, 5.0), egui::vec2(15.0, 15.0));
+    let surface = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface();
+    assert_eq!(
+        *surface.pixel(Point::new(6, 6)).expect("wide border"),
+        Bgra::BLACK,
+        "a three-pixel border reaches the second inset ring"
+    );
+    assert_eq!(
+        *surface.pixel(Point::new(10, 10)).expect("still hollow"),
+        Bgra::WHITE
+    );
+}
+
+#[test]
+fn gradient_options_select_shape_and_repeat_modes() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Gradient");
+    assert_eq!(harness.state().gradient_type(), GradientType::Linear);
+    assert_eq!(harness.state().gradient_repeat(), GradientRepeat::None);
+    harness.get_by_label("Gradient type");
+    harness.get_by_label("Repeat mode");
+    for label in ["Linear", "Reflected", "Diamond", "Radial", "Conical"] {
+        harness.get_by_role_and_label(Role::Button, label);
+    }
+    for label in ["No Repeat", "Repeat"] {
+        harness.get_by_role_and_label(Role::Button, label);
+    }
+
+    click(&mut harness, "Repeat");
+    assert_eq!(harness.state().gradient_repeat(), GradientRepeat::Repeat);
+    drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(25.0, 6.0));
+    {
+        let session = harness.state().session();
+        let surface = session.document().active_layer().surface();
+        let wrapped = *surface.pixel(Point::new(35, 6)).expect("wrapped pixel");
+        assert!(
+            wrapped.r > 60 && wrapped.r < 220,
+            "Repeat should sample 55% of the next period: {wrapped:?}"
+        );
+        assert_eq!(
+            session.document().selection(),
+            None,
+            "gradients must not create a selection"
+        );
+    }
+    click(&mut harness, "Undo");
+
+    click(&mut harness, "No Repeat");
+    drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(25.0, 6.0));
+    assert_eq!(
+        *harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(35, 6))
+            .expect("clamped pixel"),
+        Bgra::WHITE,
+        "No Repeat clamps to the secondary colour beyond the drag"
+    );
+    click(&mut harness, "Undo");
+
+    click(&mut harness, "Reflected");
+    assert_eq!(harness.state().gradient_type(), GradientType::Reflected);
+    drag_canvas(&mut harness, egui::vec2(10.0, 20.0), egui::vec2(20.0, 20.0));
+    let reflected = *harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixel(Point::new(2, 20))
+        .expect("reflected before start");
+    assert!(
+        reflected.r > 100 && reflected.r < 220,
+        "Reflected mirrors the gradient before the drag start: {reflected:?}"
+    );
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Gradient")
+    );
 }

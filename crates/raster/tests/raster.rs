@@ -284,7 +284,7 @@ fn stroke_connects_points_and_clips_to_the_selection() {
         &document,
         LayerId::new(9),
         &[Point::new(0, 2), Point::new(5, 2)],
-        1,
+        paint_raster::BrushOptions::new(1, 100, 15),
         Some(Bgra::BLACK),
     )
     .expect("stroke")
@@ -307,9 +307,15 @@ fn eraser_stroke_writes_transparent_and_ellipse_respects_its_inscribed_bounds() 
         vec![Layer::new(LayerId::new(3), "tools", surface)],
     )
     .expect("document");
-    let erase = paint_raster::stroke(&document, LayerId::new(3), &[Point::new(2, 2)], 1, None)
-        .expect("stroke")
-        .expect("erase patch");
+    let erase = paint_raster::stroke(
+        &document,
+        LayerId::new(3),
+        &[Point::new(2, 2)],
+        paint_raster::BrushOptions::new(1, 100, 15),
+        None,
+    )
+    .expect("stroke")
+    .expect("erase patch");
     document.apply_patch(&erase).expect("erase");
     assert_eq!(
         document.active_layer().surface().pixels()[12],
@@ -592,7 +598,7 @@ fn recolor_stroke_only_changes_matching_pixels_under_the_brush() {
         &document,
         LayerId::new(18),
         &[Point::new(0, 0)],
-        1,
+        paint_raster::BrushOptions::new(1, 100, 15),
         Bgra::new(0, 0, 255, 255),
         Bgra::new(255, 0, 0, 255),
         0,

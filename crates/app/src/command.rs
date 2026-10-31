@@ -1,5 +1,5 @@
 use paint_core::{Bgra, Point, Rect, Size};
-use paint_raster::TextStyle;
+use paint_raster::{BrushOptions, GradientOptions, ShapeStyle, TextStyle};
 
 use crate::Effect;
 
@@ -84,11 +84,11 @@ pub enum Command {
     Rotate180,
     /// Fills the active layer and selection, or the whole active layer without a selection.
     Fill(Bgra),
-    /// Paints a hard round stroke. `None` erases to transparent.
+    /// Paints a round brush stroke with explicit hardness and spacing. `None` erases.
     Stroke {
         label: &'static str,
         points: Vec<Point>,
-        size: u32,
+        brush: BrushOptions,
         color: Option<Bgra>,
     },
     /// Fills the contiguous region around a canvas point.
@@ -98,27 +98,32 @@ pub enum Command {
         tolerance: u8,
         global: bool,
     },
-    /// Fills a half-open canvas rectangle.
+    /// Paints a half-open canvas rectangle with an outline/fill style and border width.
     FillRect {
         rect: Rect,
         color: Bgra,
+        style: ShapeStyle,
+        border_width: u32,
     },
-    /// Fills an ellipse inscribed in a half-open canvas rectangle.
+    /// Paints an ellipse inscribed in a half-open rectangle with a style and border width.
     FillEllipse {
         rect: Rect,
         color: Bgra,
+        style: ShapeStyle,
+        border_width: u32,
     },
-    /// Paints a linear gradient between two canvas points.
+    /// Paints a gradient with the selected shape and repeat mode between two canvas points.
     Gradient {
         start: Point,
         end: Point,
         from: Bgra,
         to: Bgra,
+        options: GradientOptions,
     },
-    /// Recolors matching colors only under a round brush stroke.
+    /// Recolors matching colors only under a round brush stroke with hardness and spacing.
     Recolor {
         points: Vec<Point>,
-        size: u32,
+        brush: BrushOptions,
         target: Bgra,
         replacement: Bgra,
         tolerance: u8,

@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 use paint_app::{AppSession, CanvasAnchor, Command, Effect, ResourceLimits};
 use paint_core::{Bgra, Point, Rect, Size};
 use paint_document::{Document, LayerId};
-use paint_raster::{MAX_GAUSSIAN_BLUR_RADIUS, TextFontFamily, TextStyle};
+use paint_raster::{
+    BrushOptions, GradientOptions, GradientRepeat, GradientType, MAX_GAUSSIAN_BLUR_RADIUS,
+    ShapeStyle, TextFontFamily, TextStyle,
+};
 
 use crate::checkerboard::paint_checkerboard;
 use crate::colors::{
@@ -111,7 +114,13 @@ pub struct PaintApp {
     picking_color: bool,
     active_tool: Tool,
     shape_mode: ShapeMode,
+    shape_style: ShapeStyle,
+    shape_border_width: u32,
     brush_size: u32,
+    brush_hardness: u8,
+    brush_spacing: u8,
+    gradient_type: GradientType,
+    gradient_repeat: GradientRepeat,
     clone_hardness: u8,
     clone_source: Option<Point>,
     clone_offset: Option<(i64, i64)>,
@@ -216,7 +225,13 @@ impl PaintApp {
             picking_color: false,
             active_tool: Tool::Select,
             shape_mode: ShapeMode::Rectangle,
+            shape_style: ShapeStyle::Outline,
+            shape_border_width: 2,
             brush_size: 45,
+            brush_hardness: 75,
+            brush_spacing: 15,
+            gradient_type: GradientType::Linear,
+            gradient_repeat: GradientRepeat::None,
             clone_hardness: 80,
             clone_source: None,
             clone_offset: None,
@@ -303,6 +318,54 @@ impl PaintApp {
 
     pub const fn secondary_color(&self) -> Bgra {
         self.secondary_color
+    }
+
+    #[doc(hidden)]
+    pub const fn brush_size(&self) -> u32 {
+        self.brush_size
+    }
+
+    #[doc(hidden)]
+    pub const fn brush_hardness(&self) -> u8 {
+        self.brush_hardness
+    }
+
+    #[doc(hidden)]
+    pub const fn brush_spacing(&self) -> u8 {
+        self.brush_spacing
+    }
+
+    #[doc(hidden)]
+    pub const fn shape_style(&self) -> ShapeStyle {
+        self.shape_style
+    }
+
+    #[doc(hidden)]
+    pub const fn shape_border_width(&self) -> u32 {
+        self.shape_border_width
+    }
+
+    #[doc(hidden)]
+    pub const fn gradient_type(&self) -> GradientType {
+        self.gradient_type
+    }
+
+    #[doc(hidden)]
+    pub const fn gradient_repeat(&self) -> GradientRepeat {
+        self.gradient_repeat
+    }
+
+    #[doc(hidden)]
+    pub fn set_brush_options(&mut self, size: u32, hardness: u8, spacing: u8) {
+        self.brush_size = size.max(1);
+        self.brush_hardness = hardness.min(100);
+        self.brush_spacing = spacing.clamp(1, 100);
+    }
+
+    #[doc(hidden)]
+    pub fn set_shape_options(&mut self, style: ShapeStyle, border_width: u32) {
+        self.shape_style = style;
+        self.shape_border_width = border_width.max(1);
     }
 
     #[doc(hidden)]
@@ -710,14 +773,26 @@ impl PaintApp {
 
     fn preview_live_stroke(&mut self) {
         let color = (self.active_tool != Tool::Eraser).then_some(self.fill_color);
-        let size = if self.active_tool == Tool::Pencil {
-            1
-        } else {
-            self.brush_size.max(1)
-        };
-        match self.session.preview_stroke(&self.paint_points, size, color) {
+        let brush = self.paint_brush_options();
+        match self
+            .session
+            .preview_stroke(&self.paint_points, brush, color)
+        {
             Ok(_) => self.texture_dirty = true,
             Err(error) => self.status = format!("Stroke preview failed: {error}"),
+        }
+    }
+
+    /// Builds the brush geometry for the active paint, erase, or recolor stroke.
+    fn paint_brush_options(&self) -> BrushOptions {
+        match self.active_tool {
+            Tool::Pencil => BrushOptions::new(1, 100, 15),
+            Tool::Line => BrushOptions::new(self.brush_size.max(1), 100, 15),
+            _ => BrushOptions::new(
+                self.brush_size.max(1),
+                self.brush_hardness,
+                self.brush_spacing,
+            ),
         }
     }
 
@@ -2042,16 +2117,36 @@ impl PaintApp {
                             Tool::Eraser => "Eraser",
                             _ => "Line / Curve",
                         });
+                        ui.separator();
                         if self.active_tool == Tool::Pencil {
                             ui.label("Width is fixed at 1 px");
                         } else {
-                            ui.label("Width");
+                            let width_label = ui.label("Width");
                             ui.add(
                                 egui::DragValue::new(&mut self.brush_size)
                                     .range(1..=64)
                                     .suffix(" px"),
-                            );
+                            )
+                            .labelled_by(width_label.id);
                         }
+                        if matches!(self.active_tool, Tool::Brush | Tool::Eraser) {
+                            ui.separator();
+                            let hardness_label = ui.label("Hardness");
+                            ui.add(
+                                egui::DragValue::new(&mut self.brush_hardness)
+                                    .range(0..=100)
+                                    .suffix("%"),
+                            )
+                            .labelled_by(hardness_label.id);
+                            let spacing_label = ui.label("Spacing");
+                            ui.add(
+                                egui::DragValue::new(&mut self.brush_spacing)
+                                    .range(1..=100)
+                                    .suffix("%"),
+                            )
+                            .labelled_by(spacing_label.id);
+                        }
+                        ui.separator();
                         if self.active_tool == Tool::Eraser {
                             ui.label("Erases the active layer to transparency");
                         } else {
@@ -2063,23 +2158,64 @@ impl PaintApp {
                                 "Primary color",
                             );
                         }
+                        ui.separator();
                         ui.label("Drag on the canvas to paint");
                     }
                     Tool::Shapes => {
                         ui.label("Shapes");
+                        ui.separator();
+                        ui.label("Shape type");
                         ui.selectable_value(
                             &mut self.shape_mode,
                             ShapeMode::Rectangle,
                             "Rectangle",
                         );
                         ui.selectable_value(&mut self.shape_mode, ShapeMode::Ellipse, "Ellipse");
+                        ui.separator();
+                        ui.label("Fill style");
+                        ui.selectable_value(&mut self.shape_style, ShapeStyle::Outline, "Outline");
+                        ui.selectable_value(&mut self.shape_style, ShapeStyle::Fill, "Fill");
+                        ui.selectable_value(&mut self.shape_style, ShapeStyle::Both, "Both");
+                        ui.separator();
+                        let border_label = ui.label("Border width");
+                        ui.add(
+                            egui::DragValue::new(&mut self.shape_border_width)
+                                .range(1..=64)
+                                .suffix(" px"),
+                        )
+                        .labelled_by(border_label.id);
+                        ui.separator();
                         ui.label(match self.shape_mode {
-                            ShapeMode::Rectangle => "Drag to fill a rectangle",
-                            ShapeMode::Ellipse => "Drag to fill an ellipse",
+                            ShapeMode::Rectangle => "Drag to draw a rectangle",
+                            ShapeMode::Ellipse => "Drag to draw an ellipse",
                         });
                     }
                     Tool::Gradient => {
                         ui.label("Gradient");
+                        ui.separator();
+                        ui.label("Gradient type");
+                        for (kind, label) in [
+                            (GradientType::Linear, "Linear"),
+                            (GradientType::Reflected, "Reflected"),
+                            (GradientType::Diamond, "Diamond"),
+                            (GradientType::Radial, "Radial"),
+                            (GradientType::Conical, "Conical"),
+                        ] {
+                            ui.selectable_value(&mut self.gradient_type, kind, label);
+                        }
+                        ui.separator();
+                        ui.label("Repeat mode");
+                        ui.selectable_value(
+                            &mut self.gradient_repeat,
+                            GradientRepeat::None,
+                            "No Repeat",
+                        );
+                        ui.selectable_value(
+                            &mut self.gradient_repeat,
+                            GradientRepeat::Repeat,
+                            "Repeat",
+                        );
+                        ui.separator();
                         let (from, to) = (self.fill_color, self.secondary_color);
                         ui.colored_label(
                             egui::Color32::from_rgba_unmultiplied(from.r, from.g, from.b, from.a),
@@ -2090,10 +2226,43 @@ impl PaintApp {
                             egui::Color32::from_rgba_unmultiplied(to.r, to.g, to.b, to.a),
                             "Secondary",
                         );
+                        ui.separator();
                         ui.label("Drag to set the gradient direction");
                     }
                     Tool::Recolor => {
                         ui.label("Recolor");
+                        ui.separator();
+                        let width_label = ui.label("Width");
+                        ui.add(
+                            egui::DragValue::new(&mut self.brush_size)
+                                .range(1..=64)
+                                .suffix(" px"),
+                        )
+                        .labelled_by(width_label.id);
+                        ui.separator();
+                        let hardness_label = ui.label("Hardness");
+                        ui.add(
+                            egui::DragValue::new(&mut self.brush_hardness)
+                                .range(0..=100)
+                                .suffix("%"),
+                        )
+                        .labelled_by(hardness_label.id);
+                        let spacing_label = ui.label("Spacing");
+                        ui.add(
+                            egui::DragValue::new(&mut self.brush_spacing)
+                                .range(1..=100)
+                                .suffix("%"),
+                        )
+                        .labelled_by(spacing_label.id);
+                        ui.separator();
+                        let tolerance_label = ui.label("Tolerance");
+                        ui.add(
+                            egui::DragValue::new(&mut self.recolor_tolerance)
+                                .range(0..=100)
+                                .suffix("%"),
+                        )
+                        .labelled_by(tolerance_label.id);
+                        ui.separator();
                         let (target, replacement) = (self.secondary_color, self.fill_color);
                         ui.colored_label(
                             egui::Color32::from_rgba_unmultiplied(
@@ -2110,19 +2279,7 @@ impl PaintApp {
                             ),
                             "Replacement: primary",
                         );
-                        ui.label("Width");
-                        ui.add(
-                            egui::DragValue::new(&mut self.brush_size)
-                                .range(1..=64)
-                                .suffix(" px"),
-                        );
-                        let tolerance_label = ui.label("Tolerance");
-                        ui.add(
-                            egui::DragValue::new(&mut self.recolor_tolerance)
-                                .range(0..=100)
-                                .suffix("%"),
-                        )
-                        .labelled_by(tolerance_label.id);
+                        ui.separator();
                         ui.label("Drag over matching pixels to recolor");
                     }
                     Tool::Text => self.text_tool_options(ui),
@@ -3794,8 +3951,10 @@ impl PaintApp {
                                             Command::FillRect {
                                                 rect: bounds,
                                                 color,
+                                                style: self.shape_style,
+                                                border_width: self.shape_border_width,
                                             },
-                                            "Filled rectangle shape".to_owned(),
+                                            "Drew a rectangle shape".to_owned(),
                                         ))
                                     }
                                     Tool::Shapes if self.shape_mode == ShapeMode::Ellipse => {
@@ -3803,15 +3962,17 @@ impl PaintApp {
                                             Command::FillEllipse {
                                                 rect: bounds,
                                                 color,
+                                                style: self.shape_style,
+                                                border_width: self.shape_border_width,
                                             },
-                                            "Filled ellipse shape".to_owned(),
+                                            "Drew an ellipse shape".to_owned(),
                                         ))
                                     }
                                     Tool::Line => Some((
                                         Command::Stroke {
                                             label: "Line / Curve",
                                             points: vec![start, end],
-                                            size,
+                                            brush: BrushOptions::new(size, 100, 15),
                                             color: Some(color),
                                         },
                                         "Drew a line".to_owned(),
@@ -3822,6 +3983,10 @@ impl PaintApp {
                                             end,
                                             from: color,
                                             to: self.secondary_color,
+                                            options: GradientOptions::new(
+                                                self.gradient_type,
+                                                self.gradient_repeat,
+                                            ),
                                         },
                                         "Painted a gradient".to_owned(),
                                     )),
@@ -3834,7 +3999,11 @@ impl PaintApp {
                                         Some((
                                             Command::Recolor {
                                                 points,
-                                                size,
+                                                brush: BrushOptions::new(
+                                                    size,
+                                                    self.brush_hardness,
+                                                    self.brush_spacing,
+                                                ),
                                                 target: self.secondary_color,
                                                 replacement: color,
                                                 tolerance: (u16::from(self.recolor_tolerance) * 255

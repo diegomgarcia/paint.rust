@@ -15,10 +15,11 @@ pub use effects::{
     sepia, sepia_active,
 };
 pub use operations::{
-    Rotation, canvas_surfaces, clone_stamp, crop_surfaces, fill, fill_active, fill_ellipse,
-    fill_rect, flip_horizontal, flip_vertical, flood_fill, global_fill, invert, invert_active,
+    BrushOptions, GradientOptions, GradientRepeat, GradientType, Rotation, ShapeStyle,
+    canvas_surfaces, clone_stamp, crop_surfaces, fill, fill_active, fill_ellipse, fill_rect,
+    flip_horizontal, flip_vertical, flood_fill, global_fill, gradient, invert, invert_active,
     linear_gradient, magic_wand_mask, recolor, recolor_stroke, resize_surfaces, rotate_surfaces,
-    stamp, stroke, translate,
+    shape_ellipse, shape_rect, stamp, stroke, translate,
 };
 pub use text::{MAX_TEXT_BYTES, MAX_TEXT_SIZE, TextFontFamily, TextStyle, text};
 

@@ -1,8 +1,8 @@
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId, PixelPatch, SelectionMask};
 use paint_raster::{
-    RasterError, fill, fill_ellipse, fill_rect, flood_fill, global_fill, invert, linear_gradient,
-    recolor, stamp, stroke, translate,
+    BrushOptions, RasterError, fill, fill_ellipse, fill_rect, flood_fill, global_fill, invert,
+    linear_gradient, recolor, stamp, stroke, translate,
 };
 
 fn size(width: u32, height: u32) -> Size {
@@ -104,7 +104,13 @@ fn stroke_and_eraser_clip_every_stamped_pixel_to_the_mask() {
 
     let points = [Point::new(0, 2), Point::new(4, 2)];
     apply(&mut stroked, |document| {
-        stroke(document, LayerId::new(1), &points, 1, Some(Bgra::BLACK))
+        stroke(
+            document,
+            LayerId::new(1),
+            &points,
+            BrushOptions::new(1, 100, 15),
+            Some(Bgra::BLACK),
+        )
     });
     let pixels = stroked.active_layer().surface().pixels();
     for y in 0..5 {
@@ -121,7 +127,13 @@ fn stroke_and_eraser_clip_every_stamped_pixel_to_the_mask() {
     let mut erasing = document(5, 5, vec![Bgra::BLACK; 25]);
     erasing.set_selection_mask(selection).expect("selection");
     apply(&mut erasing, |document| {
-        stroke(document, LayerId::new(1), &points, 1, None)
+        stroke(
+            document,
+            LayerId::new(1),
+            &points,
+            BrushOptions::new(1, 100, 15),
+            None,
+        )
     });
     let pixels = erasing.active_layer().surface().pixels();
     assert_eq!(pixels[2 * 5 + 2], Bgra::TRANSPARENT);

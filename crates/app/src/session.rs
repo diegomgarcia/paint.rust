@@ -130,30 +130,41 @@ impl AppSession {
             Command::Stroke {
                 label: _,
                 points,
-                size,
+                brush,
                 color,
-            } => self.stroke(&points, size, color),
+            } => self.stroke(&points, brush, color),
             Command::FloodFill {
                 point,
                 color,
                 tolerance,
                 global,
             } => self.flood_fill(point, color, tolerance, global),
-            Command::FillRect { rect, color } => self.fill_rect(rect, color),
-            Command::FillEllipse { rect, color } => self.fill_ellipse(rect, color),
+            Command::FillRect {
+                rect,
+                color,
+                style,
+                border_width,
+            } => self.fill_rect(rect, color, style, border_width),
+            Command::FillEllipse {
+                rect,
+                color,
+                style,
+                border_width,
+            } => self.fill_ellipse(rect, color, style, border_width),
             Command::Gradient {
                 start,
                 end,
                 from,
                 to,
-            } => self.linear_gradient(start, end, from, to),
+                options,
+            } => self.gradient(start, end, from, to, options),
             Command::Recolor {
                 points,
-                size,
+                brush,
                 target,
                 replacement,
                 tolerance,
-            } => self.recolor(&points, size, target, replacement, tolerance),
+            } => self.recolor(&points, brush, target, replacement, tolerance),
             Command::PlaceText {
                 origin,
                 content,
@@ -312,7 +323,7 @@ impl AppSession {
     pub fn preview_stroke(
         &mut self,
         points: &[Point],
-        size: u32,
+        brush: paint_raster::BrushOptions,
         color: Option<Bgra>,
     ) -> Result<bool, SessionError> {
         self.rewind_preview()?;
@@ -320,7 +331,7 @@ impl AppSession {
             &self.document,
             self.document.active_layer_id(),
             points,
-            size,
+            brush,
             color,
         )?;
         self.apply_preview_patch(patch)
@@ -412,14 +423,14 @@ impl AppSession {
     pub fn stroke(
         &mut self,
         points: &[Point],
-        size: u32,
+        brush: paint_raster::BrushOptions,
         color: Option<Bgra>,
     ) -> Result<bool, SessionError> {
         let patch = paint_raster::stroke(
             &self.document,
             self.document.active_layer_id(),
             points,
-            size,
+            brush,
             color,
         )?;
         match patch {
@@ -458,29 +469,43 @@ impl AppSession {
         }
     }
 
-    pub fn fill_rect(&mut self, rect: Rect, color: Bgra) -> Result<bool, SessionError> {
-        let patch =
-            paint_raster::fill_rect(&self.document, self.document.active_layer_id(), rect, color)?;
+    pub fn fill_rect(
+        &mut self,
+        rect: Rect,
+        color: Bgra,
+        style: paint_raster::ShapeStyle,
+        border_width: u32,
+    ) -> Result<bool, SessionError> {
+        let patch = paint_raster::shape_rect(
+            &self.document,
+            self.document.active_layer_id(),
+            rect,
+            color,
+            style,
+            border_width,
+        )?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
             None => Ok(false),
         }
     }
 
-    pub fn linear_gradient(
+    pub fn gradient(
         &mut self,
         start: Point,
         end: Point,
         from: Bgra,
         to: Bgra,
+        options: paint_raster::GradientOptions,
     ) -> Result<bool, SessionError> {
-        let patch = paint_raster::linear_gradient(
+        let patch = paint_raster::gradient(
             &self.document,
             self.document.active_layer_id(),
             start,
             end,
             from,
             to,
+            options,
         )?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
@@ -491,7 +516,7 @@ impl AppSession {
     pub fn recolor(
         &mut self,
         points: &[Point],
-        size: u32,
+        brush: paint_raster::BrushOptions,
         target: Bgra,
         replacement: Bgra,
         tolerance: u8,
@@ -500,7 +525,7 @@ impl AppSession {
             &self.document,
             self.document.active_layer_id(),
             points,
-            size,
+            brush,
             target,
             replacement,
             tolerance,
@@ -643,12 +668,20 @@ impl AppSession {
         }
     }
 
-    pub fn fill_ellipse(&mut self, rect: Rect, color: Bgra) -> Result<bool, SessionError> {
-        let patch = paint_raster::fill_ellipse(
+    pub fn fill_ellipse(
+        &mut self,
+        rect: Rect,
+        color: Bgra,
+        style: paint_raster::ShapeStyle,
+        border_width: u32,
+    ) -> Result<bool, SessionError> {
+        let patch = paint_raster::shape_ellipse(
             &self.document,
             self.document.active_layer_id(),
             rect,
             color,
+            style,
+            border_width,
         )?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),

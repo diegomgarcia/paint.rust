@@ -1,6 +1,7 @@
 use paint_app::{AppSession, Command};
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId, SelectionMask};
+use paint_raster::{BrushOptions, ShapeStyle};
 
 fn rect(left: i64, top: i64, right: i64, bottom: i64) -> Rect {
     Rect::new(left, top, right, bottom).expect("test rectangle")
@@ -96,7 +97,7 @@ fn lasso_selection_masks_freehand_polygon_painting_and_erasing() {
             .execute(Command::Stroke {
                 label: "Eraser",
                 points: vertical.to_vec(),
-                size: 1,
+                brush: BrushOptions::new(1, 100, 15),
                 color: None,
             })
             .expect("erase")
@@ -139,6 +140,8 @@ fn magic_wand_uses_flood_fill_tolerance_and_contiguous_or_global_modes() {
         .execute(Command::FillRect {
             rect: rect(2, 0, 3, 3),
             color: Bgra::BLACK,
+            style: ShapeStyle::Fill,
+            border_width: 0,
         })
         .expect("stripe");
 
@@ -204,6 +207,8 @@ fn magic_wand_tolerance_expands_the_selected_color_range() {
         .execute(Command::FillRect {
             rect: rect(1, 0, 2, 1),
             color: near_white,
+            style: ShapeStyle::Fill,
+            border_width: 0,
         })
         .expect("near-white pixel");
 
