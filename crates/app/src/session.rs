@@ -2,7 +2,9 @@ use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, DocumentError, Layer, LayerId, PatchError, PixelPatch, Revision};
 use sha2::{Digest, Sha256};
 
-use crate::{Command, Effect, ResourceLimitError, SemanticSnapshot, SessionError, snapshot};
+use crate::{
+    CanvasAnchor, Command, Effect, ResourceLimitError, SemanticSnapshot, SessionError, snapshot,
+};
 
 /// Bounds applied to externally supplied traces and session operations.
 /// Selected pixels detached from the layer while they are being moved.
@@ -148,6 +150,21 @@ impl AppSession {
             Command::FlipLayerVertical => self.flip_layer_vertical(),
             Command::FlipImageHorizontal => self.flip_image(true),
             Command::FlipImageVertical => self.flip_image(false),
+            Command::CropToSelection => self.crop_to_selection(),
+            Command::ResizeImage { width, height } => self.resize_image(width, height),
+            Command::CanvasSize {
+                width,
+                height,
+                anchor,
+                fill,
+            } => self.resize_canvas(width, height, anchor, fill),
+            Command::Rotate90Clockwise => {
+                self.rotate_image(paint_raster::Rotation::Rotate90Clockwise)
+            }
+            Command::Rotate90CounterClockwise => {
+                self.rotate_image(paint_raster::Rotation::Rotate90CounterClockwise)
+            }
+            Command::Rotate180 => self.rotate_image(paint_raster::Rotation::Rotate180),
             Command::FlattenImage => self.flatten_image(),
             Command::AddLayer {
                 name,
@@ -505,6 +522,133 @@ impl AppSession {
         };
         self.commit_new(candidate, inverse);
         Ok(true)
+    }
+
+    /// Crops every layer to the selection clipped to the canvas.
+    ///
+    /// A missing, non-intersecting, or full-canvas selection is a no-op. On success the
+    /// selection is cleared because its coordinates are relative to the old canvas.
+    pub fn crop_to_selection(&mut self) -> Result<bool, SessionError> {
+        let Some(selection) = self.document.selection() else {
+            return Ok(false);
+        };
+        let Some(bounds) = selection.clip_to(self.document.size()) else {
+            return Ok(false);
+        };
+        if bounds == self.document.canvas_rect() {
+            return Ok(false);
+        }
+        let surfaces = paint_raster::crop_surfaces(&self.document, bounds)?;
+        let mut candidate = self.document.clone();
+        candidate.replace_geometry(bounds.size(), surfaces)?;
+        candidate.clear_selection()?;
+        self.apply_document_candidate(candidate)
+    }
+
+    /// Bilinearly resamples every layer to `width × height` and clears the selection.
+    pub fn resize_image(&mut self, width: u32, height: u32) -> Result<bool, SessionError> {
+        let new_size = Size::new(width, height)?;
+        self.validate_requested_size(new_size)?;
+        if new_size == self.document.size() {
+            return Ok(false);
+        }
+        let surfaces = paint_raster::resize_surfaces(&self.document, new_size)?;
+        let mut candidate = self.document.clone();
+        candidate.replace_geometry(new_size, surfaces)?;
+        candidate.clear_selection()?;
+        self.apply_document_candidate(candidate)
+    }
+
+    /// Pads or crops the canvas around the existing layers using `anchor` and `fill`.
+    ///
+    /// Existing pixels move by [`CanvasAnchor::offsets`]. The selection is shifted by the
+    /// same offset and clipped to the new canvas, or cleared when it no longer intersects.
+    pub fn resize_canvas(
+        &mut self,
+        width: u32,
+        height: u32,
+        anchor: CanvasAnchor,
+        fill: Bgra,
+    ) -> Result<bool, SessionError> {
+        let new_size = Size::new(width, height)?;
+        self.validate_requested_size(new_size)?;
+        if new_size == self.document.size() {
+            return Ok(false);
+        }
+        let (offset_x, offset_y) = anchor.offsets(self.document.size(), new_size);
+        let surfaces =
+            paint_raster::canvas_surfaces(&self.document, new_size, offset_x, offset_y, fill)?;
+        let mut candidate = self.document.clone();
+        candidate.replace_geometry(new_size, surfaces)?;
+        if let Some(selection) = self.document.selection() {
+            let shifted = selection
+                .left()
+                .checked_add(offset_x)
+                .zip(selection.top().checked_add(offset_y))
+                .zip(selection.right().checked_add(offset_x))
+                .zip(selection.bottom().checked_add(offset_y))
+                .and_then(|(((left, top), right), bottom)| Rect::new(left, top, right, bottom).ok())
+                .and_then(|rect| rect.clip_to(new_size));
+            match shifted {
+                Some(rect) => {
+                    candidate.set_selection(Some(rect))?;
+                }
+                None => {
+                    candidate.clear_selection()?;
+                }
+            }
+        }
+        self.apply_document_candidate(candidate)
+    }
+
+    /// Rotates every layer and swaps dimensions for quarter turns. The selection is cleared.
+    pub fn rotate_image(&mut self, rotation: paint_raster::Rotation) -> Result<bool, SessionError> {
+        let new_size = rotation.rotated_size(self.document.size());
+        let surfaces = paint_raster::rotate_surfaces(&self.document, rotation)?;
+        let mut candidate = self.document.clone();
+        candidate.replace_geometry(new_size, surfaces)?;
+        candidate.clear_selection()?;
+        self.apply_document_candidate(candidate)
+    }
+
+    /// Applies a fully built candidate document as one snapshot-based history mutation.
+    fn apply_document_candidate(&mut self, candidate: Document) -> Result<bool, SessionError> {
+        if candidate == self.document {
+            return Ok(false);
+        }
+        let mutation = Mutation::DocumentSnapshot {
+            before: Box::new(self.document.clone()),
+            after: Box::new(candidate),
+        };
+        let mut applied = self.document.clone();
+        let Some(inverse) = mutation.apply(&mut applied)? else {
+            return Ok(false);
+        };
+        self.commit_new(applied, inverse);
+        Ok(true)
+    }
+
+    fn validate_requested_size(&self, size: Size) -> Result<(), SessionError> {
+        let width = size.width();
+        let height = size.height();
+        if width > self.limits.max_width || height > self.limits.max_height {
+            return Err(ResourceLimitError::Dimensions {
+                width,
+                height,
+                max_width: self.limits.max_width,
+                max_height: self.limits.max_height,
+            }
+            .into());
+        }
+        let pixels = u64::from(width) * u64::from(height);
+        if pixels > self.limits.max_pixels {
+            return Err(ResourceLimitError::Pixels {
+                actual: pixels,
+                max: self.limits.max_pixels,
+            }
+            .into());
+        }
+        Ok(())
     }
 
     pub fn flatten_image(&mut self) -> Result<bool, SessionError> {

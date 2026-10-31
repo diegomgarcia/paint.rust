@@ -14,8 +14,9 @@ pub use effects::{
     sepia, sepia_active,
 };
 pub use operations::{
-    fill, fill_active, fill_ellipse, fill_rect, flip_horizontal, flip_vertical, flood_fill,
-    global_fill, invert, invert_active, linear_gradient, recolor, recolor_stroke, stamp, stroke,
+    Rotation, canvas_surfaces, crop_surfaces, fill, fill_active, fill_ellipse, fill_rect,
+    flip_horizontal, flip_vertical, flood_fill, global_fill, invert, invert_active,
+    linear_gradient, recolor, recolor_stroke, resize_surfaces, rotate_surfaces, stamp, stroke,
     translate,
 };
 

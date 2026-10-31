@@ -1,4 +1,4 @@
-use paint_core::{Bgra, Rect};
+use paint_core::{Bgra, Rect, Size, Surface};
 use paint_document::{Document, DocumentError, Layer, LayerId, PixelPatch};
 
 use crate::RasterError;
@@ -737,7 +737,7 @@ pub fn recolor_stroke(
 pub fn stamp(
     document: &Document,
     layer_id: LayerId,
-    surface: &paint_core::Surface,
+    surface: &Surface,
     dest_x: i64,
     dest_y: i64,
 ) -> Result<Option<PixelPatch>, RasterError> {
@@ -794,4 +794,192 @@ pub fn stamp(
         before,
         after,
     )?))
+}
+
+/// A whole-image rotation direction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Rotation {
+    Rotate90Clockwise,
+    Rotate90CounterClockwise,
+    Rotate180,
+}
+
+impl Rotation {
+    /// Returns the canvas size after this rotation. Quarter turns swap width and height.
+    pub fn rotated_size(self, size: paint_core::Size) -> paint_core::Size {
+        match self {
+            Self::Rotate90Clockwise | Self::Rotate90CounterClockwise => {
+                paint_core::Size::new(size.height(), size.width())
+                    .expect("a swapped nonzero size is still nonzero")
+            }
+            Self::Rotate180 => size,
+        }
+    }
+}
+
+/// Copies `bounds` out of every layer as packed surfaces in layer order.
+pub fn crop_surfaces(document: &Document, bounds: Rect) -> Result<Vec<Surface>, RasterError> {
+    let requested_bytes = bounds.size().checked_buffer_len()?;
+    let mut surfaces = Vec::new();
+    surfaces
+        .try_reserve_exact(document.layers().len())
+        .map_err(|_| RasterError::AllocationFailed { requested_bytes })?;
+    for layer in document.layers() {
+        let pixels = layer.surface().read_region(bounds)?;
+        surfaces.push(Surface::from_pixels(bounds.size(), pixels)?);
+    }
+    Ok(surfaces)
+}
+
+/// Resamples every layer to `new_size` with bilinear pixel-centre sampling.
+pub fn resize_surfaces(document: &Document, new_size: Size) -> Result<Vec<Surface>, RasterError> {
+    let requested_bytes = new_size.checked_buffer_len()?;
+    let mut surfaces = Vec::new();
+    surfaces
+        .try_reserve_exact(document.layers().len())
+        .map_err(|_| RasterError::AllocationFailed { requested_bytes })?;
+    for layer in document.layers() {
+        surfaces.push(resize_surface(layer.surface(), new_size)?);
+    }
+    Ok(surfaces)
+}
+
+fn resize_surface(source: &Surface, new_size: Size) -> Result<Surface, RasterError> {
+    let old_width = source.width();
+    let old_height = source.height();
+    let pixel_count = new_size.checked_pixel_count()?;
+    let requested_bytes = new_size.checked_buffer_len()?;
+    let mut pixels = Vec::new();
+    pixels
+        .try_reserve_exact(pixel_count)
+        .map_err(|_| RasterError::AllocationFailed { requested_bytes })?;
+    let old_width_f = f64::from(old_width);
+    let old_height_f = f64::from(old_height);
+    let new_width_f = f64::from(new_size.width());
+    let new_height_f = f64::from(new_size.height());
+    let source_pixels = source.pixels();
+    let source_stride = old_width as usize;
+
+    for y in 0..new_size.height() {
+        let source_y = (((f64::from(y) + 0.5) * old_height_f / new_height_f) - 0.5)
+            .clamp(0.0, old_height_f - 1.0);
+        let y0 = source_y.floor();
+        let y1 = (y0 + 1.0).min(old_height_f - 1.0);
+        let fy = source_y - y0;
+        let y0 = y0 as usize;
+        let y1 = y1 as usize;
+        for x in 0..new_size.width() {
+            let source_x = (((f64::from(x) + 0.5) * old_width_f / new_width_f) - 0.5)
+                .clamp(0.0, old_width_f - 1.0);
+            let x0 = source_x.floor();
+            let x1 = (x0 + 1.0).min(old_width_f - 1.0);
+            let fx = source_x - x0;
+            let x0 = x0 as usize;
+            let x1 = x1 as usize;
+            let top = lerp_bgra(
+                source_pixels[y0 * source_stride + x0],
+                source_pixels[y0 * source_stride + x1],
+                fx,
+            );
+            let bottom = lerp_bgra(
+                source_pixels[y1 * source_stride + x0],
+                source_pixels[y1 * source_stride + x1],
+                fx,
+            );
+            pixels.push(lerp_bgra(top, bottom, fy));
+        }
+    }
+    Ok(Surface::from_pixels(new_size, pixels)?)
+}
+
+/// Places every layer's existing pixels at `(offset_x, offset_y)` in a new canvas of
+/// `new_size`, filling uncovered pixels with `fill` and clipping content outside the canvas.
+pub fn canvas_surfaces(
+    document: &Document,
+    new_size: Size,
+    offset_x: i64,
+    offset_y: i64,
+    fill: Bgra,
+) -> Result<Vec<Surface>, RasterError> {
+    let requested_bytes = new_size.checked_buffer_len()?;
+    let mut surfaces = Vec::new();
+    surfaces
+        .try_reserve_exact(document.layers().len())
+        .map_err(|_| RasterError::AllocationFailed { requested_bytes })?;
+    for layer in document.layers() {
+        let mut surface = Surface::filled(new_size, fill)?;
+        blit_at(layer.surface(), &mut surface, offset_x, offset_y);
+        surfaces.push(surface);
+    }
+    Ok(surfaces)
+}
+
+fn blit_at(source: &Surface, destination: &mut Surface, offset_x: i64, offset_y: i64) {
+    let destination_width = destination.width() as usize;
+    let destination_height = i64::from(destination.height());
+    let destination_width_i64 = i64::from(destination.width());
+    let source_width = source.width() as usize;
+    let source_pixels = source.pixels();
+    let destination_pixels = destination.pixels_mut();
+    for source_y in 0..source.height() {
+        let destination_y = i64::from(source_y) + offset_y;
+        if destination_y < 0 || destination_y >= destination_height {
+            continue;
+        }
+        for source_x in 0..source.width() {
+            let destination_x = i64::from(source_x) + offset_x;
+            if destination_x < 0 || destination_x >= destination_width_i64 {
+                continue;
+            }
+            let source_index = source_y as usize * source_width + source_x as usize;
+            let destination_index =
+                destination_y as usize * destination_width + destination_x as usize;
+            destination_pixels[destination_index] = source_pixels[source_index];
+        }
+    }
+}
+
+/// Rotates every layer by the requested quarter or half turn.
+pub fn rotate_surfaces(
+    document: &Document,
+    rotation: Rotation,
+) -> Result<Vec<Surface>, RasterError> {
+    let new_size = rotation.rotated_size(document.size());
+    let requested_bytes = new_size.checked_buffer_len()?;
+    let mut surfaces = Vec::new();
+    surfaces
+        .try_reserve_exact(document.layers().len())
+        .map_err(|_| RasterError::AllocationFailed { requested_bytes })?;
+    for layer in document.layers() {
+        surfaces.push(rotate_surface(layer.surface(), rotation, new_size)?);
+    }
+    Ok(surfaces)
+}
+
+fn rotate_surface(
+    source: &Surface,
+    rotation: Rotation,
+    new_size: Size,
+) -> Result<Surface, RasterError> {
+    let old_width = source.width();
+    let old_height = source.height();
+    let pixel_count = new_size.checked_pixel_count()?;
+    let requested_bytes = new_size.checked_buffer_len()?;
+    let mut pixels = Vec::new();
+    pixels
+        .try_reserve_exact(pixel_count)
+        .map_err(|_| RasterError::AllocationFailed { requested_bytes })?;
+    let source_pixels = source.pixels();
+    let source_width = old_width as usize;
+    for y in 0..new_size.height() {
+        for x in 0..new_size.width() {
+            let (source_x, source_y) = match rotation {
+                Rotation::Rotate90Clockwise => (y, old_height - 1 - x),
+                Rotation::Rotate90CounterClockwise => (old_width - 1 - y, x),
+                Rotation::Rotate180 => (old_width - 1 - x, old_height - 1 - y),
+            };
+            pixels.push(source_pixels[source_y as usize * source_width + source_x as usize]);
+        }
+    }
+    Ok(Surface::from_pixels(new_size, pixels)?)
 }

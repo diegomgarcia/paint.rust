@@ -69,7 +69,7 @@ pub struct Layer {
     pub(crate) background: bool,
     pub(crate) blend_mode: BlendMode,
     pub(crate) revision: Revision,
-    surface: Surface,
+    pub(crate) surface: Surface,
 }
 
 impl Layer {

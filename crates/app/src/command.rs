@@ -1,4 +1,42 @@
-use paint_core::{Bgra, Point, Rect};
+use paint_core::{Bgra, Point, Rect, Size};
+
+/// Placement of existing content when the canvas is resized.
+///
+/// The old canvas is placed at a top-left offset inside the new canvas. Left/top anchors
+/// use offset `0`, centered anchors use `(new - old) / 2` with integer division truncating
+/// toward zero, and right/bottom anchors use `new - old`. Negative offsets crop the old
+/// content at the corresponding edge.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CanvasAnchor {
+    TopLeft,
+    Top,
+    TopRight,
+    Left,
+    Middle,
+    Right,
+    BottomLeft,
+    Bottom,
+    BottomRight,
+}
+
+impl CanvasAnchor {
+    /// Returns the top-left offset of the old canvas inside the new canvas.
+    pub const fn offsets(self, old: Size, new: Size) -> (i64, i64) {
+        let delta_x = new.width() as i64 - old.width() as i64;
+        let delta_y = new.height() as i64 - old.height() as i64;
+        let x = match self {
+            Self::TopLeft | Self::Left | Self::BottomLeft => 0,
+            Self::Top | Self::Middle | Self::Bottom => delta_x / 2,
+            Self::TopRight | Self::Right | Self::BottomRight => delta_x,
+        };
+        let y = match self {
+            Self::TopLeft | Self::Top | Self::TopRight => 0,
+            Self::Left | Self::Middle | Self::Right => delta_y / 2,
+            Self::BottomLeft | Self::Bottom | Self::BottomRight => delta_y,
+        };
+        (x, y)
+    }
+}
 
 use crate::Effect;
 
@@ -8,6 +46,26 @@ pub enum Command {
     /// Sets a signed, half-open selection. Raster operations clip it to the canvas.
     SelectRect(Rect),
     ClearSelection,
+    /// Crops the canvas to the current selection, clipped to the canvas, and clears it.
+    CropToSelection,
+    /// Resamples every layer to the requested pixel dimensions.
+    ResizeImage {
+        width: u32,
+        height: u32,
+    },
+    /// Pads or crops the canvas around the existing layers using `anchor`.
+    CanvasSize {
+        width: u32,
+        height: u32,
+        anchor: CanvasAnchor,
+        fill: Bgra,
+    },
+    /// Rotates every layer 90° clockwise and swaps the canvas dimensions.
+    Rotate90Clockwise,
+    /// Rotates every layer 90° counter-clockwise and swaps the canvas dimensions.
+    Rotate90CounterClockwise,
+    /// Rotates every layer 180° without changing the canvas dimensions.
+    Rotate180,
     /// Fills the active layer and selection, or the whole active layer without a selection.
     Fill(Bgra),
     /// Paints a hard round stroke. `None` erases to transparent.

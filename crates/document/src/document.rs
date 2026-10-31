@@ -21,6 +21,8 @@ pub enum DocumentError {
     },
     #[error("layer {layer_id:?} was not found")]
     LayerNotFound { layer_id: LayerId },
+    #[error("expected {expected} replacement layer surfaces, got {actual}")]
+    SurfaceCountMismatch { expected: usize, actual: usize },
     #[error("layer index {index} is invalid for {len} layers")]
     LayerIndexOutOfBounds { index: usize, len: usize },
     #[error("the final layer cannot be removed from a document")]
@@ -143,6 +145,57 @@ impl Document {
 
     pub const fn revision(&self) -> Revision {
         self.revision
+    }
+
+    /// Replaces the canvas size and every layer surface as one validated mutation.
+    ///
+    /// Layer IDs, bottom-to-top order, names, visibility, opacity, background flags, blend
+    /// modes, the active layer, the next layer ID, and the selection are preserved. Every layer
+    /// and the document advance exactly one revision. The caller is responsible for remapping
+    /// or clearing any selection whose coordinates no longer make sense.
+    pub fn replace_geometry(
+        &mut self,
+        new_size: Size,
+        surfaces: Vec<Surface>,
+    ) -> Result<(), DocumentError> {
+        if surfaces.len() != self.layers.len() {
+            return Err(DocumentError::SurfaceCountMismatch {
+                expected: self.layers.len(),
+                actual: surfaces.len(),
+            });
+        }
+        for (index, surface) in surfaces.iter().enumerate() {
+            if surface.size() != new_size {
+                return Err(DocumentError::LayerSizeMismatch {
+                    layer_id: self.layers[index].id(),
+                    expected: new_size,
+                    actual: surface.size(),
+                });
+            }
+        }
+        let next_document_revision = self.next_document_revision()?;
+        let mut next_layer_revisions = Vec::new();
+        next_layer_revisions
+            .try_reserve_exact(self.layers.len())
+            .map_err(|_| DocumentError::LayerAllocationFailed)?;
+        for layer in &self.layers {
+            next_layer_revisions.push(layer.revision.checked_next().ok_or(
+                DocumentError::LayerRevisionOverflow {
+                    layer_id: layer.id(),
+                },
+            )?);
+        }
+
+        // All fallible work is complete; the remaining assignments cannot fail.
+        for (layer, surface) in self.layers.iter_mut().zip(surfaces) {
+            layer.surface = surface;
+        }
+        for (layer, revision) in self.layers.iter_mut().zip(next_layer_revisions) {
+            layer.revision = revision;
+        }
+        self.size = new_size;
+        self.revision = next_document_revision;
+        Ok(())
     }
 
     /// Adds a transparent, non-background layer at the top and makes it active.

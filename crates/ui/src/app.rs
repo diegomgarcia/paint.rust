@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use paint_app::{AppSession, Command, Effect};
+use paint_app::{AppSession, CanvasAnchor, Command, Effect, ResourceLimits};
 use paint_core::{Bgra, Point, Rect, Size};
 use paint_document::{Document, LayerId};
 use paint_raster::MAX_GAUSSIAN_BLUR_RADIUS;
@@ -121,6 +121,8 @@ pub struct PaintApp {
     active_tab: usize,
     next_layer_number: usize,
     status: String,
+    resize_dialog: Option<ResizeImageDialogState>,
+    canvas_size_dialog: Option<CanvasSizeDialogState>,
     path_dialog: Option<PathDialog>,
     pending_discard: Option<DiscardAction>,
     focus_discard_buttons: bool,
@@ -204,6 +206,8 @@ impl PaintApp {
             active_tab: 0,
             next_layer_number: 1,
             status: "New 800×600 opaque-white document".to_owned(),
+            resize_dialog: None,
+            canvas_size_dialog: None,
             path_dialog: None,
             pending_discard: None,
             focus_discard_buttons: false,
@@ -379,6 +383,8 @@ impl PaintApp {
         self.active_tab = index;
         self.layer_properties_open = false;
         self.gaussian_blur_open = false;
+        self.resize_dialog = None;
+        self.canvas_size_dialog = None;
         self.status = format!("Switched to {}", self.document_title);
     }
 
@@ -399,6 +405,8 @@ impl PaintApp {
         self.selection_input = SelectionInput::default();
         self.next_layer_number = 1;
         self.path_dialog = None;
+        self.resize_dialog = None;
+        self.canvas_size_dialog = None;
         self.pending_discard = None;
         self.focus_discard_buttons = false;
         self.gaussian_blur_open = false;
@@ -418,6 +426,16 @@ impl PaintApp {
     fn show_path_dialog(&mut self, kind: PathDialogKind) {
         self.finalize_floating_selection();
         self.path_dialog = Some(PathDialog::new(kind));
+    }
+
+    fn show_resize_dialog(&mut self) {
+        self.finalize_floating_selection();
+        self.resize_dialog = Some(ResizeImageDialogState::new(self.session.document().size()));
+    }
+
+    fn show_canvas_size_dialog(&mut self) {
+        self.finalize_floating_selection();
+        self.canvas_size_dialog = Some(CanvasSizeDialogState::new(self.session.document().size()));
     }
 
     fn request_discard(&mut self, action: DiscardAction) {
@@ -465,6 +483,8 @@ impl PaintApp {
                 self.zoom = 1.0;
                 self.layer_thumbnails.clear();
                 self.path_dialog = None;
+                self.resize_dialog = None;
+                self.canvas_size_dialog = None;
                 self.status = format!("Opened flattened PNG: {}", path_buffer.display());
             }
             Err(error) => {
@@ -877,10 +897,26 @@ impl PaintApp {
                     ui.add_enabled(false, egui::Button::new("Show Rulers"));
                 });
                 ui.menu_button("Image", |ui| {
-                    let crop = ui.add_enabled(false, egui::Button::new("Crop to Selection"));
+                    let has_selection = self.session.document().selection().is_some();
+                    let image_layers = self.session.document().layers().len();
+                    let crop =
+                        ui.add_enabled(has_selection, egui::Button::new("Crop to Selection"));
                     focus_first_menu_item_on_keyboard_open(ui, &crop);
-                    ui.add_enabled(false, egui::Button::new("Resize Image…"));
-                    ui.add_enabled(false, egui::Button::new("Canvas Size…"));
+                    if crop.clicked() {
+                        self.execute(
+                            Command::CropToSelection,
+                            "Cropped the image to the selection",
+                        );
+                        ui.close();
+                    }
+                    if ui.button("Resize Image…").clicked() {
+                        self.show_resize_dialog();
+                        ui.close();
+                    }
+                    if ui.button("Canvas Size…").clicked() {
+                        self.show_canvas_size_dialog();
+                        ui.close();
+                    }
                     ui.separator();
                     if ui.button("Flip Horizontal").clicked() {
                         self.execute(
@@ -894,13 +930,31 @@ impl PaintApp {
                         ui.close();
                     }
                     ui.separator();
-                    ui.add_enabled(false, egui::Button::new("Rotate 90° Clockwise"));
-                    ui.add_enabled(false, egui::Button::new("Rotate 90° Counter-Clockwise"));
-                    ui.add_enabled(false, egui::Button::new("Rotate 180°"));
+                    if ui.button("Rotate 90° Clockwise").clicked() {
+                        self.execute(
+                            Command::Rotate90Clockwise,
+                            "Rotated the image 90° clockwise",
+                        );
+                        ui.close();
+                    }
+                    if ui.button("Rotate 90° Counter-Clockwise").clicked() {
+                        self.execute(
+                            Command::Rotate90CounterClockwise,
+                            "Rotated the image 90° counter-clockwise",
+                        );
+                        ui.close();
+                    }
+                    if ui.button("Rotate 180°").clicked() {
+                        self.execute(Command::Rotate180, "Rotated the image 180°");
+                        ui.close();
+                    }
                     ui.separator();
                     ui.add_enabled(false, egui::Button::new("Color Profile…"));
                     ui.separator();
-                    if ui.button("Flatten Image").clicked() {
+                    if ui
+                        .add_enabled(image_layers > 1, egui::Button::new("Flatten Image"))
+                        .clicked()
+                    {
                         self.execute(Command::FlattenImage, "Flattened the image");
                         ui.close();
                     }
@@ -2351,6 +2405,200 @@ impl PaintApp {
         self.gaussian_blur_open = open;
     }
 
+    fn image_size_dialogs(&mut self, context: &egui::Context) {
+        self.resize_image_dialog(context);
+        self.canvas_size_dialog(context);
+    }
+
+    fn resize_image_dialog(&mut self, context: &egui::Context) {
+        let Some(mut dialog) = self.resize_dialog.take() else {
+            return;
+        };
+        let limits = self.session.limits();
+        let mut apply = false;
+        let mut cancel =
+            context.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        egui::Window::new("Resize Image")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(context, |ui| {
+                ui.label(
+                    "Resample every layer to a new pixel size. Bilinear sampling is used and \
+                     the selection is cleared.",
+                );
+                let validated = size_fields_ui(ui, &mut dialog.fields, limits);
+                ui.separator();
+                match &validated {
+                    Ok(size) => {
+                        ui.label(format!(
+                            "New image: {} × {} pixels across {} layers",
+                            size.width(),
+                            size.height(),
+                            self.session.document().layers().len()
+                        ));
+                    }
+                    Err(error) => {
+                        ui.colored_label(egui::Color32::LIGHT_RED, format!("Error: {error}"));
+                    }
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(validated.is_ok(), egui::Button::new("Apply"))
+                        .clicked()
+                    {
+                        apply = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if cancel {
+            self.status = "Resize Image canceled".to_owned();
+            return;
+        }
+        if !apply {
+            self.resize_dialog = Some(dialog);
+            return;
+        }
+        let Ok(size) = dialog.fields.validated_size(limits) else {
+            self.resize_dialog = Some(dialog);
+            return;
+        };
+        let message = format!("Resized the image to {}×{}", size.width(), size.height());
+        let _ = self.execute(
+            Command::ResizeImage {
+                width: size.width(),
+                height: size.height(),
+            },
+            message,
+        );
+        if self.session.document().size() != size {
+            self.resize_dialog = Some(dialog);
+        }
+    }
+
+    fn canvas_size_dialog(&mut self, context: &egui::Context) {
+        let Some(mut dialog) = self.canvas_size_dialog.take() else {
+            return;
+        };
+        let limits = self.session.limits();
+        let mut apply = false;
+        let mut cancel =
+            context.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        egui::Window::new("Canvas Size")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(context, |ui| {
+                ui.label(
+                    "Pad or crop the canvas around the existing pixels. Anchors choose where \
+                     the current canvas sits; the fill color covers exposed pixels.",
+                );
+                let validated = size_fields_ui(ui, &mut dialog.fields, limits);
+                ui.separator();
+                ui.strong("Anchor");
+                ui.label("Anchor: where the existing canvas is placed");
+                egui::Grid::new("paint-r-canvas-anchor-grid")
+                    .spacing([10.0, 4.0])
+                    .show(ui, |ui| {
+                        for anchors in [
+                            [
+                                CanvasAnchor::TopLeft,
+                                CanvasAnchor::Top,
+                                CanvasAnchor::TopRight,
+                            ],
+                            [
+                                CanvasAnchor::Left,
+                                CanvasAnchor::Middle,
+                                CanvasAnchor::Right,
+                            ],
+                            [
+                                CanvasAnchor::BottomLeft,
+                                CanvasAnchor::Bottom,
+                                CanvasAnchor::BottomRight,
+                            ],
+                        ] {
+                            for anchor in anchors {
+                                ui.radio_value(
+                                    &mut dialog.anchor,
+                                    anchor,
+                                    canvas_anchor_label(anchor),
+                                );
+                            }
+                            ui.end_row();
+                        }
+                    });
+                ui.separator();
+                ui.strong("Fill color");
+                ui.horizontal_wrapped(|ui| {
+                    for (fill, label) in CANVAS_FILLS {
+                        ui.radio_value(&mut dialog.fill, fill, label);
+                    }
+                });
+                ui.separator();
+                match &validated {
+                    Ok(size) => {
+                        ui.label(format!(
+                            "New canvas: {} × {} pixels across {} layers",
+                            size.width(),
+                            size.height(),
+                            self.session.document().layers().len()
+                        ));
+                    }
+                    Err(error) => {
+                        ui.colored_label(egui::Color32::LIGHT_RED, format!("Error: {error}"));
+                    }
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(validated.is_ok(), egui::Button::new("Apply"))
+                        .clicked()
+                    {
+                        apply = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if cancel {
+            self.status = "Canvas Size canceled".to_owned();
+            return;
+        }
+        if !apply {
+            self.canvas_size_dialog = Some(dialog);
+            return;
+        }
+        let Ok(size) = dialog.fields.validated_size(limits) else {
+            self.canvas_size_dialog = Some(dialog);
+            return;
+        };
+        let fill = match dialog.fill {
+            CanvasFill::Transparent => Bgra::TRANSPARENT,
+            CanvasFill::White => Bgra::WHITE,
+            CanvasFill::Black => Bgra::BLACK,
+            CanvasFill::Primary => self.fill_color,
+            CanvasFill::Secondary => self.secondary_color,
+        };
+        let message = format!("Resized the canvas to {}×{}", size.width(), size.height());
+        let _ = self.execute(
+            Command::CanvasSize {
+                width: size.width(),
+                height: size.height(),
+                anchor: dialog.anchor,
+                fill,
+            },
+            message,
+        );
+        if self.session.document().size() != size {
+            self.canvas_size_dialog = Some(dialog);
+        }
+    }
+
     fn status_panel(&mut self, ui: &mut egui::Ui) {
         egui::Panel::bottom("paint-r-status").show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -3131,6 +3379,8 @@ impl PaintApp {
 
     fn handle_keyboard_shortcuts(&mut self, context: &egui::Context) {
         if self.path_dialog.is_some()
+            || self.resize_dialog.is_some()
+            || self.canvas_size_dialog.is_some()
             || self.pending_discard.is_some()
             || context.text_edit_focused()
         {
@@ -3231,6 +3481,7 @@ impl eframe::App for PaintApp {
         self.gaussian_blur_dialog(ui.ctx());
         self.canvas_panel(ui);
         self.path_dialog(ui);
+        self.image_size_dialogs(ui.ctx());
         self.discard_confirmation(ui);
         if self.texture_dirty {
             // Mutations happen while widgets run, after this frame's initial texture refresh.
@@ -3367,6 +3618,286 @@ impl PathDialog {
             browser_loaded: false,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SizeMode {
+    Absolute,
+    Percentage,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EditedDimension {
+    Width,
+    Height,
+}
+
+struct SizeFields {
+    original: Size,
+    mode: SizeMode,
+    width: String,
+    height: String,
+    percent: String,
+    constrain: bool,
+    last_edited: EditedDimension,
+}
+
+impl SizeFields {
+    fn new(original: Size) -> Self {
+        Self {
+            original,
+            mode: SizeMode::Absolute,
+            width: original.width().to_string(),
+            height: original.height().to_string(),
+            percent: "100".to_owned(),
+            constrain: false,
+            last_edited: EditedDimension::Width,
+        }
+    }
+
+    fn aspect(&self) -> f64 {
+        f64::from(self.original.width()) / f64::from(self.original.height())
+    }
+
+    fn sync_from_percent(&mut self) {
+        if let Ok(percent) = parse_percent(&self.percent) {
+            self.width = scaled_dimension(self.original.width(), percent).to_string();
+            self.height = scaled_dimension(self.original.height(), percent).to_string();
+        }
+    }
+
+    fn sync_from_width(&mut self) {
+        if !self.constrain {
+            return;
+        }
+        if let Ok(width) = parse_dimension(&self.width, "New width") {
+            let height = (f64::from(width) / self.aspect()).round().max(1.0) as u32;
+            self.height = height.to_string();
+        }
+    }
+
+    fn sync_from_height(&mut self) {
+        if !self.constrain {
+            return;
+        }
+        if let Ok(height) = parse_dimension(&self.height, "New height") {
+            let width = (f64::from(height) * self.aspect()).round().max(1.0) as u32;
+            self.width = width.to_string();
+        }
+    }
+
+    fn sync_percent_from_size(&mut self) {
+        if let (Ok(width), Ok(_height)) = (
+            parse_dimension(&self.width, "New width"),
+            parse_dimension(&self.height, "New height"),
+        ) {
+            let percent = f64::from(width) / f64::from(self.original.width()) * 100.0;
+            self.percent = format_percent(percent);
+        }
+    }
+
+    fn validated_size(&self, limits: ResourceLimits) -> Result<Size, String> {
+        let (width, height) = match self.mode {
+            SizeMode::Absolute => (
+                parse_dimension(&self.width, "New width")?,
+                parse_dimension(&self.height, "New height")?,
+            ),
+            SizeMode::Percentage => {
+                let percent = parse_percent(&self.percent)?;
+                (
+                    scaled_dimension(self.original.width(), percent),
+                    scaled_dimension(self.original.height(), percent),
+                )
+            }
+        };
+        let size =
+            Size::new(width, height).map_err(|_| "Width and height must be at least 1 pixel")?;
+        if size.width() > limits.max_width || size.height() > limits.max_height {
+            return Err(format!(
+                "New size {}×{} exceeds the maximum {}×{}",
+                size.width(),
+                size.height(),
+                limits.max_width,
+                limits.max_height
+            ));
+        }
+        let pixels = u64::from(size.width()) * u64::from(size.height());
+        if pixels > limits.max_pixels {
+            return Err(format!(
+                "New size needs {pixels} pixels; the maximum is {}",
+                limits.max_pixels
+            ));
+        }
+        Ok(size)
+    }
+}
+
+struct ResizeImageDialogState {
+    fields: SizeFields,
+}
+
+impl ResizeImageDialogState {
+    fn new(original: Size) -> Self {
+        Self {
+            fields: SizeFields::new(original),
+        }
+    }
+}
+
+struct CanvasSizeDialogState {
+    fields: SizeFields,
+    anchor: CanvasAnchor,
+    fill: CanvasFill,
+}
+
+impl CanvasSizeDialogState {
+    fn new(original: Size) -> Self {
+        Self {
+            fields: SizeFields::new(original),
+            anchor: CanvasAnchor::TopLeft,
+            fill: CanvasFill::Transparent,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CanvasFill {
+    Transparent,
+    White,
+    Black,
+    Primary,
+    Secondary,
+}
+
+const CANVAS_FILLS: [(CanvasFill, &str); 5] = [
+    (CanvasFill::Transparent, "Fill: transparent"),
+    (CanvasFill::White, "Fill: white"),
+    (CanvasFill::Black, "Fill: black"),
+    (CanvasFill::Primary, "Fill: primary color"),
+    (CanvasFill::Secondary, "Fill: secondary color"),
+];
+
+const fn canvas_anchor_label(anchor: CanvasAnchor) -> &'static str {
+    match anchor {
+        CanvasAnchor::TopLeft => "Anchor: top left",
+        CanvasAnchor::Top => "Anchor: top",
+        CanvasAnchor::TopRight => "Anchor: top right",
+        CanvasAnchor::Left => "Anchor: left",
+        CanvasAnchor::Middle => "Anchor: middle",
+        CanvasAnchor::Right => "Anchor: right",
+        CanvasAnchor::BottomLeft => "Anchor: bottom left",
+        CanvasAnchor::Bottom => "Anchor: bottom",
+        CanvasAnchor::BottomRight => "Anchor: bottom right",
+    }
+}
+
+fn parse_dimension(text: &str, name: &str) -> Result<u32, String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{name} is required"));
+    }
+    trimmed
+        .parse::<u32>()
+        .map_err(|_| format!("{name} must be a whole number of pixels"))
+}
+
+fn parse_percent(text: &str) -> Result<f64, String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err("Percent is required".to_owned());
+    }
+    let value = trimmed
+        .parse::<f64>()
+        .map_err(|_| "Percent must be a number".to_owned())?;
+    if !value.is_finite() || value <= 0.0 || value > 2000.0 {
+        return Err("Percent must be greater than 0 and at most 2000".to_owned());
+    }
+    Ok(value)
+}
+
+fn scaled_dimension(original: u32, percent: f64) -> u32 {
+    (f64::from(original) * percent / 100.0)
+        .round()
+        .clamp(1.0, f64::from(u32::MAX)) as u32
+}
+
+fn format_percent(value: f64) -> String {
+    let rounded = (value * 100.0).round() / 100.0;
+    if rounded.fract().abs() < f64::EPSILON {
+        format!("{}", rounded as u64)
+    } else {
+        format!("{rounded:.2}")
+    }
+}
+
+fn size_fields_ui(
+    ui: &mut egui::Ui,
+    fields: &mut SizeFields,
+    limits: ResourceLimits,
+) -> Result<Size, String> {
+    ui.label(format!(
+        "Original: {} × {} pixels",
+        fields.original.width(),
+        fields.original.height()
+    ));
+    let previous_mode = fields.mode;
+    ui.horizontal(|ui| {
+        ui.radio_value(&mut fields.mode, SizeMode::Absolute, "Absolute size");
+        ui.radio_value(&mut fields.mode, SizeMode::Percentage, "Percentage");
+    });
+    if fields.mode != previous_mode {
+        if fields.mode == SizeMode::Percentage {
+            fields.sync_percent_from_size();
+        } else {
+            fields.sync_from_percent();
+        }
+    }
+    match fields.mode {
+        SizeMode::Absolute => {
+            ui.horizontal(|ui| {
+                let label = ui.label("New width");
+                let response = ui
+                    .add(egui::TextEdit::singleline(&mut fields.width).desired_width(72.0))
+                    .labelled_by(label.id);
+                if response.changed() {
+                    fields.last_edited = EditedDimension::Width;
+                    fields.sync_from_width();
+                }
+                ui.label("pixels");
+            });
+            ui.horizontal(|ui| {
+                let label = ui.label("New height");
+                let response = ui
+                    .add(egui::TextEdit::singleline(&mut fields.height).desired_width(72.0))
+                    .labelled_by(label.id);
+                if response.changed() {
+                    fields.last_edited = EditedDimension::Height;
+                    fields.sync_from_height();
+                }
+                ui.label("pixels");
+            });
+        }
+        SizeMode::Percentage => {
+            ui.horizontal(|ui| {
+                let label = ui.label("Percent");
+                let response = ui
+                    .add(egui::TextEdit::singleline(&mut fields.percent).desired_width(72.0))
+                    .labelled_by(label.id);
+                if response.changed() {
+                    fields.sync_from_percent();
+                }
+                ui.label("%");
+            });
+        }
+    }
+    let constrain = ui.checkbox(&mut fields.constrain, "Maintain aspect ratio");
+    if constrain.changed() && fields.constrain {
+        match fields.last_edited {
+            EditedDimension::Width => fields.sync_from_width(),
+            EditedDimension::Height => fields.sync_from_height(),
+        }
+    }
+    fields.validated_size(limits)
 }
 
 fn floating_window_frame(
@@ -3569,6 +4100,12 @@ fn history_label(command: &Command) -> Option<String> {
         Command::FlipLayerVertical => Some("Flip Layer Vertical".to_owned()),
         Command::FlipImageHorizontal => Some("Flip Image Horizontal".to_owned()),
         Command::FlipImageVertical => Some("Flip Image Vertical".to_owned()),
+        Command::CropToSelection => Some("Crop to Selection".to_owned()),
+        Command::ResizeImage { .. } => Some("Resize Image".to_owned()),
+        Command::CanvasSize { .. } => Some("Canvas Size".to_owned()),
+        Command::Rotate90Clockwise => Some("Rotate 90° Clockwise".to_owned()),
+        Command::Rotate90CounterClockwise => Some("Rotate 90° Counter-Clockwise".to_owned()),
+        Command::Rotate180 => Some("Rotate 180°".to_owned()),
         Command::FlattenImage => Some("Flatten Image".to_owned()),
         Command::AddLayer { name, .. } => Some(format!("Add Layer: {name}")),
         Command::RemoveLayer { .. } => Some("Delete Layer".to_owned()),

@@ -29,6 +29,8 @@ pub enum ResourceLimitError {
 #[derive(Debug, Error)]
 pub enum SessionError {
     #[error(transparent)]
+    Geometry(#[from] GeometryError),
+    #[error(transparent)]
     Document(#[from] DocumentError),
     #[error(transparent)]
     Raster(#[from] RasterError),

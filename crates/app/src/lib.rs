@@ -8,7 +8,7 @@ mod session;
 mod snapshot;
 mod trace;
 
-pub use command::Command;
+pub use command::{CanvasAnchor, Command};
 pub use effect::{Effect, EffectCategory};
 pub use error::{ExpectationError, ExpectationField, ResourceLimitError, SessionError, TraceError};
 pub use session::{AppSession, FloatingSelection, ResourceLimits};

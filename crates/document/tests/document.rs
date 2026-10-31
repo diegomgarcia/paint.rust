@@ -343,3 +343,87 @@ fn patch_lengths_and_inverse_revision_overflow_are_explicit_errors() {
         Err(PatchError::RevisionOverflow)
     ));
 }
+
+#[test]
+fn replace_geometry_preserves_identity_metadata_and_active_layer() {
+    let original_size = size(2, 2);
+    let background = layer(1, "Background", 2, 2, Bgra::WHITE).with_background(true);
+    let overlay = layer(2, "Overlay", 2, 2, Bgra::BLACK)
+        .with_opacity(77)
+        .with_visibility(false);
+    let mut document = Document::from_layers(original_size, vec![background, overlay])
+        .expect("two-layer document");
+    document
+        .set_active_layer(LayerId::new(2))
+        .expect("select overlay");
+    document
+        .set_selection(Some(Rect::new(-1, 0, 2, 2).expect("signed selection")))
+        .expect("selection");
+    let before_revision = document.revision();
+    let before_layer_revisions: Vec<_> = document.layers().iter().map(Layer::revision).collect();
+
+    let new_size = size(3, 1);
+    let surfaces = vec![
+        Surface::filled(new_size, Bgra::new(9, 8, 7, 255)).expect("background surface"),
+        Surface::filled(new_size, Bgra::new(1, 2, 3, 4)).expect("overlay surface"),
+    ];
+    document
+        .replace_geometry(new_size, surfaces)
+        .expect("replace geometry");
+
+    assert_eq!(document.size(), new_size);
+    assert_eq!(document.canvas_rect(), new_size.rect());
+    assert_eq!(document.layers().len(), 2);
+    assert_eq!(document.layers()[0].id(), LayerId::new(1));
+    assert_eq!(document.layers()[1].id(), LayerId::new(2));
+    assert_eq!(document.layers()[0].name(), "Background");
+    assert_eq!(document.layers()[1].name(), "Overlay");
+    assert!(document.layers()[0].is_background());
+    assert!(!document.layers()[1].is_background());
+    assert_eq!(document.layers()[1].opacity(), 77);
+    assert!(!document.layers()[1].is_visible());
+    assert_eq!(document.active_layer_id(), LayerId::new(2));
+    assert_eq!(
+        document.selection(),
+        Some(Rect::new(-1, 0, 2, 2).expect("selection retained"))
+    );
+    assert_eq!(
+        document.layers()[0].surface().pixels(),
+        &[Bgra::new(9, 8, 7, 255); 3]
+    );
+    assert_eq!(document.layers()[0].surface().size(), new_size);
+    assert!(document.revision() > before_revision);
+    for (index, layer) in document.layers().iter().enumerate() {
+        assert!(layer.revision() > before_layer_revisions[index]);
+    }
+    let added = document
+        .add_layer("after resize")
+        .expect("shrink to minimum");
+    assert_eq!(added, LayerId::new(3), "next layer ID is preserved");
+}
+
+#[test]
+fn replace_geometry_rejects_bad_surface_counts_and_sizes_without_mutation() {
+    let mut document = Document::new(size(2, 2)).expect("default document");
+    let snapshot = document.clone();
+
+    assert!(matches!(
+        document.replace_geometry(size(1, 1), Vec::new()),
+        Err(DocumentError::SurfaceCountMismatch {
+            expected: 1,
+            actual: 0
+        })
+    ));
+    assert_eq!(document, snapshot);
+
+    let wrong_size = vec![Surface::new(size(1, 1)).expect("wrong-size surface")];
+    assert!(matches!(
+        document.replace_geometry(size(3, 3), wrong_size),
+        Err(DocumentError::LayerSizeMismatch {
+            layer_id: LayerId(1),
+            expected,
+            actual,
+        }) if expected == size(3, 3) && actual == size(1, 1)
+    ));
+    assert_eq!(document, snapshot);
+}
