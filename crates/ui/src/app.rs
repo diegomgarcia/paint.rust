@@ -35,6 +35,7 @@ struct DocumentTabState {
     thumbnail: Option<egui::TextureHandle>,
     zoom: f32,
     fit_canvas_requested: bool,
+    zoom_to_selection_requested: bool,
     history_entries: Vec<String>,
     redo_entries: Vec<String>,
     layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
@@ -103,6 +104,7 @@ pub struct PaintApp {
     texture_dirty: bool,
     zoom: f32,
     fit_canvas_requested: bool,
+    zoom_to_selection_requested: bool,
     layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
     floating_selection: Option<FloatingSelectionState>,
     floating_generation: u64,
@@ -183,6 +185,7 @@ impl PaintApp {
             texture_dirty: true,
             zoom: 1.0,
             fit_canvas_requested: false,
+            zoom_to_selection_requested: false,
             layer_thumbnails: HashMap::new(),
             floating_selection: None,
             floating_generation: 0,
@@ -254,6 +257,11 @@ impl PaintApp {
     }
 
     #[doc(hidden)]
+    pub const fn zoom(&self) -> f32 {
+        self.zoom
+    }
+
+    #[doc(hidden)]
     pub fn document_titles(&self) -> Vec<String> {
         (0..self.tabs.len())
             .map(|index| {
@@ -316,6 +324,7 @@ impl PaintApp {
             thumbnail: self.document_thumbnail.take(),
             zoom: self.zoom,
             fit_canvas_requested: self.fit_canvas_requested,
+            zoom_to_selection_requested: self.zoom_to_selection_requested,
             history_entries: std::mem::take(&mut self.history_entries),
             redo_entries: std::mem::take(&mut self.redo_entries),
             layer_thumbnails: std::mem::take(&mut self.layer_thumbnails),
@@ -336,6 +345,7 @@ impl PaintApp {
         self.document_thumbnail = state.thumbnail;
         self.zoom = state.zoom;
         self.fit_canvas_requested = state.fit_canvas_requested;
+        self.zoom_to_selection_requested = state.zoom_to_selection_requested;
         self.history_entries = state.history_entries;
         self.redo_entries = state.redo_entries;
         self.layer_thumbnails = state.layer_thumbnails;
@@ -822,19 +832,35 @@ impl PaintApp {
                         self.zoom = (self.zoom - 0.25).max(0.1);
                         ui.close();
                     }
+                    if ui.button("Zoom to Window").clicked() {
+                        self.fit_canvas_requested = true;
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.session.document().selection().is_some(),
+                            egui::Button::new("Zoom to Selection"),
+                        )
+                        .clicked()
+                    {
+                        self.zoom_to_selection_requested = true;
+                        ui.close();
+                    }
                     if ui.button("Actual Size").clicked() {
                         self.zoom = 1.0;
                         ui.close();
                     }
-                    if ui.button("Fit Canvas").clicked() {
-                        self.fit_canvas_requested = true;
-                        ui.close();
-                    }
+                    ui.separator();
+                    ui.add_enabled(false, egui::Button::new("Show Grid"));
+                    ui.add_enabled(false, egui::Button::new("Show Rulers"));
                 });
                 ui.menu_button("Image", |ui| {
-                    let flip_h = ui.button("Flip Horizontal");
-                    focus_first_menu_item_on_keyboard_open(ui, &flip_h);
-                    if flip_h.clicked() {
+                    let crop = ui.add_enabled(false, egui::Button::new("Crop to Selection"));
+                    focus_first_menu_item_on_keyboard_open(ui, &crop);
+                    ui.add_enabled(false, egui::Button::new("Resize Image…"));
+                    ui.add_enabled(false, egui::Button::new("Canvas Size…"));
+                    ui.separator();
+                    if ui.button("Flip Horizontal").clicked() {
                         self.execute(
                             Command::FlipImageHorizontal,
                             "Flipped the image horizontally",
@@ -845,20 +871,96 @@ impl PaintApp {
                         self.execute(Command::FlipImageVertical, "Flipped the image vertically");
                         ui.close();
                     }
+                    ui.separator();
+                    ui.add_enabled(false, egui::Button::new("Rotate 90° Clockwise"));
+                    ui.add_enabled(false, egui::Button::new("Rotate 90° Counter-Clockwise"));
+                    ui.add_enabled(false, egui::Button::new("Rotate 180°"));
+                    ui.separator();
+                    ui.add_enabled(false, egui::Button::new("Color Profile…"));
+                    ui.separator();
                     if ui.button("Flatten Image").clicked() {
                         self.execute(Command::FlattenImage, "Flattened the image");
                         ui.close();
                     }
-                    ui.separator();
-                    ui.add_enabled(false, egui::Button::new("Resize Image…"));
-                    ui.add_enabled(false, egui::Button::new("Canvas Size…"));
-                    ui.add_enabled(false, egui::Button::new("Rotate 90° Clockwise"));
-                    ui.add_enabled(false, egui::Button::new("Rotate 180°"));
                 });
+                let (layer_count, active_layer_index, active_layer_visible, active_opacity) = {
+                    let document = self.session.document();
+                    let index = document
+                        .layers()
+                        .iter()
+                        .position(|layer| layer.id() == document.active_layer_id())
+                        .unwrap_or(0);
+                    let layer = document.layers().get(index);
+                    (
+                        document.layers().len(),
+                        index,
+                        layer.is_none_or(|layer| layer.is_visible()),
+                        layer.map_or(u8::MAX, |layer| layer.opacity()),
+                    )
+                };
                 ui.menu_button("Layers", |ui| {
-                    let horizontal = ui.button("Flip Active Layer Horizontally");
-                    focus_first_menu_item_on_keyboard_open(ui, &horizontal);
-                    if horizontal.clicked() {
+                    let add = ui.button("Add New Layer");
+                    focus_first_menu_item_on_keyboard_open(ui, &add);
+                    if add.clicked() {
+                        self.add_layer();
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(layer_count > 1, egui::Button::new("Delete Layer"))
+                        .clicked()
+                    {
+                        self.execute(
+                            Command::RemoveLayer {
+                                index: active_layer_index,
+                            },
+                            "Deleted the active layer",
+                        );
+                        ui.close();
+                    }
+                    if ui.button("Duplicate Layer").clicked() {
+                        self.execute(
+                            Command::DuplicateLayer {
+                                index: active_layer_index,
+                            },
+                            "Duplicated the active layer",
+                        );
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            active_layer_index > 0,
+                            egui::Button::new("Merge Layer Down"),
+                        )
+                        .clicked()
+                    {
+                        self.execute(
+                            Command::MergeLayerDown {
+                                index: active_layer_index,
+                            },
+                            "Merged the active layer down",
+                        );
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            layer_count > 1,
+                            egui::Button::new("Toggle Layer Visibility"),
+                        )
+                        .clicked()
+                    {
+                        self.execute(
+                            Command::SetLayerVisibility {
+                                index: active_layer_index,
+                                visible: !active_layer_visible,
+                            },
+                            "Toggled layer visibility",
+                        );
+                        ui.close();
+                    }
+                    ui.separator();
+                    ui.add_enabled(false, egui::Button::new("Import From File…"));
+                    ui.separator();
+                    if ui.button("Flip Active Layer Horizontally").clicked() {
                         self.execute(
                             Command::FlipLayerHorizontal,
                             "Flipped the active layer horizontally",
@@ -870,6 +972,55 @@ impl PaintApp {
                             Command::FlipLayerVertical,
                             "Flipped the active layer vertically",
                         );
+                        ui.close();
+                    }
+                    ui.add_enabled(false, egui::Button::new("Rotate 180°"));
+                    ui.add_enabled(false, egui::Button::new("Rotate / Zoom…"));
+                    ui.separator();
+                    for (label, target) in [
+                        ("Go to Top Layer", layer_count.saturating_sub(1)),
+                        (
+                            "Go to Layer Above",
+                            (active_layer_index + 1).min(layer_count - 1),
+                        ),
+                        ("Go to Layer Below", active_layer_index.saturating_sub(1)),
+                        ("Go to Bottom Layer", 0),
+                    ] {
+                        if ui.button(label).clicked() {
+                            self.execute(
+                                Command::SetActiveLayer { index: target },
+                                "Selected a layer",
+                            );
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    for (label, offset) in [
+                        (
+                            "Move Layer to Top",
+                            layer_count as i32 - 1 - active_layer_index as i32,
+                        ),
+                        ("Move Layer Up", 1),
+                        ("Move Layer Down", -1),
+                        ("Move Layer to Bottom", -(active_layer_index as i32)),
+                    ] {
+                        if ui.button(label).clicked() {
+                            self.execute(
+                                Command::MoveLayer {
+                                    index: active_layer_index,
+                                    offset,
+                                },
+                                "Moved the active layer",
+                            );
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    if ui.button("Layer Properties…").clicked() {
+                        self.layer_properties_open = true;
+                        self.layer_properties_index = active_layer_index;
+                        self.layer_properties_opacity = active_opacity;
+                        self.layer_properties_visible = active_layer_visible;
                         ui.close();
                     }
                 });
@@ -1531,10 +1682,10 @@ impl PaintApp {
                                 egui::Frame::new()
                                     .fill(egui::Color32::from_rgb(24, 24, 24))
                                     .corner_radius(3)
-                                    .inner_margin(2)
+                                    .inner_margin(4)
                                     .show(ui, |ui| {
                                         let (rect, response) = ui.allocate_exact_size(
-                                            egui::vec2(32.0, 26.0),
+                                            egui::vec2(42.0, 42.0),
                                             egui::Sense::hover(),
                                         );
                                         response.widget_info(|| {
@@ -1566,6 +1717,7 @@ impl PaintApp {
                                 ));
                             });
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                ui.add_space(4.0);
                                 let label = format!("Layer {index} visible");
                                 if visibility_button(ui, &self.icons, layer.is_visible(), &label).1
                                 {
@@ -2131,6 +2283,20 @@ impl PaintApp {
                     .min((available.y - 24.0).max(32.0) / size.height() as f32)
                     .clamp(0.05, 8.0);
                 self.fit_canvas_requested = false;
+            }
+            if self.zoom_to_selection_requested {
+                if let Some(selection) = self
+                    .session
+                    .document()
+                    .selection()
+                    .and_then(|selection| selection.clip_to(size))
+                {
+                    let available = ui.available_size();
+                    self.zoom = ((available.x - 24.0).max(32.0) / selection.width() as f32)
+                        .min((available.y - 24.0).max(32.0) / selection.height() as f32)
+                        .clamp(0.05, 8.0);
+                }
+                self.zoom_to_selection_requested = false;
             }
             ui.label("Actual composed session surface");
             let texture = self.texture.clone();

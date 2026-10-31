@@ -1747,3 +1747,39 @@ fn toolbar_icons_are_vertically_centered_with_the_document_tab() {
         centers[0]
     );
 }
+
+#[test]
+fn reference_driven_layer_menu_and_zoom_to_selection_work() {
+    let mut harness = app();
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(6.0, 6.0), egui::vec2(26.0, 18.0));
+    menu_item(&mut harness, "View", "Zoom to Selection");
+    assert!(harness.state().zoom() > 1.0);
+
+    menu_item(&mut harness, "Layers", "Add New Layer");
+    assert_eq!(harness.state().session().document().layers().len(), 2);
+    menu_item(&mut harness, "Layers", "Toggle Layer Visibility");
+    assert!(!harness.state().session().document().layers()[1].is_visible());
+    menu_item(&mut harness, "Layers", "Move Layer to Top");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .snapshot()
+            .expect("snapshot")
+            .active_layer_index,
+        1
+    );
+    menu_item(&mut harness, "Layers", "Go to Bottom Layer");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .snapshot()
+            .expect("snapshot")
+            .active_layer_index,
+        0
+    );
+    menu_item(&mut harness, "Image", "Flatten Image");
+    assert_eq!(harness.state().session().document().layers().len(), 1);
+}

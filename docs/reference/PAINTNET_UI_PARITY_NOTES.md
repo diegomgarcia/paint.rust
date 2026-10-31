@@ -212,3 +212,16 @@ and layer numbering. New and Open create a new tab instead of discarding the cur
 document. The compact toolbar shows every document as a checkerboard-backed chip at the
 end of the file-action icons; clicking a chip switches documents. Unsaved inactive tabs
 are preserved and the quit guard checks all tabs.
+
+
+### Reference extraction pass
+
+The extracted controls/designers in `references/pdn-re` were used to align concrete
+metrics and menu distribution. `VerticalImageStrip` sets `thumbEdgeLength = 50` dips and
+`imagePaddingPx = 4`, giving 62 px layer items; Paint.R now uses a 42 px image inset in a
+50 px frame with 4 px padding and balanced right-side eye spacing. The Image menu order
+was aligned to Crop/Resize/Canvas Size, Flip, Rotate, Color Profile, Flatten; View exposes
+Zoom to Window/Selection and outlines Grid/Rulers; the Layers menu now exposes add,
+delete, duplicate, merge, visibility, flips, go-to, move, and properties entries in the
+Paint.NET order. Proprietary Paint.NET icon bitmaps are used only as visual reference and
+are not embedded.
