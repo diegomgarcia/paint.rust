@@ -2848,3 +2848,24 @@ fn view_menu_grid_toggle_enables_the_overlay() {
     harness.run();
     assert!(harness.state().grid_enabled());
 }
+
+#[test]
+fn view_units_change_status_coordinates() {
+    let mut harness = app();
+    harness.get_by_role_and_label(Role::Button, "View").click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Inches")
+        .click();
+    harness.run();
+    harness.get_by_label("—, — in");
+    assert!(harness.query_by_label("—, — px").is_none());
+
+    harness.get_by_role_and_label(Role::Button, "View").click();
+    harness.run();
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Centimeters")
+        .click();
+    harness.run();
+    harness.get_by_label("—, — cm");
+}

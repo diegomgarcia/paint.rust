@@ -154,6 +154,7 @@ pub struct PaintApp {
     fit_canvas_requested: bool,
     zoom_to_selection_requested: bool,
     show_grid: bool,
+    unit: CanvasUnit,
     layer_thumbnails: HashMap<LayerId, LayerThumbnail>,
     floating_selection: Option<FloatingSelectionState>,
     floating_generation: u64,
@@ -258,6 +259,7 @@ impl PaintApp {
             fit_canvas_requested: false,
             zoom_to_selection_requested: false,
             show_grid: false,
+            unit: CanvasUnit::Pixels,
             layer_thumbnails: HashMap::new(),
             floating_selection: None,
             floating_generation: 0,
@@ -1308,6 +1310,10 @@ impl PaintApp {
                     ui.separator();
                     ui.checkbox(&mut self.show_grid, "Grid");
                     ui.add_enabled(false, egui::Button::new("Rulers"));
+                    ui.separator();
+                    ui.radio_value(&mut self.unit, CanvasUnit::Pixels, "Pixels");
+                    ui.radio_value(&mut self.unit, CanvasUnit::Inches, "Inches");
+                    ui.radio_value(&mut self.unit, CanvasUnit::Centimeters, "Centimeters");
                 });
                 ui.menu_button("Image", |ui| {
                     let has_selection = self.session.document().selection().is_some();
@@ -3340,12 +3346,22 @@ impl PaintApp {
                 ui.label(&self.status);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let size = self.session.document().size();
-                    ui.label(format!("{} × {}", size.width(), size.height()));
+                    ui.label(format!(
+                        "{} × {} {}",
+                        self.unit.format_value(f64::from(size.width())),
+                        self.unit.format_value(f64::from(size.height())),
+                        self.unit.suffix()
+                    ));
                     ui.separator();
                     if let Some(point) = self.cursor_point {
-                        ui.label(format!("{}, {} px", point.x, point.y));
+                        ui.label(format!(
+                            "{}, {} {}",
+                            self.unit.format_value(f64::from(point.x)),
+                            self.unit.format_value(f64::from(point.y)),
+                            self.unit.suffix()
+                        ));
                     } else {
-                        ui.label("—, — px");
+                        ui.label(format!("—, — {}", self.unit.suffix()));
                     }
                 });
             });
@@ -4498,6 +4514,40 @@ impl Default for SelectionInput {
 enum DiscardAction {
     CloseViewport,
     CloseTab(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CanvasUnit {
+    Pixels,
+    Inches,
+    Centimeters,
+}
+
+impl CanvasUnit {
+    const fn suffix(self) -> &'static str {
+        match self {
+            Self::Pixels => "px",
+            Self::Inches => "in",
+            Self::Centimeters => "cm",
+        }
+    }
+
+    fn convert(self, pixels: f64) -> f64 {
+        match self {
+            Self::Pixels => pixels,
+            Self::Inches => pixels / 96.0,
+            Self::Centimeters => pixels / 96.0 * 2.54,
+        }
+    }
+
+    fn format_value(self, pixels: f64) -> String {
+        let value = self.convert(pixels);
+        if self == Self::Pixels {
+            value.round().to_string()
+        } else {
+            format!("{value:.2}")
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
