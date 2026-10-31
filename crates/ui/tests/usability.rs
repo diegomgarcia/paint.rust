@@ -246,7 +246,7 @@ fn dirty_new_opens_a_new_tab_and_preserves_the_old_document() {
             .all(|pixel| *pixel == Bgra::WHITE)
     );
 
-    click(&mut harness, "Document tab: New Image");
+    click(&mut harness, "Document tab: New Image •");
     assert_eq!(harness.state().active_document_index(), 0);
     assert_eq!(harness.state().session().document(), &before_document);
     assert_eq!(
@@ -801,7 +801,7 @@ fn dirty_open_adds_a_new_tab_and_preserves_the_old_session() {
     assert_eq!(session.document().active_layer().surface(), &source);
     assert!(!session.dirty());
 
-    click(&mut harness, "Document tab: New Image");
+    click(&mut harness, "Document tab: New Image •");
     assert_eq!(harness.state().session().document(), &before_document);
     assert_eq!(
         harness.state().session().snapshot().expect("snapshot"),
@@ -2076,7 +2076,7 @@ fn new_documents_create_switchable_independent_tabs() {
         ["New Image", "New Image 2"]
     );
 
-    click(&mut harness, "Document tab: New Image");
+    click(&mut harness, "Document tab: New Image •");
     assert_eq!(harness.state().active_document_index(), 0);
     assert_eq!(harness.state().session().document().layers().len(), 2);
     assert_eq!(harness.state().history_entries().len(), 2);
@@ -3145,11 +3145,11 @@ fn document_tabs_can_be_closed_individually_with_a_dirty_guard() {
     click(&mut harness, "New document");
     menu_item(&mut harness, "Adjustments", "Invert Colors");
     assert!(harness.state().session().dirty());
-    click(&mut harness, "Close document New Image 2");
+    click(&mut harness, "Close document New Image 2 •");
     harness.get_by_role_and_label(Role::Button, "Cancel");
     click(&mut harness, "Cancel");
     assert_eq!(harness.state().document_tab_count(), 2);
-    click(&mut harness, "Close document New Image 2");
+    click(&mut harness, "Close document New Image 2 •");
     click(&mut harness, "Discard");
     assert_eq!(harness.state().document_tab_count(), 1);
     assert_eq!(harness.state().document_titles(), ["New Image"]);

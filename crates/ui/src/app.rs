@@ -80,6 +80,7 @@ struct LayerDragState {
 struct DocumentTabState {
     session: AppSession,
     title: String,
+    path: Option<PathBuf>,
     texture: Option<egui::TextureHandle>,
     thumbnail: Option<egui::TextureHandle>,
     zoom: f32,
@@ -205,6 +206,7 @@ pub struct PaintApp {
     effect_dialog: Option<EffectDialog>,
     effect_dialog_previewed: Option<Effect>,
     document_title: String,
+    document_path: Option<PathBuf>,
     document_thumbnail: Option<egui::TextureHandle>,
     tabs: Vec<Option<DocumentTabState>>,
     active_tab: usize,
@@ -331,6 +333,7 @@ impl PaintApp {
             effect_dialog: None,
             effect_dialog_previewed: None,
             document_title: "New Image".to_owned(),
+            document_path: None,
             document_thumbnail: None,
             tabs: vec![None],
             active_tab: 0,
@@ -475,16 +478,66 @@ impl PaintApp {
     #[doc(hidden)]
     pub fn document_titles(&self) -> Vec<String> {
         (0..self.tabs.len())
+            .map(|index| self.raw_tab_title(index))
+            .collect()
+    }
+
+    /// Display titles include the dirty marker shown in each tab's visible and accessible label.
+    #[doc(hidden)]
+    pub fn document_display_titles(&self) -> Vec<String> {
+        (0..self.tabs.len())
+            .map(|index| self.tab_display_title(index))
+            .collect()
+    }
+
+    #[doc(hidden)]
+    pub fn active_document_path(&self) -> Option<&Path> {
+        self.document_path.as_deref()
+    }
+
+    #[doc(hidden)]
+    pub fn document_paths(&self) -> Vec<Option<PathBuf>> {
+        (0..self.tabs.len())
             .map(|index| {
                 if index == self.active_tab {
-                    self.document_title.clone()
+                    self.document_path.clone()
                 } else {
-                    self.tabs[index]
-                        .as_ref()
-                        .map_or_else(|| "Untitled".to_owned(), |tab| tab.title.clone())
+                    self.tabs[index].as_ref().and_then(|tab| tab.path.clone())
                 }
             })
             .collect()
+    }
+
+    fn raw_tab_title(&self, index: usize) -> String {
+        if index == self.active_tab {
+            self.document_title.clone()
+        } else {
+            self.tabs[index]
+                .as_ref()
+                .map_or_else(|| "Untitled".to_owned(), |tab| tab.title.clone())
+        }
+    }
+
+    fn tab_is_dirty(&self, index: usize) -> bool {
+        if index == self.active_tab {
+            self.session.dirty()
+        } else {
+            self.tabs[index]
+                .as_ref()
+                .is_some_and(|tab| tab.session.dirty())
+        }
+    }
+
+    fn tab_display_title(&self, index: usize) -> String {
+        format!(
+            "{}{}",
+            self.raw_tab_title(index),
+            if self.tab_is_dirty(index) { " •" } else { "" }
+        )
+    }
+
+    fn can_save(&self) -> bool {
+        self.document_path.is_some() && self.session.dirty()
     }
 
     #[doc(hidden)]
@@ -531,6 +584,7 @@ impl PaintApp {
         DocumentTabState {
             session: std::mem::replace(&mut self.session, default_session()),
             title: std::mem::take(&mut self.document_title),
+            path: self.document_path.take(),
             texture: self.texture.take(),
             thumbnail: self.document_thumbnail.take(),
             zoom: self.zoom,
@@ -551,6 +605,7 @@ impl PaintApp {
     fn load_active_tab(&mut self, state: DocumentTabState) {
         self.session = state.session;
         self.document_title = state.title;
+        self.document_path = state.path;
         self.texture = state.texture;
         self.texture_dirty = true;
         self.document_thumbnail = state.thumbnail;
@@ -693,6 +748,7 @@ impl PaintApp {
         self.redo_entries.clear();
         self.reset_transient_tool_state();
         self.document_title = "New Image".to_owned();
+        self.document_path = None;
         self.document_thumbnail = None;
         self.status = "New 800×600 opaque-white document".to_owned();
         self.reset_layer_interaction_state();
@@ -701,6 +757,41 @@ impl PaintApp {
     fn show_path_dialog(&mut self, kind: PathDialogKind) {
         self.finalize_floating_selection();
         self.path_dialog = Some(PathDialog::new(kind));
+    }
+
+    fn show_save_as_dialog(&mut self) {
+        self.finish_active_preview();
+        self.finalize_floating_selection();
+        let path = self
+            .document_path
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_default();
+        self.path_dialog = Some(PathDialog::with_path(PathDialogKind::SaveAs, path));
+    }
+
+    /// Saves the active document to its known path. Returns whether the file was written.
+    fn save_active_document(&mut self) -> bool {
+        let Some(path) = self.document_path.clone() else {
+            return false;
+        };
+        self.finish_active_preview();
+        self.finalize_floating_selection();
+        if !self.session.dirty() {
+            self.status = "No changes to save".to_owned();
+            return false;
+        }
+        match self.session.save_png_atomic(&path) {
+            Ok(()) => {
+                self.texture_dirty = true;
+                self.status = format!("Saved PNG: {}", path.display());
+                true
+            }
+            Err(error) => {
+                self.status = format!("Save failed: {error}");
+                false
+            }
+        }
     }
 
     fn show_resize_dialog(&mut self) {
@@ -747,11 +838,8 @@ impl PaintApp {
                 self.tabs.push(None);
                 self.active_tab = self.tabs.len() - 1;
                 self.session = session;
-                self.document_title = path_buffer
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .unwrap_or("Untitled")
-                    .to_owned();
+                self.document_title = file_title(&path_buffer);
+                self.document_path = Some(path_buffer.clone());
                 self.document_thumbnail = None;
                 self.next_layer_number = 1;
                 self.history_entries = vec!["Open PNG".to_owned()];
@@ -1267,7 +1355,16 @@ impl PaintApp {
             match command {
                 NativeCommand::New => self.request_new(),
                 NativeCommand::Open => self.show_path_dialog(PathDialogKind::Open),
+                NativeCommand::Save => {
+                    if self.document_path.is_some() {
+                        self.save_active_document();
+                    } else {
+                        self.show_save_as_dialog();
+                    }
+                }
+                NativeCommand::SaveAs => self.show_save_as_dialog(),
                 NativeCommand::Export => self.show_path_dialog(PathDialogKind::Export),
+                NativeCommand::Close => self.request_quit(context),
                 NativeCommand::Quit => self.request_quit(context),
                 NativeCommand::Undo => {
                     self.execute(Command::Undo, "Undid the last edit");
@@ -1367,6 +1464,7 @@ impl PaintApp {
             }
         }
         let state = NativeMenuState {
+            can_save: self.can_save(),
             can_undo: self.session.can_undo(),
             can_redo: self.session.can_redo(),
             has_selection: self.session.document().selection().is_some(),
@@ -1395,6 +1493,19 @@ impl PaintApp {
                         self.show_path_dialog(PathDialogKind::Open);
                         ui.close();
                     }
+                    ui.separator();
+                    if ui
+                        .add_enabled(self.can_save(), egui::Button::new("Save"))
+                        .clicked()
+                    {
+                        self.save_active_document();
+                        ui.close();
+                    }
+                    if ui.button("Save As…").clicked() {
+                        self.show_save_as_dialog();
+                        ui.close();
+                    }
+                    ui.separator();
                     if ui.button("Export PNG…").clicked() {
                         self.show_path_dialog(PathDialogKind::Export);
                         ui.close();
@@ -1814,7 +1925,7 @@ impl PaintApp {
                     ui.label("Paint.R development preview · MIT first-party license");
                     ui.separator();
                     ui.label("Keyboard shortcuts (Cmd/Ctrl):");
-                    ui.label("N New | O Open | Shift+E Export");
+                    ui.label("N New | O Open | S Save | Shift+S Save As | Shift+E Export");
                     ui.label("I Invert | F Fill | R Rectangle selection");
                     ui.label("Layers menu flips the complete active layer");
                     ui.label("Shift+L Add layer | Z Undo | Shift+Z Redo");
@@ -1853,13 +1964,13 @@ impl PaintApp {
                 let mut pending_close = None;
                 for index in 0..self.tabs.len() {
                     let active = index == self.active_tab;
-                    let (title, thumbnail) = if active {
-                        (self.document_title.clone(), self.document_thumbnail.clone())
+                    let title = self.tab_display_title(index);
+                    let thumbnail = if active {
+                        self.document_thumbnail.clone()
                     } else {
-                        self.tabs[index].as_ref().map_or_else(
-                            || ("Untitled".to_owned(), None),
-                            |tab| (tab.title.clone(), tab.thumbnail.clone()),
-                        )
+                        self.tabs[index]
+                            .as_ref()
+                            .and_then(|tab| tab.thumbnail.clone())
                     };
                     ui.add_space(4.0);
                     let mut tab_clicked = false;
@@ -4751,7 +4862,7 @@ impl PaintApp {
                         dialog.preview_error = Some(error);
                     }
                 },
-                PathDialogKind::Export => match self.session.compose() {
+                PathDialogKind::SaveAs | PathDialogKind::Export => match self.session.compose() {
                     Ok(surface) => {
                         let label = format!(
                             "current composition {}×{}",
@@ -4788,6 +4899,22 @@ impl PaintApp {
         let path = dialog.path.clone();
         match kind {
             PathDialogKind::Open => self.request_open(path),
+            PathDialogKind::SaveAs => {
+                let path = PathBuf::from(path);
+                match self.session.save_png_atomic(&path) {
+                    Ok(()) => {
+                        self.document_title = file_title(&path);
+                        self.document_path = Some(path.clone());
+                        self.texture_dirty = true;
+                        self.status = format!("Saved PNG: {}", path.display());
+                        self.path_dialog = None;
+                    }
+                    Err(error) => {
+                        dialog.focus_path = true;
+                        self.status = format!("Save failed: {error}");
+                    }
+                }
+            }
             PathDialogKind::Export => {
                 let path = PathBuf::from(path);
                 match self.session.export_png_atomic(&path) {
@@ -4891,6 +5018,18 @@ impl PaintApp {
             || shortcut_pressed(context, command, egui::Key::W)
         {
             self.request_quit(context);
+            return;
+        }
+        if shortcut_pressed(context, command_shift, egui::Key::S) {
+            self.show_save_as_dialog();
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::S) {
+            if self.document_path.is_some() {
+                self.save_active_document();
+            } else {
+                self.show_save_as_dialog();
+            }
             return;
         }
         if shortcut_pressed(context, command_shift, egui::Key::Z) {
@@ -5136,6 +5275,7 @@ impl CanvasUnit {
 #[derive(Clone, Copy)]
 enum PathDialogKind {
     Open,
+    SaveAs,
     Export,
 }
 
@@ -5143,6 +5283,7 @@ impl PathDialogKind {
     const fn title(self) -> &'static str {
         match self {
             Self::Open => "Open PNG (flattened)",
+            Self::SaveAs => "Save PNG As",
             Self::Export => "Export PNG (flattened)",
         }
     }
@@ -5150,6 +5291,7 @@ impl PathDialogKind {
     const fn action(self) -> &'static str {
         match self {
             Self::Open => "Open PNG",
+            Self::SaveAs => "Save",
             Self::Export => "Export PNG",
         }
     }
@@ -5157,6 +5299,9 @@ impl PathDialogKind {
     const fn explanation(self) -> &'static str {
         match self {
             Self::Open => "Opening creates one flattened layer; source layers cannot be recovered.",
+            Self::SaveAs => {
+                "Save writes composed pixels to the PNG and marks the document clean; layers remain in this session but are not stored in PNG."
+            }
             Self::Export => {
                 "Export writes composed pixels only; the layered session and modified state are preserved."
             }
@@ -5653,6 +5798,13 @@ fn configure_style(context: &egui::Context) {
         style.spacing.item_spacing = egui::vec2(8.0, 6.0);
         style.spacing.button_padding = egui::vec2(9.0, 5.0);
     });
+}
+
+fn file_title(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("Untitled")
+        .to_owned()
 }
 
 fn browser_start_dir(path_text: &str) -> PathBuf {

@@ -114,3 +114,65 @@ fn trace_output_writes_protocol_files_atomically_and_can_replace_them() {
         serde_json::from_slice(&std::fs::read(snapshot_path).unwrap()).unwrap();
     assert_eq!(snapshot, output.snapshot);
 }
+
+#[test]
+fn save_png_atomic_clears_dirty_without_touching_content_or_history() {
+    let mut session =
+        AppSession::new(paint_document::Document::new(Size::new(1, 1).unwrap()).unwrap());
+    session
+        .execute(Command::AddLayer {
+            name: "red overlay".to_owned(),
+            opacity: 255,
+            visible: true,
+        })
+        .unwrap();
+    session
+        .execute(Command::Fill(Bgra::new(0, 0, 255, 255)))
+        .unwrap();
+    assert!(session.dirty());
+    assert!(session.can_undo());
+    let composed = session.compose().unwrap();
+    let before = session.snapshot().unwrap();
+    assert!(before.dirty);
+
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("saved.png");
+    session.save_png_atomic(&path).unwrap();
+
+    assert!(!session.dirty());
+    assert!(session.can_undo());
+    assert_eq!(session.document().layers().len(), 2);
+    let decoded = paint_image_io::decode_png(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(decoded, composed);
+    let mut expected = before;
+    expected.dirty = false;
+    assert_eq!(
+        session.snapshot().unwrap(),
+        expected,
+        "saving must change only the dirty baseline, not content or history"
+    );
+
+    session.undo().unwrap();
+    assert!(
+        session.dirty(),
+        "undo past the saved baseline must become dirty again"
+    );
+}
+
+#[test]
+fn failed_save_preserves_content_dirty_state_and_history() {
+    let mut session =
+        AppSession::new(paint_document::Document::new(Size::new(1, 1).unwrap()).unwrap());
+    session
+        .execute(Command::Fill(Bgra::new(1, 2, 3, 255)))
+        .unwrap();
+    assert!(session.dirty());
+    let before = session.snapshot().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let missing = directory.path().join("missing/output.png");
+
+    assert!(session.save_png_atomic(&missing).is_err());
+    assert!(session.dirty());
+    assert_eq!(session.snapshot().unwrap(), before);
+    assert!(!missing.exists());
+}

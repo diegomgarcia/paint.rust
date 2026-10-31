@@ -13,7 +13,10 @@ fn queue() -> &'static Mutex<Vec<NativeCommand>> {
 pub(crate) enum NativeCommand {
     New,
     Open,
+    Save,
+    SaveAs,
     Export,
+    Close,
     Quit,
     Undo,
     Redo,
@@ -47,7 +50,10 @@ impl NativeCommand {
         Some(match id {
             "file.new" => Self::New,
             "file.open" => Self::Open,
+            "file.save" => Self::Save,
+            "file.save_as" => Self::SaveAs,
             "file.export" => Self::Export,
+            "file.close" => Self::Close,
             "file.quit" => Self::Quit,
             "edit.undo" => Self::Undo,
             "edit.redo" => Self::Redo,
@@ -81,6 +87,7 @@ impl NativeCommand {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct NativeMenuState {
+    pub can_save: bool,
     pub can_undo: bool,
     pub can_redo: bool,
     pub has_selection: bool,
@@ -93,6 +100,7 @@ pub(crate) struct NativeMenuState {
 
 pub(crate) struct NativeMenu {
     _menu: Menu,
+    save: MenuItem,
     undo: MenuItem,
     redo: MenuItem,
     deselect: MenuItem,
@@ -119,10 +127,60 @@ impl NativeMenu {
             .ok()?;
 
         let file = Submenu::new("File", true);
-        let new = MenuItem::with_id("file.new", "New", true, None);
-        let open = MenuItem::with_id("file.open", "Open PNG…", true, None);
-        let export = MenuItem::with_id("file.export", "Export PNG…", true, None);
-        file.append_items(&[&new, &open, &export]).ok()?;
+        let new = MenuItem::with_id(
+            "file.new",
+            "New",
+            true,
+            Some(Accelerator::new(Modifiers::META, Code::KeyN)),
+        );
+        let open = MenuItem::with_id(
+            "file.open",
+            "Open PNG…",
+            true,
+            Some(Accelerator::new(Modifiers::META, Code::KeyO)),
+        );
+        let save = MenuItem::with_id(
+            "file.save",
+            "Save",
+            false,
+            Some(Accelerator::new(Modifiers::META, Code::KeyS)),
+        );
+        let save_as = MenuItem::with_id(
+            "file.save_as",
+            "Save As…",
+            true,
+            Some(Accelerator::new(
+                Modifiers::META | Modifiers::SHIFT,
+                Code::KeyS,
+            )),
+        );
+        let export = MenuItem::with_id(
+            "file.export",
+            "Export PNG…",
+            true,
+            Some(Accelerator::new(
+                Modifiers::META | Modifiers::SHIFT,
+                Code::KeyE,
+            )),
+        );
+        let close = MenuItem::with_id(
+            "file.close",
+            "Close Window",
+            true,
+            Some(Accelerator::new(Modifiers::META, Code::KeyW)),
+        );
+        file.append_items(&[
+            &new,
+            &open,
+            &PredefinedMenuItem::separator(),
+            &save,
+            &save_as,
+            &PredefinedMenuItem::separator(),
+            &export,
+            &PredefinedMenuItem::separator(),
+            &close,
+        ])
+        .ok()?;
 
         let edit = Submenu::new("Edit", true);
         let undo = MenuItem::with_id("edit.undo", "Undo", false, None);
@@ -313,6 +371,7 @@ impl NativeMenu {
 
         Some(Self {
             _menu: menu,
+            save,
             undo,
             redo,
             deselect,
@@ -332,6 +391,7 @@ impl NativeMenu {
     }
 
     pub(crate) fn sync(&self, state: NativeMenuState) {
+        self.save.set_enabled(state.can_save);
         self.undo.set_enabled(state.can_undo);
         self.redo.set_enabled(state.can_redo);
         self.deselect.set_enabled(state.has_selection);
@@ -352,7 +412,10 @@ mod tests {
         let ids = [
             ("file.new", New),
             ("file.open", Open),
+            ("file.save", Save),
+            ("file.save_as", SaveAs),
             ("file.export", Export),
+            ("file.close", Close),
             ("file.quit", Quit),
             ("edit.undo", Undo),
             ("edit.redo", Redo),

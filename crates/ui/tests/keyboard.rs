@@ -241,7 +241,7 @@ fn tab_enter_space_and_dirty_new_are_keyboard_usable() {
     assert_composed(&harness, Bgra::WHITE);
 
     harness
-        .get_by_role_and_label(Role::Button, "Document tab: New Image")
+        .get_by_role_and_label(Role::Button, "Document tab: New Image •")
         .click();
     harness.run();
     assert_eq!(harness.state().session().document(), &before_document);

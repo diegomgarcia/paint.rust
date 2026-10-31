@@ -58,6 +58,18 @@ impl AppSession {
         Ok(())
     }
 
+    /// Atomically replaces the PNG at `path` and marks the current content clean.
+    ///
+    /// This is the Save operation: composed pixels are written in one atomic replacement, the
+    /// document and both history stacks are left intact, and only the clean fingerprint moves to
+    /// the current content. A failed write leaves the previous clean baseline and dirty state
+    /// unchanged.
+    pub fn save_png_atomic(&mut self, path: impl AsRef<Path>) -> Result<(), SessionError> {
+        self.export_png_atomic(path)?;
+        self.mark_clean();
+        Ok(())
+    }
+
     fn from_decoded_png(surface: Surface, limits: ResourceLimits) -> Result<Self, SessionError> {
         let size = surface.size();
         let background = Layer::new(LayerId::new(1), "Background", surface).with_background(true);
