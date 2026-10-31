@@ -21,6 +21,16 @@ pub fn compose(document: &Document) -> Result<Surface, RasterError> {
     Ok(output)
 }
 
+/// Blends one fully opaque tool output into a destination pixel with a layer blend mode.
+///
+/// This is the per-pixel rule used by Tool Options blend modes: `Normal` is source-over,
+/// while Multiply, Screen, and Overlay blend the source channels with the backdrop and then
+/// composite with the source alpha. Destination bytes are preserved when the source is
+/// fully transparent.
+pub fn blend_tool_color(destination: Bgra, source: Bgra, mode: BlendMode) -> Bgra {
+    blend_over(destination, source, u8::MAX, mode)
+}
+
 fn blend_over(destination: Bgra, source: Bgra, opacity: u8, mode: BlendMode) -> Bgra {
     if mode == BlendMode::Normal {
         return normal_over(destination, source, opacity);

@@ -1,8 +1,8 @@
 use paint_core::{Bgra, Point, Rect, Size, Surface};
-use paint_document::{Document, Layer, LayerId, Revision};
+use paint_document::{BlendMode, Document, Layer, LayerId, Revision};
 use paint_raster::{
-    TextFontFamily, TextStyle, clone_stamp, compose, fill, flip_horizontal, flip_vertical, invert,
-    normal_over, text,
+    TextAlignment, TextFontFamily, TextStyle, clone_stamp, compose, fill, flip_horizontal,
+    flip_vertical, invert, normal_over, text,
 };
 
 fn size(width: u32, height: u32) -> Size {
@@ -618,6 +618,8 @@ const TEXT_STYLE: TextStyle = TextStyle {
     bold: false,
     italic: false,
     antialias: true,
+    alignment: TextAlignment::Left,
+    blend: BlendMode::Normal,
 };
 
 #[test]
@@ -832,6 +834,7 @@ fn clone_stamp_copies_offset_source_pixels_through_a_hard_brush_and_selection() 
         1,
         source,
         100,
+        15,
     )
     .expect("clone operation")
     .expect("cloned pixels");
@@ -885,6 +888,7 @@ fn clone_stamp_copies_offset_source_pixels_through_a_hard_brush_and_selection() 
         1,
         source,
         100,
+        15,
     )
     .expect("clipped clone")
     .expect("selection overlaps stroke");
@@ -918,6 +922,7 @@ fn clone_stamp_hardness_softens_the_brush_edge() {
             9,
             Point::new(12, 12),
             hardness,
+            15,
         )
         .expect("clone")
         .expect("pixels")

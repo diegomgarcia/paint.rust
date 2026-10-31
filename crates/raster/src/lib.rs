@@ -9,7 +9,7 @@ use paint_core::{GeometryError, SurfaceError};
 use paint_document::{BlendMode, DocumentError, LayerId, PatchError, SelectionError};
 use thiserror::Error;
 
-pub use compose::{compose, normal_over};
+pub use compose::{blend_tool_color, compose, normal_over};
 pub use effects::{
     DEFAULT_LEVELS_GAMMA_HUNDREDTHS, LevelsChannel, LevelsSettings, MAX_ADJUSTMENT_VALUE,
     MAX_BLACK_AND_WHITE_WEIGHT, MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA,
@@ -24,13 +24,14 @@ pub use effects::{
 };
 pub use operations::{
     BrushOptions, GradientOptions, GradientRepeat, GradientType, LineCap, LineDash, LineStyle,
-    MagicWandSampling, Rotation, ShapeStyle, canvas_surfaces, clone_stamp, crop_surfaces, fill,
-    fill_active, fill_ellipse, fill_rect, flip_horizontal, flip_vertical, flood_fill, global_fill,
-    gradient, invert, invert_active, linear_gradient, magic_wand_mask, recolor, recolor_stroke,
-    resize_surfaces, rotate_surfaces, shape_ellipse, shape_rect, stamp, stroke, stroke_line,
-    translate,
+    MagicWandSampling, RecolorOptions, Rotation, ShapeStyle, canvas_surfaces, clone_stamp,
+    crop_surfaces, fill, fill_active, fill_ellipse, fill_rect, flip_horizontal, flip_vertical,
+    flood_fill, flood_fill_sampled, global_fill, global_fill_sampled, gradient, invert,
+    invert_active, linear_gradient, magic_wand_mask, recolor, recolor_stroke,
+    recolor_stroke_sampled, resize_surfaces, rotate_surfaces, shape_ellipse, shape_rect, stamp,
+    stroke, stroke_line, translate,
 };
-pub use text::{MAX_TEXT_BYTES, MAX_TEXT_SIZE, TextFontFamily, TextStyle, text};
+pub use text::{MAX_TEXT_BYTES, MAX_TEXT_SIZE, TextAlignment, TextFontFamily, TextStyle, text};
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum RasterError {

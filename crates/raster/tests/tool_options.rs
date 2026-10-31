@@ -571,3 +571,382 @@ fn conical_gradient_sweeps_angles_and_repeat_doubles_the_sweep() {
         "Repeat wraps the opposite direction into the next period: {opposite}"
     );
 }
+
+// --- Tool Options parity batch: sampling, blend, alignment, spacing, picker samples ---
+
+use paint_document::BlendMode;
+use paint_raster::{
+    RecolorOptions, TextAlignment, TextFontFamily, TextStyle, clone_stamp, flood_fill_sampled,
+    recolor_stroke_sampled, text,
+};
+
+/// A white bottom layer crossed by a one-row black barrier at y = 5, plus a transparent
+/// top layer that is active. Layer sampling sees only the transparent layer; image sampling
+/// sees the barrier and must stop there.
+fn sampled_document() -> (Document, LayerId) {
+    let white = Surface::filled(size(10, 10), Bgra::WHITE).expect("bottom surface");
+    let mut bottom = white;
+    for x in 0..10 {
+        bottom.pixels_mut()[5 * 10 + x] = Bgra::BLACK;
+    }
+    let top = Surface::new(size(10, 10)).expect("top surface");
+    let mut document = Document::from_layers(
+        size(10, 10),
+        vec![
+            Layer::new(LayerId::new(1), "bottom", bottom),
+            Layer::new(LayerId::new(2), "top", top),
+        ],
+    )
+    .expect("document");
+    document
+        .set_active_layer(LayerId::new(2))
+        .expect("activate top layer");
+    (document, LayerId::new(2))
+}
+
+fn active_pixel(document: &Document, x: u32, y: u32) -> Bgra {
+    *document
+        .active_layer()
+        .surface()
+        .pixel(Point::new(x, y))
+        .expect("active pixel")
+}
+
+#[test]
+fn flood_fill_image_sampling_matches_the_composed_image() {
+    let (mut layer_document, layer_id) = sampled_document();
+    apply(&mut layer_document, |document| {
+        flood_fill_sampled(
+            document,
+            layer_id,
+            Point::new(2, 2),
+            Bgra::BLACK,
+            0,
+            paint_raster::MagicWandSampling::ActiveLayer,
+            BlendMode::Normal,
+        )
+        .expect("layer-sampled fill")
+    });
+    assert_eq!(
+        active_pixel(&layer_document, 2, 8),
+        Bgra::BLACK,
+        "layer sampling sees one contiguous transparent layer, so the barrier is invisible"
+    );
+
+    let (mut image_document, image_id) = sampled_document();
+    apply(&mut image_document, |document| {
+        flood_fill_sampled(
+            document,
+            image_id,
+            Point::new(2, 2),
+            Bgra::BLACK,
+            0,
+            paint_raster::MagicWandSampling::Image,
+            BlendMode::Normal,
+        )
+        .expect("image-sampled fill")
+    });
+    assert_eq!(active_pixel(&image_document, 2, 2), Bgra::BLACK);
+    assert_eq!(
+        active_pixel(&image_document, 2, 8),
+        Bgra::TRANSPARENT,
+        "image sampling must stop at the composed black barrier"
+    );
+}
+
+#[test]
+fn flood_fill_honours_a_tool_blend_mode() {
+    let mut document = solid_document(4, 1, Bgra::new(128, 128, 128, 255));
+    apply(&mut document, |doc| {
+        flood_fill_sampled(
+            doc,
+            LayerId::new(1),
+            Point::new(0, 0),
+            Bgra::new(0, 0, 255, 255),
+            0,
+            paint_raster::MagicWandSampling::ActiveLayer,
+            BlendMode::Multiply,
+        )
+        .expect("multiply fill")
+    });
+    assert_eq!(
+        pixel(&document, 2, 0),
+        Bgra::new(0, 0, 128, 255),
+        "Multiply blends the fill colour with the layer instead of replacing it"
+    );
+}
+
+#[test]
+fn gradient_honours_blend_mode_and_transparency_only() {
+    let mut multiplied = solid_document(9, 1, Bgra::new(128, 128, 128, 255));
+    apply(&mut multiplied, |doc| {
+        gradient(
+            doc,
+            LayerId::new(1),
+            Point::new(0, 0),
+            Point::new(8, 0),
+            Bgra::BLACK,
+            Bgra::WHITE,
+            GradientOptions::new(GradientType::Linear, GradientRepeat::None)
+                .with_blend(BlendMode::Multiply),
+        )
+        .expect("multiply gradient")
+    });
+    assert!(
+        pixel(&multiplied, 0, 0).r < 20,
+        "multiplying the near-black gradient stop with grey stays nearly black: {:?}",
+        pixel(&multiplied, 0, 0)
+    );
+    let middle = pixel(&multiplied, 4, 0);
+    assert!(
+        (55..=75).contains(&middle.r),
+        "the grey midpoint is multiplied by the gradient value: {middle:?}"
+    );
+
+    let mut alpha_only = solid_document(9, 1, Bgra::new(128, 64, 32, 255));
+    apply(&mut alpha_only, |doc| {
+        gradient(
+            doc,
+            LayerId::new(1),
+            Point::new(0, 0),
+            Point::new(8, 0),
+            Bgra::new(255, 255, 255, 255),
+            Bgra::new(255, 255, 255, 255),
+            GradientOptions::new(GradientType::Linear, GradientRepeat::None).with_alpha_only(true),
+        )
+        .expect("alpha-only gradient")
+    });
+    assert_eq!(
+        pixel(&alpha_only, 8, 0).a,
+        0,
+        "transparency-only reverses the second stop alpha, reaching zero"
+    );
+    assert_eq!(
+        pixel(&alpha_only, 8, 0),
+        Bgra::new(128, 64, 32, 0),
+        "transparency-only must preserve the layer RGB channels"
+    );
+}
+
+fn ink_bounds(document: &Document, top: u32, bottom: u32) -> (u32, u32) {
+    let mut min_x = u32::MAX;
+    let mut max_x = 0;
+    for y in top..bottom {
+        for x in 0..document.size().width() {
+            let pixel = *document
+                .active_layer()
+                .surface()
+                .pixel(Point::new(x, y))
+                .expect("scan pixel");
+            if pixel.r < 128 {
+                min_x = min_x.min(x);
+                max_x = max_x.max(x);
+            }
+        }
+    }
+    assert!(
+        min_x != u32::MAX,
+        "expected glyph ink in rows {top}..{bottom}"
+    );
+    (min_x, max_x)
+}
+
+#[test]
+fn text_alignment_aligns_each_line_to_the_click_point() {
+    let base = TextStyle {
+        family: TextFontFamily::Sans,
+        size: 64,
+        bold: false,
+        italic: false,
+        antialias: false,
+        alignment: TextAlignment::Left,
+        blend: BlendMode::Normal,
+    };
+    let render = |alignment: TextAlignment| {
+        let mut document = solid_document(320, 200, Bgra::WHITE);
+        apply(&mut document, |doc| {
+            text(
+                doc,
+                LayerId::new(1),
+                Point::new(120, 10),
+                "I\nWW",
+                TextStyle { alignment, ..base },
+                Bgra::BLACK,
+            )
+            .expect("aligned text")
+        });
+        document
+    };
+
+    let left = render(TextAlignment::Left);
+    let (left_min, _) = ink_bounds(&left, 0, 80);
+    let (left_second_min, _) = ink_bounds(&left, 80, 160);
+    assert!(
+        left_min.abs_diff(left_second_min) <= 4,
+        "left-aligned lines share a start edge: {left_min} vs {left_second_min}"
+    );
+
+    let center = render(TextAlignment::Center);
+    let (center_min, center_max) = ink_bounds(&center, 0, 80);
+    let (center_second_min, center_second_max) = ink_bounds(&center, 80, 160);
+    let center_delta = (i64::from(center_min) + i64::from(center_max))
+        .abs_diff(i64::from(center_second_min) + i64::from(center_second_max));
+    assert!(
+        center_delta <= 8,
+        "center-aligned lines share a centre: {center_min}..{center_max} vs \
+         {center_second_min}..{center_second_max}"
+    );
+
+    let right = render(TextAlignment::Right);
+    let (_, right_max) = ink_bounds(&right, 0, 80);
+    let (_, right_second_max) = ink_bounds(&right, 80, 160);
+    assert!(
+        right_max.abs_diff(right_second_max) <= 4,
+        "right-aligned lines share an end edge: {right_max} vs {right_second_max}"
+    );
+    assert!(
+        right_second_max < center_second_max,
+        "right alignment puts the wide line's end before its centred end:          {right_second_max} vs {center_second_max}"
+    );
+}
+
+#[test]
+fn text_honours_a_tool_blend_mode() {
+    let base = TextStyle {
+        family: TextFontFamily::Sans,
+        size: 64,
+        bold: false,
+        italic: false,
+        antialias: false,
+        alignment: TextAlignment::Left,
+        blend: BlendMode::Normal,
+    };
+    let render = |blend| {
+        let mut document = solid_document(200, 100, Bgra::new(128, 128, 128, 255));
+        apply(&mut document, |doc| {
+            text(
+                doc,
+                LayerId::new(1),
+                Point::new(10, 10),
+                "M",
+                TextStyle { blend, ..base },
+                Bgra::new(0, 0, 255, 255),
+            )
+            .expect("blended text")
+        });
+        document
+    };
+    let normal = render(BlendMode::Normal);
+    assert!(
+        normal
+            .active_layer()
+            .surface()
+            .pixels()
+            .iter()
+            .any(|pixel| *pixel == Bgra::new(0, 0, 255, 255)),
+        "Normal text writes the exact text colour"
+    );
+    let multiply = render(BlendMode::Multiply);
+    assert!(
+        multiply
+            .active_layer()
+            .surface()
+            .pixels()
+            .iter()
+            .any(|pixel| *pixel == Bgra::new(0, 0, 128, 255)),
+        "Multiply text blends the glyph colour with the layer"
+    );
+}
+
+#[test]
+fn clone_stamp_spacing_leaves_real_gaps() {
+    let mut pixels = vec![Bgra::WHITE; 20 * 9];
+    for y in 0..2 {
+        for x in 0..20 {
+            pixels[y * 20 + x] = Bgra::BLACK;
+        }
+    }
+    let surface = Surface::from_pixels(size(20, 9), pixels).expect("clone surface");
+    let document = Document::from_layers(
+        size(20, 9),
+        vec![Layer::new(LayerId::new(7), "clone", surface)],
+    )
+    .expect("document");
+    let render = |spacing| {
+        let mut document = document.clone();
+        apply(&mut document, |doc| {
+            clone_stamp(
+                doc,
+                LayerId::new(7),
+                &[Point::new(0, 4), Point::new(17, 4)],
+                8,
+                Point::new(2, 0),
+                100,
+                spacing,
+            )
+            .expect("spaced clone")
+        });
+        document
+    };
+
+    let spaced = render(100);
+    assert_eq!(
+        pixel(&spaced, 4, 4),
+        Bgra::WHITE,
+        "100% spacing leaves a gap between 8 px stamps"
+    );
+    assert_eq!(
+        pixel(&spaced, 8, 4),
+        Bgra::BLACK,
+        "stamp centres sample black"
+    );
+
+    let dense = render(10);
+    assert_eq!(
+        pixel(&dense, 4, 4),
+        Bgra::BLACK,
+        "10% spacing keeps neighbouring stamps connected"
+    );
+}
+
+#[test]
+fn recolor_image_sampling_matches_the_composed_image() {
+    let (mut layer_document, layer_id) = sampled_document();
+    assert_eq!(
+        recolor_stroke_sampled(
+            &layer_document,
+            layer_id,
+            &[Point::new(2, 2)],
+            BrushOptions::new(1, 100, 15),
+            RecolorOptions::new(
+                Bgra::WHITE,
+                Bgra::BLACK,
+                0,
+                paint_raster::MagicWandSampling::ActiveLayer,
+            ),
+        )
+        .expect("layer-sampled recolor"),
+        None,
+        "the transparent active layer has no white pixels to recolor"
+    );
+    apply(&mut layer_document, |document| {
+        recolor_stroke_sampled(
+            document,
+            layer_id,
+            &[Point::new(2, 2)],
+            BrushOptions::new(1, 100, 15),
+            RecolorOptions::new(
+                Bgra::WHITE,
+                Bgra::BLACK,
+                0,
+                paint_raster::MagicWandSampling::Image,
+            ),
+        )
+        .expect("image-sampled recolor")
+    });
+    assert_eq!(
+        active_pixel(&layer_document, 2, 2),
+        Bgra::BLACK,
+        "image sampling matches the composed white pixel and writes to the active layer"
+    );
+}

@@ -2,10 +2,10 @@
 
 use ab_glyph::{Font, FontVec, GlyphId, PxScale, VariableFont, point};
 use paint_core::{Bgra, Point};
-use paint_document::{Document, LayerId, PixelPatch};
+use paint_document::{BlendMode, Document, LayerId, PixelPatch};
 
 use crate::RasterError;
-use crate::compose::normal_over;
+use crate::compose::blend_tool_color;
 use crate::operations::{clip_rect, copy_pixels, layer, operation_clip};
 
 /// Largest accepted font size in pixels.
@@ -40,6 +40,28 @@ impl TextFontFamily {
     }
 }
 
+/// Horizontal placement of each text line relative to the click point.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum TextAlignment {
+    /// Lines start at the click x coordinate.
+    #[default]
+    Left,
+    /// Lines are centred on the click x coordinate.
+    Center,
+    /// Lines end at the click x coordinate.
+    Right,
+}
+
+impl TextAlignment {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Left => "Left",
+            Self::Center => "Center",
+            Self::Right => "Right",
+        }
+    }
+}
+
 /// Paint.NET-like text placement settings.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct TextStyle {
@@ -49,6 +71,9 @@ pub struct TextStyle {
     pub bold: bool,
     pub italic: bool,
     pub antialias: bool,
+    pub alignment: TextAlignment,
+    /// Tool Options blend mode used when glyph ink is composed into the layer.
+    pub blend: BlendMode,
 }
 
 impl Default for TextStyle {
@@ -59,16 +84,19 @@ impl Default for TextStyle {
             bold: false,
             italic: false,
             antialias: true,
+            alignment: TextAlignment::Left,
+            blend: BlendMode::Normal,
         }
     }
 }
 
 /// Rasterizes `content` at `origin` into one undoable patch on the active selection.
 ///
-/// `origin` is the top-left of the first line box. Newlines start new lines, tabs advance
-/// four spaces, and bold uses the variable font's 700 weight. Glyph ink outside the
-/// canvas or the active selection is clipped away. Blank content and fully clipped text
-/// return `Ok(None)` without touching the document.
+/// `origin` is the top-left of the first line box, or the click point for centered and
+/// right-aligned lines. Newlines start new lines, tabs advance four spaces, and bold uses
+/// the variable font's 700 weight. Glyph ink outside the canvas or the active selection is
+/// clipped away. Blank content and fully clipped text return `Ok(None)` without touching
+/// the document.
 pub fn text(
     document: &Document,
     layer_id: LayerId,
@@ -116,13 +144,42 @@ pub fn text(
     let px_scale = PxScale::from(scale);
     let tab_advance = font.h_advance_unscaled(font.glyph_id(' ')) * factor * 4.0;
 
+    let lines: Vec<&str> = content.split('\n').collect();
+    let mut line_widths = Vec::with_capacity(lines.len());
+    for line in &lines {
+        let mut width = 0.0;
+        let mut previous: Option<GlyphId> = None;
+        for character in line.chars() {
+            if character == '\r' {
+                continue;
+            }
+            if character == '\t' {
+                width += tab_advance;
+                previous = None;
+                continue;
+            }
+            let id = font.glyph_id(character);
+            if let Some(previous) = previous {
+                width += font.kern_unscaled(previous, id) * factor;
+            }
+            width += font.h_advance_unscaled(id) * factor;
+            previous = Some(id);
+        }
+        line_widths.push(width);
+    }
+
     let mut glyphs = Vec::new();
     let mut pen_y = origin.y as f32 + ascent;
-    for (line_index, line) in content.split('\n').enumerate() {
+    for (line_index, line) in lines.iter().enumerate() {
         if line_index > 0 {
             pen_y += line_height;
         }
-        let mut pen_x = origin.x as f32;
+        let alignment_offset = match style.alignment {
+            TextAlignment::Left => 0.0,
+            TextAlignment::Center => -line_widths[line_index] / 2.0,
+            TextAlignment::Right => -line_widths[line_index],
+        };
+        let mut pen_x = origin.x as f32 + alignment_offset;
         let mut previous: Option<GlyphId> = None;
         for character in line.chars() {
             if character == '\r' {
@@ -215,7 +272,11 @@ pub fn text(
         if alpha == 0 {
             continue;
         }
-        *pixel = normal_over(*pixel, Bgra::new(color.b, color.g, color.r, alpha), u8::MAX);
+        *pixel = blend_tool_color(
+            *pixel,
+            Bgra::new(color.b, color.g, color.r, alpha),
+            style.blend,
+        );
     }
     if before == after {
         return Ok(None);

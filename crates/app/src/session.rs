@@ -151,7 +151,9 @@ impl AppSession {
                 color,
                 tolerance,
                 global,
-            } => self.flood_fill(point, color, tolerance, global),
+                sampling,
+                blend,
+            } => self.flood_fill(point, color, tolerance, global, sampling, blend),
             Command::FillRect {
                 rect,
                 color,
@@ -177,7 +179,8 @@ impl AppSession {
                 target,
                 replacement,
                 tolerance,
-            } => self.recolor(&points, brush, target, replacement, tolerance),
+                sampling,
+            } => self.recolor(&points, brush, target, replacement, tolerance, sampling),
             Command::PlaceText {
                 origin,
                 content,
@@ -189,7 +192,8 @@ impl AppSession {
                 size,
                 source,
                 hardness,
-            } => self.clone_stamp(&points, size, source, hardness),
+                spacing,
+            } => self.clone_stamp(&points, size, source, hardness, spacing),
             Command::Move { dx, dy } => self.translate(dx, dy),
             Command::Invert => self.invert(),
             Command::ApplyEffect(effect) => self.apply_effect(effect),
@@ -498,6 +502,7 @@ impl AppSession {
         size: u32,
         source: Point,
         hardness: u8,
+        spacing: u8,
     ) -> Result<bool, SessionError> {
         self.rewind_preview()?;
         let patch = paint_raster::clone_stamp(
@@ -507,6 +512,7 @@ impl AppSession {
             size,
             source,
             hardness,
+            spacing,
         )?;
         self.apply_preview_patch(patch)
     }
@@ -596,22 +602,28 @@ impl AppSession {
         color: Bgra,
         tolerance: u8,
         global: bool,
+        sampling: paint_raster::MagicWandSampling,
+        blend: paint_document::BlendMode,
     ) -> Result<bool, SessionError> {
         let patch = if global {
-            paint_raster::global_fill(
+            paint_raster::global_fill_sampled(
                 &self.document,
                 self.document.active_layer_id(),
                 point,
                 color,
                 tolerance,
+                sampling,
+                blend,
             )?
         } else {
-            paint_raster::flood_fill(
+            paint_raster::flood_fill_sampled(
                 &self.document,
                 self.document.active_layer_id(),
                 point,
                 color,
                 tolerance,
+                sampling,
+                blend,
             )?
         };
         match patch {
@@ -671,15 +683,14 @@ impl AppSession {
         target: Bgra,
         replacement: Bgra,
         tolerance: u8,
+        sampling: paint_raster::MagicWandSampling,
     ) -> Result<bool, SessionError> {
-        let patch = paint_raster::recolor_stroke(
+        let patch = paint_raster::recolor_stroke_sampled(
             &self.document,
             self.document.active_layer_id(),
             points,
             brush,
-            target,
-            replacement,
-            tolerance,
+            paint_raster::RecolorOptions::new(target, replacement, tolerance, sampling),
         )?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
@@ -714,6 +725,7 @@ impl AppSession {
         size: u32,
         source: Point,
         hardness: u8,
+        spacing: u8,
     ) -> Result<bool, SessionError> {
         let patch = paint_raster::clone_stamp(
             &self.document,
@@ -722,6 +734,7 @@ impl AppSession {
             size,
             source,
             hardness,
+            spacing,
         )?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),

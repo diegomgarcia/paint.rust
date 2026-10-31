@@ -1,5 +1,5 @@
 use paint_core::{Bgra, Point, Rect, Size};
-use paint_document::SelectionCombineMode;
+use paint_document::{BlendMode, SelectionCombineMode};
 use paint_raster::{
     BrushOptions, GradientOptions, LineStyle, MagicWandSampling, ShapeStyle, TextStyle,
 };
@@ -125,6 +125,10 @@ pub enum Command {
         color: Bgra,
         tolerance: u8,
         global: bool,
+        /// Compare the active layer or the composed image when matching pixels.
+        sampling: MagicWandSampling,
+        /// Tool Options blend mode used for every filled pixel.
+        blend: BlendMode,
     },
     /// Paints a half-open canvas rectangle with an outline/fill style and border width.
     FillRect {
@@ -155,6 +159,8 @@ pub enum Command {
         target: Bgra,
         replacement: Bgra,
         tolerance: u8,
+        /// Compare the active layer or the composed image when matching `target`.
+        sampling: MagicWandSampling,
     },
     /// Rasterizes one text placement into the active layer and selection.
     PlaceText {
@@ -169,6 +175,8 @@ pub enum Command {
         size: u32,
         source: Point,
         hardness: u8,
+        /// Distance between stamps as a percentage of the brush diameter.
+        spacing: u8,
     },
     /// Moves the selection contents, or the whole layer without a selection.
     Move {

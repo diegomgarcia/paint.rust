@@ -1,5 +1,7 @@
 use paint_core::{Bgra, Point, Rect, Size, Surface};
-use paint_document::{Document, DocumentError, Layer, LayerId, PixelPatch, SelectionMask};
+use paint_document::{
+    BlendMode, Document, DocumentError, Layer, LayerId, PixelPatch, SelectionMask,
+};
 
 use crate::RasterError;
 
@@ -913,25 +915,43 @@ pub enum GradientRepeat {
     Repeat,
 }
 
-/// Gradient shape and repeat mode selected in Tool Options.
+/// Gradient shape, repeat mode, and Tool Options blending selected by the user.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GradientOptions {
     pub kind: GradientType,
     pub repeat: GradientRepeat,
+    /// Replace the layer alpha instead of painting colours, preserving the RGB channels.
+    pub alpha_only: bool,
+    /// Per-pixel Tool Options blend mode applied to the generated gradient colour.
+    pub blend: BlendMode,
 }
 
 impl GradientOptions {
     pub const fn new(kind: GradientType, repeat: GradientRepeat) -> Self {
-        Self { kind, repeat }
+        Self {
+            kind,
+            repeat,
+            alpha_only: false,
+            blend: BlendMode::Normal,
+        }
+    }
+
+    /// Enables or disables Paint.NET's transparency-only gradient mode.
+    pub const fn with_alpha_only(mut self, alpha_only: bool) -> Self {
+        self.alpha_only = alpha_only;
+        self
+    }
+
+    /// Selects the per-pixel blend mode used when the gradient is committed.
+    pub const fn with_blend(mut self, blend: BlendMode) -> Self {
+        self.blend = blend;
+        self
     }
 }
 
 impl Default for GradientOptions {
     fn default() -> Self {
-        Self {
-            kind: GradientType::Linear,
-            repeat: GradientRepeat::None,
-        }
+        Self::new(GradientType::Linear, GradientRepeat::None)
     }
 }
 
@@ -1007,7 +1027,25 @@ pub fn gradient(
                 continue;
             }
             let t = gradient_lerp(options.kind, options.repeat, start, end, pixel_x, pixel_y);
-            after[(i64::from(y) * width + i64::from(x)) as usize] = lerp_bgra(from, to, t);
+            let index = (i64::from(y) * width + i64::from(x)) as usize;
+            if options.alpha_only {
+                // Paint.NET's transparency-only mode replaces alpha and inverts the second
+                // stop's alpha, while every RGB channel keeps its layer value.
+                let start_alpha = f64::from(from.a);
+                let end_alpha = f64::from(u8::MAX - to.a);
+                let alpha = (start_alpha + (end_alpha - start_alpha) * t)
+                    .round()
+                    .clamp(0.0, 255.0) as u8;
+                let destination = before[index];
+                let alpha = match options.blend {
+                    BlendMode::Normal => alpha,
+                    _ => ((u16::from(destination.a) * u16::from(alpha) + 127) / 255) as u8,
+                };
+                after[index] = Bgra::new(destination.b, destination.g, destination.r, alpha);
+            } else {
+                after[index] =
+                    crate::blend_tool_color(before[index], lerp_bgra(from, to, t), options.blend);
+            }
         }
     }
     if before == after {
@@ -1176,14 +1214,33 @@ fn lerp_bgra(from: Bgra, to: Bgra, t: f64) -> Bgra {
     )
 }
 
+/// Returns the pixels flood fills compare against for one operation region.
+fn sampled_region<'a>(
+    document: &Document,
+    sampling: MagicWandSampling,
+    before: &'a [Bgra],
+    rect: Rect,
+) -> Result<std::borrow::Cow<'a, [Bgra]>, RasterError> {
+    match sampling {
+        MagicWandSampling::ActiveLayer => Ok(std::borrow::Cow::Borrowed(before)),
+        MagicWandSampling::Image => Ok(std::borrow::Cow::Owned(
+            crate::compose(document)?.read_region(rect)?,
+        )),
+    }
+}
+
 /// Fills the contiguous region around `start`, clipped to the active selection mask.
-/// Unselected pixels inside the bounding rectangle act as barriers.
-pub fn flood_fill(
+///
+/// The active layer is always the write target. `sampling` chooses whether matching reads
+/// that layer or the composed image, and `blend` is the Tool Options blend mode.
+pub fn flood_fill_sampled(
     document: &Document,
     layer_id: LayerId,
     start: Point,
     color: Bgra,
     tolerance: u8,
+    sampling: MagicWandSampling,
+    blend: BlendMode,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
     let Some(clip) = operation_clip(document) else {
@@ -1202,10 +1259,8 @@ pub fn flood_fill(
         return Ok(None);
     }
     let before = layer.surface().read_region(rect)?;
-    let target = before[((start_y - rect.top()) * width + (start_x - rect.left())) as usize];
-    if target == color {
-        return Ok(None);
-    }
+    let samples = sampled_region(document, sampling, &before, rect)?;
+    let target = samples[((start_y - rect.top()) * width + (start_x - rect.left())) as usize];
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
     let mut visited = vec![false; before.len()];
@@ -1221,11 +1276,11 @@ pub fn flood_fill(
             continue;
         }
         let index = ((y - rect.top()) * width + (x - rect.left())) as usize;
-        if visited[index] || !matches(before[index]) {
+        if visited[index] || !matches(samples[index]) {
             continue;
         }
         visited[index] = true;
-        after[index] = color;
+        after[index] = crate::blend_tool_color(before[index], color, blend);
         queue.push_back((x + 1, y));
         if x > rect.left() {
             queue.push_back((x - 1, y));
@@ -1247,13 +1302,37 @@ pub fn flood_fill(
     )?))
 }
 
+/// Fills the contiguous region around `start`, sampling only the active layer normally.
+pub fn flood_fill(
+    document: &Document,
+    layer_id: LayerId,
+    start: Point,
+    color: Bgra,
+    tolerance: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    flood_fill_sampled(
+        document,
+        layer_id,
+        start,
+        color,
+        tolerance,
+        MagicWandSampling::ActiveLayer,
+        BlendMode::Normal,
+    )
+}
+
 /// Fills every matching pixel in the selection mask regardless of connectivity.
-pub fn global_fill(
+///
+/// The active layer is always the write target. `sampling` chooses whether matching reads
+/// that layer or the composed image, and `blend` is the Tool Options blend mode.
+pub fn global_fill_sampled(
     document: &Document,
     layer_id: LayerId,
     point: Point,
     color: Bgra,
     tolerance: u8,
+    sampling: MagicWandSampling,
+    blend: BlendMode,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
     let Some(clip) = operation_clip(document) else {
@@ -1272,10 +1351,8 @@ pub fn global_fill(
         return Ok(None);
     }
     let before = layer.surface().read_region(rect)?;
-    let target = before[((start_y - rect.top()) * width + (start_x - rect.left())) as usize];
-    if target == color {
-        return Ok(None);
-    }
+    let samples = sampled_region(document, sampling, &before, rect)?;
+    let target = samples[((start_y - rect.top()) * width + (start_x - rect.left())) as usize];
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
     let tolerance = i16::from(tolerance);
@@ -1285,8 +1362,8 @@ pub fn global_fill(
                 continue;
             }
             let index = (i64::from(y) * width + i64::from(x)) as usize;
-            if bgra_within_tolerance(before[index], target, tolerance) {
-                after[index] = color;
+            if bgra_within_tolerance(samples[index], target, tolerance) {
+                after[index] = crate::blend_tool_color(before[index], color, blend);
             }
         }
     }
@@ -1302,17 +1379,62 @@ pub fn global_fill(
     )?))
 }
 
-/// Recolors pixels near `target` only inside a round brush stroke and the selection mask.
+/// Fills every matching active-layer pixel in the selection mask regardless of connectivity.
+pub fn global_fill(
+    document: &Document,
+    layer_id: LayerId,
+    point: Point,
+    color: Bgra,
+    tolerance: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    global_fill_sampled(
+        document,
+        layer_id,
+        point,
+        color,
+        tolerance,
+        MagicWandSampling::ActiveLayer,
+        BlendMode::Normal,
+    )
+}
+
+/// Matching and replacement settings for [`recolor_stroke_sampled`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RecolorOptions {
+    pub target: Bgra,
+    pub replacement: Bgra,
+    pub tolerance: u8,
+    /// Compare the active layer or the composed image when matching `target`.
+    pub sampling: MagicWandSampling,
+}
+
+impl RecolorOptions {
+    pub const fn new(
+        target: Bgra,
+        replacement: Bgra,
+        tolerance: u8,
+        sampling: MagicWandSampling,
+    ) -> Self {
+        Self {
+            target,
+            replacement,
+            tolerance,
+            sampling,
+        }
+    }
+}
+
+/// Recolors pixels near the target only inside a round brush stroke and the selection mask.
 ///
 /// The stroke honours `BrushOptions` hardness and spacing exactly like [`stroke`].
-pub fn recolor_stroke(
+/// `options.sampling` chooses whether matching compares the active layer or the composed
+/// image; `options.replacement` is always written to the active layer.
+pub fn recolor_stroke_sampled(
     document: &Document,
     layer_id: LayerId,
     points: &[Point],
     brush: BrushOptions,
-    target: Bgra,
-    replacement: Bgra,
-    tolerance: u8,
+    options: RecolorOptions,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
     let Some(clip) = operation_clip(document) else {
@@ -1346,6 +1468,7 @@ pub fn recolor_stroke(
         return Ok(None);
     };
     let before = layer.surface().read_region(rect)?;
+    let samples = sampled_region(document, options.sampling, &before, rect)?;
     let requested_bytes = rect.size().checked_buffer_len()?;
     let mut after = copy_pixels(&before, requested_bytes)?;
     let left = rect.left();
@@ -1354,8 +1477,8 @@ pub fn recolor_stroke(
     let height = i64::from(rect.height());
     let hardness = f64::from(brush.hardness) / 100.0;
     let step = f64::from(brush.size) * f64::from(brush.spacing) / 100.0;
-    let tolerance = i16::from(tolerance);
-    let matches = |pixel: Bgra| bgra_within_tolerance(pixel, target, tolerance);
+    let tolerance = i16::from(options.tolerance);
+    let matches = |pixel: Bgra| bgra_within_tolerance(pixel, options.target, tolerance);
 
     for_each_stamp(points, step, |center_x, center_y| {
         let x0 = (center_x - radius_f).floor() as i64;
@@ -1378,16 +1501,20 @@ pub fn recolor_stroke(
                     continue;
                 }
                 let index = ((py - top) * width + (px - left)) as usize;
-                if !matches(before[index]) {
+                if !matches(samples[index]) {
                     continue;
                 }
                 if coverage == u8::MAX {
-                    after[index] = replacement;
+                    after[index] = options.replacement;
                 } else {
-                    let alpha =
-                        (u16::from(replacement.a) * u16::from(coverage) + 127) / u16::from(u8::MAX);
-                    let blended =
-                        Bgra::new(replacement.b, replacement.g, replacement.r, alpha as u8);
+                    let alpha = (u16::from(options.replacement.a) * u16::from(coverage) + 127)
+                        / u16::from(u8::MAX);
+                    let blended = Bgra::new(
+                        options.replacement.b,
+                        options.replacement.g,
+                        options.replacement.r,
+                        alpha as u8,
+                    );
                     after[index] = crate::normal_over(after[index], blended, u8::MAX);
                 }
             }
@@ -1404,6 +1531,30 @@ pub fn recolor_stroke(
         before,
         after,
     )?))
+}
+
+/// Recolors pixels near `target` only inside a round brush stroke and the selection mask.
+pub fn recolor_stroke(
+    document: &Document,
+    layer_id: LayerId,
+    points: &[Point],
+    brush: BrushOptions,
+    target: Bgra,
+    replacement: Bgra,
+    tolerance: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    recolor_stroke_sampled(
+        document,
+        layer_id,
+        points,
+        brush,
+        RecolorOptions::new(
+            target,
+            replacement,
+            tolerance,
+            MagicWandSampling::ActiveLayer,
+        ),
+    )
 }
 
 /// Composites a detached floating surface onto a layer at `dest`, clipped to the canvas.
@@ -1761,8 +1912,10 @@ fn rotate_surface(
 /// The first point anchors the stroke: every destination pixel samples
 /// `source + (destination - points[0])`, so moving the stamp carries the source
 /// along with it. `hardness` is a percentage: 100 is a hard edge and 0 fades
-/// smoothly from the center to the brush radius. Sampling always reads the layer
-/// before the stroke, and the resulting patch is clipped to the active selection.
+/// smoothly from the center to the brush radius. `spacing` is the distance between
+/// stamps as a percentage of the brush diameter, exactly like [`stroke`]. Sampling
+/// always reads the layer before the stroke, and the resulting patch is clipped to
+/// the active selection.
 pub fn clone_stamp(
     document: &Document,
     layer_id: LayerId,
@@ -1770,6 +1923,7 @@ pub fn clone_stamp(
     size: u32,
     source: paint_core::Point,
     hardness: u8,
+    spacing: u8,
 ) -> Result<Option<PixelPatch>, RasterError> {
     let layer = layer(document, layer_id)?;
     let Some(clip) = operation_clip(document) else {
@@ -1815,20 +1969,18 @@ pub fn clone_stamp(
     let hardness = f64::from(hardness.min(100)) / 100.0;
     let inner_radius = radius_f * hardness;
 
-    let mut stamp = |center_x: i64, center_y: i64| {
-        for py in (center_y - radius_i64)..=(center_y + radius_i64) {
-            if py < top || py >= top + height {
-                continue;
-            }
-            for px in (center_x - radius_i64)..=(center_x + radius_i64) {
-                if px < left || px >= left + width {
-                    continue;
-                }
+    let mut stamp = |center_x: f64, center_y: f64| {
+        let x0 = (center_x - radius_f).floor() as i64;
+        let x1 = (center_x + radius_f).ceil() as i64;
+        let y0 = (center_y - radius_f).floor() as i64;
+        let y1 = (center_y + radius_f).ceil() as i64;
+        for py in y0.max(top)..=y1.min(top + height - 1) {
+            for px in x0.max(left)..=x1.min(left + width - 1) {
                 if !clip.selects_xy(px, py) {
                     continue;
                 }
-                let dx = (px - center_x) as f64;
-                let dy = (py - center_y) as f64;
+                let dx = px as f64 - center_x;
+                let dy = py as f64 - center_y;
                 let distance = dx.hypot(dy);
                 if radius > 0 && distance > radius_f {
                     continue;
@@ -1871,18 +2023,8 @@ pub fn clone_stamp(
         }
     };
 
-    stamp(origin_x, origin_y);
-    for pair in points.windows(2) {
-        let (a, b) = (pair[0], pair[1]);
-        let dx = i64::from(b.x) - i64::from(a.x);
-        let dy = i64::from(b.y) - i64::from(a.y);
-        let steps = dx.unsigned_abs().max(dy.unsigned_abs());
-        for step in 1..=steps {
-            let x = i64::from(a.x) + (dx * i64::from(step as u32)) / i64::from(steps as u32);
-            let y = i64::from(a.y) + (dy * i64::from(step as u32)) / i64::from(steps as u32);
-            stamp(x, y);
-        }
-    }
+    let step = f64::from(size.max(1)) * f64::from(spacing.clamp(1, 100)) / 100.0;
+    for_each_stamp(points, step, &mut stamp);
 
     if before == after {
         return Ok(None);

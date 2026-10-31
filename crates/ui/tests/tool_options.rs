@@ -387,3 +387,280 @@ fn move_selection_numeric_offsets_apply_and_cancel() {
     click(&mut harness, "Apply offset");
     assert_eq!(selection(&harness), after);
 }
+
+// --- Tool Options parity batch: fill sampling/blend, gradient blend/alpha, picker sizes,
+// text alignment, and clone spacing ---
+
+fn click_checkbox(harness: &mut Harness<'_, PaintApp>, label: &str) {
+    harness.get_by_role_and_label(Role::CheckBox, label).click();
+    harness.run();
+}
+
+fn pixel_at(harness: &Harness<'_, PaintApp>, x: u32, y: u32) -> Bgra {
+    *harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixel(Point::new(x, y))
+        .expect("pixel inside the test canvas")
+}
+
+#[test]
+fn fill_sampling_switches_between_the_layer_and_the_composed_image() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "More");
+    // Paint a full-width barrier with a rectangle selection plus a bucket fill, then
+    // deselect. Selection gestures use the drag endpoints, so this band has no gaps.
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(
+        &mut harness,
+        egui::vec2(0.0, 200.0),
+        egui::vec2(799.0, 200.0),
+    );
+    click(&mut harness, "Paint Bucket");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 200.0));
+    click(&mut harness, "Edit");
+    click(&mut harness, "Deselect");
+    assert_eq!(pixel_at(&harness, 400, 200), Bgra::BLACK);
+
+    click(&mut harness, "Add Layer");
+    replace_field(&mut harness, "Hex color", "#00FF00");
+    click(&mut harness, "Paint Bucket");
+
+    click(&mut harness, "Sampling: Layer");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 100.0));
+    assert_eq!(
+        pixel_at(&harness, 400, 100),
+        Bgra::new(0, 255, 0, 255),
+        "layer sampling fills the whole transparent top layer"
+    );
+    assert_eq!(
+        pixel_at(&harness, 400, 400),
+        Bgra::new(0, 255, 0, 255),
+        "the background barrier is invisible to layer sampling"
+    );
+
+    click(&mut harness, "Undo");
+    click(&mut harness, "Sampling: Image");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 100.0));
+    assert_eq!(
+        pixel_at(&harness, 400, 100),
+        Bgra::new(0, 255, 0, 255),
+        "image sampling fills the white side of the composed barrier"
+    );
+    assert_eq!(
+        pixel_at(&harness, 400, 400),
+        Bgra::TRANSPARENT,
+        "image sampling must stop at the composed black line"
+    );
+}
+
+#[test]
+fn fill_blend_mode_blends_into_the_active_layer() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "More");
+    click(&mut harness, "Paint Bucket");
+    replace_field(&mut harness, "Hex color", "#808080");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
+    assert_eq!(pixel_at(&harness, 400, 300), Bgra::new(128, 128, 128, 255));
+
+    replace_field(&mut harness, "Hex color", "#FF0000");
+    click(&mut harness, "Blend mode: Multiply");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
+    assert_eq!(
+        pixel_at(&harness, 400, 300),
+        Bgra::new(0, 0, 128, 255),
+        "Multiply blends the red fill into the grey layer"
+    );
+    assert_eq!(
+        harness.state().fill_blend(),
+        paint_document::BlendMode::Multiply
+    );
+}
+
+#[test]
+fn gradient_blend_mode_and_transparency_only_affect_committed_pixels() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "More");
+    click(&mut harness, "Paint Bucket");
+    replace_field(&mut harness, "Hex color", "#808080");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
+
+    replace_field(&mut harness, "Hex color", "#FF0000");
+    click(&mut harness, "Gradient");
+    click(&mut harness, "Blend mode: Multiply");
+    drag_canvas(
+        &mut harness,
+        egui::vec2(100.0, 300.0),
+        egui::vec2(200.0, 300.0),
+    );
+    let multiplied = pixel_at(&harness, 100, 300);
+    assert!(
+        (120..=135).contains(&multiplied.r) && multiplied.g <= 2 && multiplied.b <= 2,
+        "multiplied red on grey keeps the red channel near 128: {multiplied:?}"
+    );
+
+    click(&mut harness, "Undo");
+    click(&mut harness, "Blend mode: Normal");
+    click_checkbox(&mut harness, "Transparency only");
+    assert!(harness.state().gradient_alpha_only());
+    drag_canvas(
+        &mut harness,
+        egui::vec2(100.0, 300.0),
+        egui::vec2(200.0, 300.0),
+    );
+    assert_eq!(
+        pixel_at(&harness, 200, 300).a,
+        0,
+        "the second opaque stop becomes fully transparent in transparency-only mode"
+    );
+    assert_eq!(
+        pixel_at(&harness, 200, 300).r,
+        128,
+        "transparency-only preserves the grey layer colour"
+    );
+}
+
+#[test]
+fn color_picker_offers_real_11_31_and_51_pixel_averages() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Pencil");
+    drag_canvas(
+        &mut harness,
+        egui::vec2(390.0, 300.0),
+        egui::vec2(410.0, 300.0),
+    );
+    click(&mut harness, "Color Picker");
+
+    click(&mut harness, "11×11 average");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
+    assert_eq!(
+        harness.state().fill_color(),
+        Bgra::new(232, 232, 232, 255),
+        "11×11 contains 11 black pixels out of 121"
+    );
+
+    click(&mut harness, "31×31 average");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
+    assert_eq!(
+        harness.state().fill_color(),
+        Bgra::new(249, 249, 249, 255),
+        "31×31 contains 21 black pixels out of 961"
+    );
+
+    click(&mut harness, "51×51 average");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
+    assert_eq!(
+        harness.state().fill_color(),
+        Bgra::new(253, 253, 253, 255),
+        "51×51 contains 21 black pixels out of 2601"
+    );
+}
+
+#[test]
+fn text_alignment_and_clone_spacing_options_are_wired_to_real_state() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Text");
+    for label in ["Align left", "Align center", "Align right"] {
+        harness.get_by_role_and_label(Role::Button, label);
+    }
+    click(&mut harness, "Align right");
+    assert_eq!(
+        harness.state().text_alignment(),
+        paint_raster::TextAlignment::Right
+    );
+
+    click(&mut harness, "Clone Stamp");
+    harness.get_by_label("Spacing");
+    replace_field(&mut harness, "Spacing", "40");
+    assert_eq!(harness.state().clone_spacing(), 40);
+}
+
+fn text_ink_bounds(harness: &Harness<'_, PaintApp>) -> (u32, u32) {
+    let surface = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface();
+    let mut min_x = u32::MAX;
+    let mut max_x = 0;
+    for y in 280..380 {
+        for x in 300..500 {
+            let pixel = *surface.pixel(Point::new(x, y)).expect("text scan pixel");
+            if pixel.r < 128 {
+                min_x = min_x.min(x);
+                max_x = max_x.max(x);
+            }
+        }
+    }
+    assert!(min_x != u32::MAX, "expected committed glyph ink");
+    (min_x, max_x)
+}
+
+#[test]
+fn text_alignment_moves_committed_glyph_ink() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Text");
+    replace_field(&mut harness, "Text content", "M");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
+    click(&mut harness, "Place text");
+    let (_, left_max) = text_ink_bounds(&harness);
+
+    click(&mut harness, "Undo");
+    click(&mut harness, "Align right");
+    click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
+    click(&mut harness, "Place text");
+    let (_, right_max) = text_ink_bounds(&harness);
+    assert!(
+        right_max + 20 < left_max,
+        "right alignment must pull the glyph end back toward the click point: \
+         left={left_max} right={right_max}"
+    );
+    assert!(
+        right_max <= 402,
+        "right-aligned ink should end at the click x coordinate: {right_max}"
+    );
+}
+
+#[test]
+fn recolor_sampling_reads_the_layer_or_the_composed_image() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Add Layer");
+    click(&mut harness, "More");
+    replace_field(&mut harness, "Hex color", "#00FF00");
+    click(&mut harness, "Recolor");
+
+    click(&mut harness, "Sampling: Layer");
+    drag_canvas(
+        &mut harness,
+        egui::vec2(400.0, 300.0),
+        egui::vec2(401.0, 300.0),
+    );
+    assert_eq!(
+        pixel_at(&harness, 400, 300),
+        Bgra::TRANSPARENT,
+        "the transparent active layer has no white target pixels"
+    );
+
+    click(&mut harness, "Sampling: Image");
+    drag_canvas(
+        &mut harness,
+        egui::vec2(400.0, 300.0),
+        egui::vec2(401.0, 300.0),
+    );
+    assert_eq!(
+        pixel_at(&harness, 400, 300),
+        Bgra::new(0, 255, 0, 255),
+        "image sampling matches the composed white background and writes green"
+    );
+}

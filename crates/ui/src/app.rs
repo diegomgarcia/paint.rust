@@ -14,8 +14,8 @@ use paint_raster::{
     LineCap, LineDash, LineStyle, MAX_ADJUSTMENT_VALUE, MAX_BLACK_AND_WHITE_WEIGHT,
     MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA, MAX_LEVELS_GAMMA_HUNDREDTHS, MAX_MOTION_BLUR_DISTANCE,
     MAX_NOISE_INTENSITY, MAX_POSTERIZE_LEVELS, MAX_SHARPEN_AMOUNT, MIN_ADJUSTMENT_VALUE,
-    MIN_HUE_DELTA, MIN_LEVELS_GAMMA_HUNDREDTHS, MIN_POSTERIZE_LEVELS, ShapeStyle, TextFontFamily,
-    TextStyle,
+    MIN_HUE_DELTA, MIN_LEVELS_GAMMA_HUNDREDTHS, MIN_POSTERIZE_LEVELS, ShapeStyle, TextAlignment,
+    TextFontFamily, TextStyle,
 };
 
 use crate::checkerboard::paint_checkerboard;
@@ -154,6 +154,7 @@ pub struct PaintApp {
     move_selection_dx: i32,
     move_selection_dy: i32,
     clone_hardness: u8,
+    clone_spacing: u8,
     clone_source: Option<Point>,
     clone_offset: Option<(i64, i64)>,
     clone_alt_down: bool,
@@ -163,11 +164,18 @@ pub struct PaintApp {
     text_bold: bool,
     text_italic: bool,
     text_antialias: bool,
+    text_alignment: TextAlignment,
+    text_blend: BlendMode,
     text_origin: Option<Point>,
     text_applied_key: Option<TextPreviewKey>,
     recolor_tolerance: u8,
+    recolor_sampling: MagicWandSampling,
     fill_tolerance: u8,
     fill_global: bool,
+    fill_sampling: MagicWandSampling,
+    fill_blend: BlendMode,
+    gradient_blend: BlendMode,
+    gradient_alpha_only: bool,
     selection_combine_mode: SelectionCombineMode,
     selection_fields_open: bool,
     layer_move_base: (i32, i32),
@@ -287,6 +295,7 @@ impl PaintApp {
             move_selection_dx: 0,
             move_selection_dy: 0,
             clone_hardness: 80,
+            clone_spacing: 15,
             clone_source: None,
             clone_offset: None,
             clone_alt_down: false,
@@ -296,11 +305,18 @@ impl PaintApp {
             text_bold: false,
             text_italic: false,
             text_antialias: true,
+            text_alignment: TextAlignment::Left,
+            text_blend: BlendMode::Normal,
             text_origin: None,
             text_applied_key: None,
             recolor_tolerance: 50,
+            recolor_sampling: MagicWandSampling::ActiveLayer,
             fill_tolerance: 50,
             fill_global: false,
+            fill_sampling: MagicWandSampling::ActiveLayer,
+            fill_blend: BlendMode::Normal,
+            gradient_blend: BlendMode::Normal,
+            gradient_alpha_only: false,
             selection_combine_mode: SelectionCombineMode::Replace,
             selection_fields_open: false,
             layer_move_base: (0, 0),
@@ -420,6 +436,41 @@ impl PaintApp {
     #[doc(hidden)]
     pub const fn gradient_repeat(&self) -> GradientRepeat {
         self.gradient_repeat
+    }
+
+    #[doc(hidden)]
+    pub const fn fill_sampling(&self) -> MagicWandSampling {
+        self.fill_sampling
+    }
+
+    #[doc(hidden)]
+    pub const fn fill_blend(&self) -> BlendMode {
+        self.fill_blend
+    }
+
+    #[doc(hidden)]
+    pub const fn gradient_blend(&self) -> BlendMode {
+        self.gradient_blend
+    }
+
+    #[doc(hidden)]
+    pub const fn gradient_alpha_only(&self) -> bool {
+        self.gradient_alpha_only
+    }
+
+    #[doc(hidden)]
+    pub const fn recolor_sampling(&self) -> MagicWandSampling {
+        self.recolor_sampling
+    }
+
+    #[doc(hidden)]
+    pub const fn text_alignment(&self) -> TextAlignment {
+        self.text_alignment
+    }
+
+    #[doc(hidden)]
+    pub const fn clone_spacing(&self) -> u8 {
+        self.clone_spacing
     }
 
     #[doc(hidden)]
@@ -1036,6 +1087,8 @@ impl PaintApp {
             bold: self.text_bold,
             italic: self.text_italic,
             antialias: self.text_antialias,
+            alignment: self.text_alignment,
+            blend: self.text_blend,
         }
     }
 
@@ -1133,45 +1186,70 @@ impl PaintApp {
     }
 
     fn text_tool_options(&mut self, ui: &mut egui::Ui) {
-        egui::ComboBox::from_label("Font family")
-            .selected_text(self.text_font_family.label())
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.text_font_family, TextFontFamily::Sans, "Sans");
-                ui.selectable_value(&mut self.text_font_family, TextFontFamily::Mono, "Mono");
-            });
-        let size_label = ui.label("Font size");
-        ui.add(
-            egui::DragValue::new(&mut self.text_size)
-                .range(1..=paint_raster::MAX_TEXT_SIZE)
-                .suffix(" px"),
-        )
-        .labelled_by(size_label.id);
-        ui.toggle_value(&mut self.text_bold, "Bold");
-        ui.toggle_value(&mut self.text_italic, "Italic");
-        ui.checkbox(&mut self.text_antialias, "Antialiasing");
-        let color = self.fill_color;
-        ui.colored_label(
-            egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
-            "Primary color",
-        );
-        let content_label = ui.label("Text content");
-        ui.add(
-            egui::TextEdit::multiline(&mut self.text_content)
-                .desired_rows(2)
-                .desired_width(220.0)
-                .hint_text("Type text"),
-        )
-        .labelled_by(content_label.id);
+        tool_option_row(ui, |ui| {
+            egui::ComboBox::from_label("Font family")
+                .selected_text(self.text_font_family.label())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.text_font_family, TextFontFamily::Sans, "Sans");
+                    ui.selectable_value(&mut self.text_font_family, TextFontFamily::Mono, "Mono");
+                });
+            let size_label = ui.label("Font size");
+            ui.add(
+                egui::DragValue::new(&mut self.text_size)
+                    .range(1..=paint_raster::MAX_TEXT_SIZE)
+                    .suffix(" px"),
+            )
+            .labelled_by(size_label.id);
+            ui.toggle_value(&mut self.text_bold, "Bold");
+            ui.toggle_value(&mut self.text_italic, "Italic");
+            ui.checkbox(&mut self.text_antialias, "Antialiasing");
+        });
+        tool_option_row(ui, |ui| {
+            ui.label("Alignment");
+            for (text, alignment, accessible) in [
+                ("Left", TextAlignment::Left, "Align left"),
+                ("Center", TextAlignment::Center, "Align center"),
+                ("Right", TextAlignment::Right, "Align right"),
+            ] {
+                if option_selectable(ui, self.text_alignment == alignment, text, accessible) {
+                    self.text_alignment = alignment;
+                }
+            }
+            ui.separator();
+            ui.label("Blend Mode");
+            for mode in blend_modes() {
+                if tool_blend_mode_option(ui, self.text_blend, mode) {
+                    self.text_blend = mode;
+                }
+            }
+        });
+        tool_option_row(ui, |ui| {
+            let color = self.fill_color;
+            ui.colored_label(
+                egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+                "Primary color",
+            );
+        });
+        tool_option_row(ui, |ui| {
+            let content_label = ui.label("Text content");
+            ui.add(
+                egui::TextEdit::multiline(&mut self.text_content)
+                    .desired_rows(2)
+                    .desired_width(220.0)
+                    .hint_text("Type text"),
+            )
+            .labelled_by(content_label.id);
+            if ui
+                .add_enabled(self.session.has_preview(), egui::Button::new("Place text"))
+                .clicked()
+            {
+                self.commit_text_preview();
+            }
+            if ui.button("Cancel text").clicked() {
+                self.cancel_text_preview();
+            }
+        });
         self.sync_text_preview();
-        if ui
-            .add_enabled(self.session.has_preview(), egui::Button::new("Place text"))
-            .clicked()
-        {
-            self.commit_text_preview();
-        }
-        if ui.button("Cancel text").clicked() {
-            self.cancel_text_preview();
-        }
     }
 
     /// The source crosshair follows the brush by the fixed stroke offset while stamping.
@@ -1189,32 +1267,44 @@ impl PaintApp {
     }
 
     fn clone_tool_options(&mut self, ui: &mut egui::Ui) {
-        ui.label("Width");
-        ui.add(
-            egui::DragValue::new(&mut self.brush_size)
-                .range(1..=64)
-                .suffix(" px"),
-        );
-        let hardness_label = ui.label("Hardness");
-        ui.add(
-            egui::DragValue::new(&mut self.clone_hardness)
-                .range(0..=100)
-                .suffix("%"),
-        )
-        .labelled_by(hardness_label.id);
-        if let Some(source) = self.clone_source {
-            ui.label(format!("Source: ({}, {})", source.x, source.y));
-            if let Some((offset_x, offset_y)) = self.clone_offset {
-                ui.label(format!("Offset: ({offset_x}, {offset_y})"));
+        tool_option_row(ui, |ui| {
+            let width_label = ui.label("Width");
+            ui.add(
+                egui::DragValue::new(&mut self.brush_size)
+                    .range(1..=64)
+                    .suffix(" px"),
+            )
+            .labelled_by(width_label.id);
+            let hardness_label = ui.label("Hardness");
+            ui.add(
+                egui::DragValue::new(&mut self.clone_hardness)
+                    .range(0..=100)
+                    .suffix("%"),
+            )
+            .labelled_by(hardness_label.id);
+            let spacing_label = ui.label("Spacing");
+            ui.add(
+                egui::DragValue::new(&mut self.clone_spacing)
+                    .range(1..=100)
+                    .suffix("%"),
+            )
+            .labelled_by(spacing_label.id);
+        });
+        tool_option_row(ui, |ui| {
+            if let Some(source) = self.clone_source {
+                ui.label(format!("Source: ({}, {})", source.x, source.y));
+                if let Some((offset_x, offset_y)) = self.clone_offset {
+                    ui.label(format!("Offset: ({offset_x}, {offset_y})"));
+                }
+            } else {
+                ui.label("Alt-click to set source");
             }
-        } else {
-            ui.label("Alt-click to set source");
-        }
-        ui.add_enabled_ui(self.clone_source.is_some(), |ui| {
-            if ui.button("Clear clone source").clicked() {
-                self.clone_source = None;
-                self.clone_offset = None;
-            }
+            ui.add_enabled_ui(self.clone_source.is_some(), |ui| {
+                if ui.button("Clear clone source").clicked() {
+                    self.clone_source = None;
+                    self.clone_offset = None;
+                }
+            });
         });
     }
 
@@ -1246,7 +1336,9 @@ impl PaintApp {
             end,
             self.fill_color,
             self.secondary_color,
-            GradientOptions::new(self.gradient_type, self.gradient_repeat),
+            GradientOptions::new(self.gradient_type, self.gradient_repeat)
+                .with_alpha_only(self.gradient_alpha_only)
+                .with_blend(self.gradient_blend),
         ) {
             Ok(_) => self.texture_dirty = true,
             Err(error) => self.status = format!("Gradient preview failed: {error}"),
@@ -1263,6 +1355,7 @@ impl PaintApp {
             size,
             source,
             self.clone_hardness,
+            self.clone_spacing,
         ) {
             Ok(_) => self.texture_dirty = true,
             Err(error) => self.status = format!("Clone preview failed: {error}"),
@@ -2845,7 +2938,15 @@ impl PaintApp {
             ui.add_space(2.0);
             if matches!(
                 self.active_tool,
-                Tool::Move | Tool::MoveSelection | Tool::Picker | Tool::Line
+                Tool::Move
+                    | Tool::MoveSelection
+                    | Tool::Picker
+                    | Tool::Line
+                    | Tool::Fill
+                    | Tool::Gradient
+                    | Tool::Text
+                    | Tool::CloneStamp
+                    | Tool::Recolor
             ) {
                 self.grouped_tool_options(ui);
                 ui.add_space(2.0);
@@ -2895,31 +2996,6 @@ impl PaintApp {
                     if labeled_button(ui, "Fit", "Fit canvas").clicked() {
                         self.fit_canvas_requested = true;
                     }
-                }
-                Tool::Fill => {
-                    ui.label("Paint Bucket");
-                    let color = self.fill_color;
-                    ui.colored_label(
-                        egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
-                        "Primary color",
-                    );
-                    ui.label("Flood Mode");
-                    ui.selectable_value(&mut self.fill_global, false, "Contiguous");
-                    ui.selectable_value(&mut self.fill_global, true, "Global");
-                    ui.label("Fill");
-                    ui.label("Solid Color");
-                    let tolerance_label = ui.label("Tolerance");
-                    ui.add(
-                        egui::DragValue::new(&mut self.fill_tolerance)
-                            .range(0..=100)
-                            .suffix("%"),
-                    )
-                    .labelled_by(tolerance_label.id);
-                    ui.label("Sampling");
-                    ui.label("Layer");
-                    ui.label("Blend Mode");
-                    ui.label("Normal");
-                    ui.label("Click the canvas to fill");
                 }
                 Tool::Pencil | Tool::Brush | Tool::Eraser => {
                     if self.active_tool == Tool::Pencil {
@@ -2978,92 +3054,7 @@ impl PaintApp {
                     )
                     .labelled_by(border_label.id);
                 }
-                Tool::Gradient => {
-                    ui.label("Gradient type");
-                    for (kind, label) in [
-                        (GradientType::Linear, "Linear"),
-                        (GradientType::Reflected, "Reflected"),
-                        (GradientType::Diamond, "Diamond"),
-                        (GradientType::Radial, "Radial"),
-                        (GradientType::Conical, "Conical"),
-                    ] {
-                        ui.selectable_value(&mut self.gradient_type, kind, label);
-                    }
-                    ui.separator();
-                    ui.label("Repeat mode");
-                    ui.selectable_value(
-                        &mut self.gradient_repeat,
-                        GradientRepeat::None,
-                        "No Repeat",
-                    );
-                    ui.selectable_value(
-                        &mut self.gradient_repeat,
-                        GradientRepeat::Repeat,
-                        "Repeat",
-                    );
-                    ui.separator();
-                    let (from, to) = (self.fill_color, self.secondary_color);
-                    ui.colored_label(
-                        egui::Color32::from_rgba_unmultiplied(from.r, from.g, from.b, from.a),
-                        "Primary",
-                    );
-                    ui.label("to");
-                    ui.colored_label(
-                        egui::Color32::from_rgba_unmultiplied(to.r, to.g, to.b, to.a),
-                        "Secondary",
-                    );
-                }
-                Tool::Recolor => {
-                    let width_label = ui.label("Width");
-                    ui.add(
-                        egui::DragValue::new(&mut self.brush_size)
-                            .range(1..=64)
-                            .suffix(" px"),
-                    )
-                    .labelled_by(width_label.id);
-                    ui.separator();
-                    let hardness_label = ui.label("Hardness");
-                    ui.add(
-                        egui::DragValue::new(&mut self.brush_hardness)
-                            .range(0..=100)
-                            .suffix("%"),
-                    )
-                    .labelled_by(hardness_label.id);
-                    let spacing_label = ui.label("Spacing");
-                    ui.add(
-                        egui::DragValue::new(&mut self.brush_spacing)
-                            .range(1..=100)
-                            .suffix("%"),
-                    )
-                    .labelled_by(spacing_label.id);
-                    ui.separator();
-                    let tolerance_label = ui.label("Tolerance");
-                    ui.add(
-                        egui::DragValue::new(&mut self.recolor_tolerance)
-                            .range(0..=100)
-                            .suffix("%"),
-                    )
-                    .labelled_by(tolerance_label.id);
-                    ui.separator();
-                    let (target, replacement) = (self.secondary_color, self.fill_color);
-                    ui.colored_label(
-                        egui::Color32::from_rgba_unmultiplied(
-                            target.r, target.g, target.b, target.a,
-                        ),
-                        "Target: secondary",
-                    );
-                    ui.colored_label(
-                        egui::Color32::from_rgba_unmultiplied(
-                            replacement.r,
-                            replacement.g,
-                            replacement.b,
-                            replacement.a,
-                        ),
-                        "Replacement: primary",
-                    );
-                }
-                Tool::Text => self.text_tool_options(ui),
-                Tool::CloneStamp => self.clone_tool_options(ui),
+                Tool::Text | Tool::CloneStamp | Tool::Fill | Tool::Gradient | Tool::Recolor => {}
                 Tool::Pan => {}
                 Tool::Move | Tool::MoveSelection | Tool::Picker | Tool::Line => {}
             });
@@ -3078,6 +3069,11 @@ impl PaintApp {
             Tool::MoveSelection => self.move_selection_tool_options(ui),
             Tool::Picker => self.picker_tool_options(ui),
             Tool::Line => self.line_tool_options(ui),
+            Tool::Fill => self.fill_tool_options(ui),
+            Tool::Gradient => self.gradient_tool_options(ui),
+            Tool::Text => self.text_tool_options(ui),
+            Tool::CloneStamp => self.clone_tool_options(ui),
+            Tool::Recolor => self.recolor_tool_options(ui),
             _ => {}
         }
     }
@@ -3170,19 +3166,6 @@ impl PaintApp {
 
     fn picker_tool_options(&mut self, ui: &mut egui::Ui) {
         tool_option_row(ui, |ui| {
-            ui.label("Click behavior");
-            ui.selectable_value(
-                &mut self.picker_click_behavior,
-                PickerClickBehavior::NoToolSwitch,
-                "Do not switch",
-            );
-            ui.selectable_value(
-                &mut self.picker_click_behavior,
-                PickerClickBehavior::SwitchToPreviousTool,
-                "Switch to previous tool",
-            );
-        });
-        tool_option_row(ui, |ui| {
             ui.label("Sampling");
             ui.selectable_value(
                 &mut self.picker_sample_source,
@@ -3201,9 +3184,25 @@ impl PaintApp {
                 PickerSampleSize::Point,
                 PickerSampleSize::Average3x3,
                 PickerSampleSize::Average5x5,
+                PickerSampleSize::Average11x11,
+                PickerSampleSize::Average31x31,
+                PickerSampleSize::Average51x51,
             ] {
                 ui.selectable_value(&mut self.picker_sample_size, size, size.label());
             }
+        });
+        tool_option_row(ui, |ui| {
+            ui.label("Click behavior");
+            ui.selectable_value(
+                &mut self.picker_click_behavior,
+                PickerClickBehavior::NoToolSwitch,
+                "Do not switch",
+            );
+            ui.selectable_value(
+                &mut self.picker_click_behavior,
+                PickerClickBehavior::SwitchToPreviousTool,
+                "Switch to previous tool",
+            );
         });
     }
 
@@ -3257,6 +3256,167 @@ impl PaintApp {
                     self.line_end_cap = cap;
                 }
             }
+        });
+    }
+
+    fn fill_tool_options(&mut self, ui: &mut egui::Ui) {
+        tool_option_row(ui, |ui| {
+            ui.label("Flood Mode");
+            if option_selectable(ui, !self.fill_global, "Contiguous", "Contiguous") {
+                self.fill_global = false;
+            }
+            if option_selectable(ui, self.fill_global, "Global", "Global") {
+                self.fill_global = true;
+            }
+            ui.separator();
+            ui.label("Fill");
+            ui.label("Solid Color");
+            let color = self.fill_color;
+            ui.colored_label(
+                egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+                "Primary color",
+            );
+        });
+        tool_option_row(ui, |ui| {
+            ui.label("Sampling");
+            for sampling in MagicWandSampling::ALL {
+                let (text, accessible) = match sampling {
+                    MagicWandSampling::ActiveLayer => ("Layer", "Sampling: Layer"),
+                    MagicWandSampling::Image => ("Image", "Sampling: Image"),
+                };
+                if option_selectable(ui, self.fill_sampling == sampling, text, accessible) {
+                    self.fill_sampling = sampling;
+                }
+            }
+            ui.separator();
+            let tolerance_label = ui.label("Tolerance");
+            ui.add(
+                egui::DragValue::new(&mut self.fill_tolerance)
+                    .range(0..=100)
+                    .suffix("%"),
+            )
+            .labelled_by(tolerance_label.id);
+        });
+        tool_option_row(ui, |ui| {
+            tool_blend_mode_row(ui, &mut self.fill_blend);
+        });
+    }
+
+    fn gradient_tool_options(&mut self, ui: &mut egui::Ui) {
+        tool_option_row(ui, |ui| {
+            ui.label("Gradient type");
+            for (text, kind) in [
+                ("Linear", GradientType::Linear),
+                ("Reflected", GradientType::Reflected),
+                ("Diamond", GradientType::Diamond),
+                ("Radial", GradientType::Radial),
+                ("Conical", GradientType::Conical),
+            ] {
+                if option_selectable(ui, self.gradient_type == kind, text, text) {
+                    self.gradient_type = kind;
+                }
+            }
+        });
+        tool_option_row(ui, |ui| {
+            ui.checkbox(&mut self.gradient_alpha_only, "Transparency only")
+                .on_hover_text(
+                    "Replace the layer alpha with the gradient alpha; RGB colors stay unchanged",
+                );
+            ui.separator();
+            ui.label("Repeat mode");
+            if option_selectable(
+                ui,
+                self.gradient_repeat == GradientRepeat::None,
+                "No Repeat",
+                "No Repeat",
+            ) {
+                self.gradient_repeat = GradientRepeat::None;
+            }
+            if option_selectable(
+                ui,
+                self.gradient_repeat == GradientRepeat::Repeat,
+                "Repeat",
+                "Repeat",
+            ) {
+                self.gradient_repeat = GradientRepeat::Repeat;
+            }
+        });
+        tool_option_row(ui, |ui| {
+            let (from, to) = (self.fill_color, self.secondary_color);
+            ui.colored_label(
+                egui::Color32::from_rgba_unmultiplied(from.r, from.g, from.b, from.a),
+                "Primary",
+            );
+            ui.label("to");
+            ui.colored_label(
+                egui::Color32::from_rgba_unmultiplied(to.r, to.g, to.b, to.a),
+                "Secondary",
+            );
+        });
+        tool_option_row(ui, |ui| {
+            tool_blend_mode_row(ui, &mut self.gradient_blend);
+        });
+    }
+
+    fn recolor_tool_options(&mut self, ui: &mut egui::Ui) {
+        tool_option_row(ui, |ui| {
+            let width_label = ui.label("Width");
+            ui.add(
+                egui::DragValue::new(&mut self.brush_size)
+                    .range(1..=64)
+                    .suffix(" px"),
+            )
+            .labelled_by(width_label.id);
+            let hardness_label = ui.label("Hardness");
+            ui.add(
+                egui::DragValue::new(&mut self.brush_hardness)
+                    .range(0..=100)
+                    .suffix("%"),
+            )
+            .labelled_by(hardness_label.id);
+            let spacing_label = ui.label("Spacing");
+            ui.add(
+                egui::DragValue::new(&mut self.brush_spacing)
+                    .range(1..=100)
+                    .suffix("%"),
+            )
+            .labelled_by(spacing_label.id);
+        });
+        tool_option_row(ui, |ui| {
+            let tolerance_label = ui.label("Tolerance");
+            ui.add(
+                egui::DragValue::new(&mut self.recolor_tolerance)
+                    .range(0..=100)
+                    .suffix("%"),
+            )
+            .labelled_by(tolerance_label.id);
+            ui.separator();
+            ui.label("Sampling");
+            for sampling in MagicWandSampling::ALL {
+                let (text, accessible) = match sampling {
+                    MagicWandSampling::ActiveLayer => ("Layer", "Sampling: Layer"),
+                    MagicWandSampling::Image => ("Image", "Sampling: Image"),
+                };
+                if option_selectable(ui, self.recolor_sampling == sampling, text, accessible) {
+                    self.recolor_sampling = sampling;
+                }
+            }
+        });
+        tool_option_row(ui, |ui| {
+            let (target, replacement) = (self.secondary_color, self.fill_color);
+            ui.colored_label(
+                egui::Color32::from_rgba_unmultiplied(target.r, target.g, target.b, target.a),
+                "Target: secondary",
+            );
+            ui.colored_label(
+                egui::Color32::from_rgba_unmultiplied(
+                    replacement.r,
+                    replacement.g,
+                    replacement.b,
+                    replacement.a,
+                ),
+                "Replacement: primary",
+            );
         });
     }
 
@@ -4908,6 +5068,8 @@ impl PaintApp {
                                         color: self.fill_color,
                                         tolerance: threshold,
                                         global: self.fill_global,
+                                        sampling: self.fill_sampling,
+                                        blend: self.fill_blend,
                                     },
                                     if self.fill_global {
                                         "Filled matching pixels globally".to_owned()
@@ -5318,7 +5480,9 @@ impl PaintApp {
                                                 options: GradientOptions::new(
                                                     self.gradient_type,
                                                     self.gradient_repeat,
-                                                ),
+                                                )
+                                                .with_alpha_only(self.gradient_alpha_only)
+                                                .with_blend(self.gradient_blend),
                                             },
                                             "Painted a gradient".to_owned(),
                                         ))
@@ -5342,6 +5506,7 @@ impl PaintApp {
                                                 tolerance: (u16::from(self.recolor_tolerance) * 255
                                                     / 100)
                                                     as u8,
+                                                sampling: self.recolor_sampling,
                                             },
                                             "Recolored matching pixels".to_owned(),
                                         ))
@@ -6015,6 +6180,9 @@ enum PickerSampleSize {
     Point,
     Average3x3,
     Average5x5,
+    Average11x11,
+    Average31x31,
+    Average51x51,
 }
 
 impl PickerSampleSize {
@@ -6023,6 +6191,9 @@ impl PickerSampleSize {
             Self::Point => 1,
             Self::Average3x3 => 3,
             Self::Average5x5 => 5,
+            Self::Average11x11 => 11,
+            Self::Average31x31 => 31,
+            Self::Average51x51 => 51,
         }
     }
 
@@ -6031,6 +6202,9 @@ impl PickerSampleSize {
             Self::Point => "1 px",
             Self::Average3x3 => "3×3 average",
             Self::Average5x5 => "5×5 average",
+            Self::Average11x11 => "11×11 average",
+            Self::Average31x31 => "31×31 average",
+            Self::Average51x51 => "51×51 average",
         }
     }
 }
@@ -7070,6 +7244,36 @@ fn paint_selection_mode_icon(
     }
     painter.rect_stroke(a, 0, stroke, egui::StrokeKind::Inside);
     painter.rect_stroke(b, 0, stroke, egui::StrokeKind::Inside);
+}
+
+const fn blend_modes() -> [BlendMode; 4] {
+    [
+        BlendMode::Normal,
+        BlendMode::Multiply,
+        BlendMode::Screen,
+        BlendMode::Overlay,
+    ]
+}
+
+/// One Tool Options blend-mode button with a stable accessible name.
+fn tool_blend_mode_option(ui: &mut egui::Ui, current: BlendMode, mode: BlendMode) -> bool {
+    let accessible = match mode {
+        BlendMode::Normal => "Blend mode: Normal",
+        BlendMode::Multiply => "Blend mode: Multiply",
+        BlendMode::Screen => "Blend mode: Screen",
+        BlendMode::Overlay => "Blend mode: Overlay",
+    };
+    option_selectable(ui, current == mode, blend_mode_label(mode), accessible)
+}
+
+/// The `Blend Mode:` group shared by the fill, gradient, and text tool options.
+fn tool_blend_mode_row(ui: &mut egui::Ui, current: &mut BlendMode) {
+    ui.label("Blend Mode");
+    for mode in blend_modes() {
+        if tool_blend_mode_option(ui, *current, mode) {
+            *current = mode;
+        }
+    }
 }
 
 fn blend_mode_label(mode: paint_document::BlendMode) -> &'static str {

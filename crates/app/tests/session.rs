@@ -734,6 +734,8 @@ fn place_text_is_one_undoable_selection_clipped_content_edit() {
                     bold: false,
                     italic: false,
                     antialias: true,
+                    alignment: paint_raster::TextAlignment::Left,
+                    blend: paint_document::BlendMode::Normal,
                 },
                 color: Bgra::BLACK,
             })
@@ -805,6 +807,7 @@ fn clone_stamp_is_one_undoable_selection_clipped_content_edit() {
                 size: 1,
                 source: Point::new(12, 12),
                 hardness: 100,
+                spacing: 15,
             })
             .unwrap()
     );
