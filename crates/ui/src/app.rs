@@ -491,6 +491,59 @@ impl PaintApp {
         self.layer_properties_name_error = None;
     }
 
+    fn request_close_tab(&mut self, index: usize) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        let dirty = if index == self.active_tab {
+            self.session.dirty()
+        } else {
+            self.tabs[index]
+                .as_ref()
+                .is_some_and(|tab| tab.session.dirty())
+        };
+        if dirty {
+            self.pending_discard = Some(DiscardAction::CloseTab(index));
+            self.focus_discard_buttons = true;
+        } else {
+            self.close_document_tab(index);
+        }
+    }
+
+    fn close_document_tab(&mut self, index: usize) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        if index == self.active_tab {
+            self.finalize_floating_selection();
+            self.tabs.remove(index);
+            if self.tabs.is_empty() {
+                self.tabs.push(None);
+                self.active_tab = 0;
+                self.new_document();
+                self.status = "Closed the last document; created a new one".to_owned();
+                return;
+            }
+            let next = index.min(self.tabs.len() - 1);
+            let Some(state) = self.tabs[next].take() else {
+                return;
+            };
+            self.load_active_tab(state);
+            self.active_tab = next;
+            self.layer_properties_open = false;
+            self.gaussian_blur_open = false;
+            self.resize_dialog = None;
+            self.canvas_size_dialog = None;
+            self.status = format!("Closed a document; switched to {}", self.document_title);
+        } else {
+            self.tabs.remove(index);
+            if index < self.active_tab {
+                self.active_tab -= 1;
+            }
+            self.status = "Closed a document".to_owned();
+        }
+    }
+
     fn new_tab(&mut self) {
         self.store_active_tab();
         self.tabs.push(None);
@@ -1587,6 +1640,7 @@ impl PaintApp {
                 self.execute(Command::Redo, "Redid the next edit");
             }
             if self.panels_floating {
+                let mut pending_close = None;
                 for index in 0..self.tabs.len() {
                     let active = index == self.active_tab;
                     let (title, thumbnail) = if active {
@@ -1598,7 +1652,8 @@ impl PaintApp {
                         )
                     };
                     ui.add_space(4.0);
-                    let response = egui::Frame::new()
+                    let mut tab_clicked = false;
+                    egui::Frame::new()
                         .fill(if active {
                             egui::Color32::from_rgb(31, 78, 116)
                         } else {
@@ -1628,22 +1683,33 @@ impl PaintApp {
                                 if let Some(thumbnail) = &thumbnail {
                                     egui::Image::from_texture(thumbnail).paint_at(ui, rect);
                                 }
-                                ui.label(egui::RichText::new(&title).strong());
+                                if ui
+                                    .selectable_label(active, egui::RichText::new(&title).strong())
+                                    .accessible_name(format!("Document tab: {title}"))
+                                    .clicked()
+                                {
+                                    tab_clicked = true;
+                                }
+                                if ui
+                                    .add(
+                                        egui::Button::new(egui::RichText::new("×").size(14.0))
+                                            .frame(false)
+                                            .min_size(egui::vec2(16.0, 16.0)),
+                                    )
+                                    .on_hover_text("Close document")
+                                    .accessible_name(format!("Close document {title}"))
+                                    .clicked()
+                                {
+                                    pending_close = Some(index);
+                                }
                             });
-                        })
-                        .response
-                        .interact(egui::Sense::click());
-                    response.widget_info(|| {
-                        egui::WidgetInfo::selected(
-                            egui::Role::Button,
-                            true,
-                            active,
-                            format!("Document tab: {title}"),
-                        )
-                    });
-                    if response.clicked() && !active {
+                        });
+                    if tab_clicked && !active && pending_close.is_none() {
                         self.switch_to_tab(index);
                     }
+                }
+                if let Some(index) = pending_close {
+                    self.request_close_tab(index);
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -4173,6 +4239,9 @@ impl PaintApp {
             Some(DiscardAction::CloseViewport) => {
                 "Closing Paint.R will discard the modified document and its undo history."
             }
+            Some(DiscardAction::CloseTab(_)) => {
+                "Closing this document will discard its modified content and undo history."
+            }
             None => return,
         };
         let focus_cancel = self.focus_discard_buttons;
@@ -4209,6 +4278,7 @@ impl PaintApp {
             return;
         }
         match self.pending_discard.take() {
+            Some(DiscardAction::CloseTab(index)) => self.close_document_tab(index),
             Some(DiscardAction::CloseViewport) => {
                 // egui-winit delivers this command as a fresh ViewportEvent::Close.
                 self.close_approved = true;
@@ -4400,6 +4470,7 @@ impl Default for SelectionInput {
 
 enum DiscardAction {
     CloseViewport,
+    CloseTab(usize),
 }
 
 #[derive(Clone, Copy)]
