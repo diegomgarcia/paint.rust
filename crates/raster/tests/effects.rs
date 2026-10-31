@@ -1,7 +1,8 @@
 use paint_core::{Bgra, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId};
 use paint_raster::{
-    auto_level, brightness_contrast, gaussian_blur, grayscale, hue_saturation, sepia,
+    MAX_MOTION_BLUR_DISTANCE, MAX_NOISE_INTENSITY, MAX_SHARPEN_AMOUNT, add_noise, auto_level,
+    brightness_contrast, gaussian_blur, grayscale, hue_saturation, motion_blur, sepia, sharpen,
 };
 
 fn size(width: u32, height: u32) -> Size {
@@ -508,4 +509,318 @@ fn auto_level_ignores_fully_transparent_pixels() {
         ]
     );
     assert_eq!(patch.before(), &original);
+}
+
+#[test]
+fn motion_blur_spreads_an_impulse_along_the_configured_direction() {
+    let mut pixels = vec![Bgra::TRANSPARENT; 49];
+    pixels[3 * 7 + 3] = Bgra::WHITE;
+    let document = document_from_pixels(7, 7, pixels);
+
+    let horizontal = motion_blur(&document, LayerId::new(1), 0, 2)
+        .expect("horizontal motion blur")
+        .expect("impulse changes");
+    let after = horizontal.after();
+    for offset in -2i64..=2 {
+        assert!(
+            after[3 * 7 + (3 + offset) as usize].a > 0,
+            "horizontal blur must spread to column offset {offset}"
+        );
+    }
+    assert_eq!(
+        after[2 * 7 + 3].a,
+        0,
+        "horizontal blur must not spread vertically"
+    );
+    assert_eq!(
+        after[4 * 7 + 3].a,
+        0,
+        "horizontal blur must not spread vertically"
+    );
+    assert_eq!(after[3 * 7 + 1], after[3 * 7 + 5]);
+    assert_eq!(after[3 * 7 + 2], after[3 * 7 + 4]);
+
+    let vertical = motion_blur(&document, LayerId::new(1), 90, 2)
+        .expect("vertical motion blur")
+        .expect("impulse changes");
+    let after = vertical.after();
+    for offset in -2i64..=2 {
+        assert!(
+            after[(3 + offset) as usize * 7 + 3].a > 0,
+            "vertical blur must spread to row offset {offset}"
+        );
+    }
+    assert_eq!(
+        after[3 * 7 + 2].a,
+        0,
+        "vertical blur must not spread horizontally"
+    );
+    assert_eq!(
+        after[3 * 7 + 4].a,
+        0,
+        "vertical blur must not spread horizontally"
+    );
+    assert_eq!(after[7 + 3], after[5 * 7 + 3]);
+    assert_eq!(after[2 * 7 + 3], after[4 * 7 + 3]);
+}
+
+#[test]
+fn motion_blur_premultiplies_alpha_and_is_deterministic() {
+    let document = document_from_pixels(
+        3,
+        1,
+        vec![
+            Bgra::new(0, 0, 255, 255),
+            Bgra::TRANSPARENT,
+            Bgra::TRANSPARENT,
+        ],
+    );
+
+    let patch = motion_blur(&document, LayerId::new(1), 0, 1)
+        .expect("motion blur")
+        .expect("asymmetric alpha");
+    let after = patch.after();
+    assert_eq!(after[2], Bgra::TRANSPARENT);
+    assert!(after[0].a > 0, "alpha must spread to the source edge");
+    assert!(after[0].a < 255, "the source edge must lose full opacity");
+    assert!(
+        after[1].a > 0,
+        "alpha must spread to the transparent neighbor"
+    );
+    for pixel in after.iter().filter(|pixel| pixel.a > 0) {
+        assert_eq!(
+            (pixel.b, pixel.g, pixel.r),
+            (0, 0, 255),
+            "straight-alpha unpremultiplication must not darken the halo"
+        );
+    }
+
+    let repeated = motion_blur(&document, LayerId::new(1), 0, 1)
+        .expect("motion blur")
+        .expect("asymmetric alpha");
+    assert_eq!(
+        patch.after(),
+        repeated.after(),
+        "motion blur is not deterministic"
+    );
+}
+
+#[test]
+fn motion_blur_clips_its_patch_to_the_selection() {
+    let original = vec![
+        Bgra::WHITE,
+        Bgra::BLACK,
+        Bgra::WHITE,
+        Bgra::BLACK,
+        Bgra::WHITE,
+    ];
+    let mut document = document_from_pixels(5, 1, original.clone());
+    let selection = Rect::new(2, 0, 3, 1).unwrap();
+    document.set_selection(Some(selection)).unwrap();
+
+    let patch = motion_blur(&document, LayerId::new(1), 0, 1)
+        .expect("motion blur")
+        .expect("selected center changes");
+    assert_eq!(patch.rect(), selection);
+    assert_eq!(patch.before(), &[Bgra::WHITE]);
+    assert_eq!(patch.after(), &[Bgra::new(85, 85, 85, 255)]);
+
+    document.apply_patch(&patch).unwrap();
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], original[0]);
+    assert_eq!(pixels[1], original[1]);
+    assert_eq!(pixels[3], original[3]);
+    assert_eq!(pixels[4], original[4]);
+}
+
+#[test]
+fn motion_blur_zero_distance_and_uniform_opaque_input_are_noops() {
+    let uniform = document_from_pixels(4, 3, vec![Bgra::new(10, 20, 30, 255); 12]);
+    assert_eq!(motion_blur(&uniform, LayerId::new(1), 0, 0), Ok(None));
+    assert_eq!(motion_blur(&uniform, LayerId::new(1), 45, 3), Ok(None));
+}
+
+#[test]
+fn motion_blur_distance_above_the_limit_is_rejected() {
+    let document = document_from_pixels(1, 1, vec![Bgra::WHITE]);
+    let error = motion_blur(&document, LayerId::new(1), 0, MAX_MOTION_BLUR_DISTANCE + 1)
+        .expect_err("invalid distance");
+    assert!(
+        matches!(
+            error,
+            paint_raster::RasterError::MotionBlurDistanceTooLarge { .. }
+        ),
+        "unexpected error: {error:?}"
+    );
+}
+
+#[test]
+fn sharpen_increases_local_contrast_by_amount_and_preserves_alpha() {
+    let document = document_from_pixels(
+        3,
+        1,
+        vec![
+            Bgra::new(100, 100, 100, 255),
+            Bgra::new(200, 200, 200, 255),
+            Bgra::new(100, 100, 100, 255),
+        ],
+    );
+
+    let patch = sharpen(&document, LayerId::new(1), 10)
+        .expect("sharpen")
+        .expect("visible change");
+    assert_eq!(
+        patch.after(),
+        &[
+            Bgra::new(75, 75, 75, 255),
+            Bgra::new(250, 250, 250, 255),
+            Bgra::new(75, 75, 75, 255),
+        ]
+    );
+
+    let alpha_document = document_from_pixels(
+        3,
+        1,
+        vec![
+            Bgra::new(10, 20, 30, 0),
+            Bgra::new(100, 110, 120, 17),
+            Bgra::new(200, 210, 220, 128),
+        ],
+    );
+    let alpha_patch = sharpen(&alpha_document, LayerId::new(1), 10)
+        .expect("sharpen")
+        .expect("visible change");
+    assert_eq!(alpha_patch.before()[0], alpha_patch.after()[0]);
+    for (before, after) in alpha_patch.before().iter().zip(alpha_patch.after()) {
+        assert_eq!(after.a, before.a, "sharpen must preserve alpha exactly");
+    }
+}
+
+#[test]
+fn sharpen_zero_amount_and_uniform_opaque_input_are_noops() {
+    let uniform = document_from_pixels(4, 3, vec![Bgra::new(10, 20, 30, 255); 12]);
+    assert_eq!(sharpen(&uniform, LayerId::new(1), 0), Ok(None));
+    assert_eq!(sharpen(&uniform, LayerId::new(1), 5), Ok(None));
+}
+
+#[test]
+fn sharpen_amount_above_the_limit_is_rejected() {
+    let document = document_from_pixels(1, 1, vec![Bgra::WHITE]);
+    let error =
+        sharpen(&document, LayerId::new(1), MAX_SHARPEN_AMOUNT + 1).expect_err("invalid amount");
+    assert!(
+        matches!(
+            error,
+            paint_raster::RasterError::SharpenAmountTooLarge { .. }
+        ),
+        "unexpected error: {error:?}"
+    );
+}
+
+#[test]
+fn sharpen_clips_its_patch_to_the_selection() {
+    let original = vec![
+        Bgra::new(100, 100, 100, 255),
+        Bgra::new(200, 200, 200, 255),
+        Bgra::new(100, 100, 100, 255),
+    ];
+    let mut document = document_from_pixels(3, 1, original.clone());
+    let selection = Rect::new(1, 0, 2, 1).unwrap();
+    document.set_selection(Some(selection)).unwrap();
+
+    let patch = sharpen(&document, LayerId::new(1), 10)
+        .expect("sharpen")
+        .expect("selected center changes");
+    assert_eq!(patch.rect(), selection);
+    assert_eq!(patch.before(), &[Bgra::new(200, 200, 200, 255)]);
+    assert_eq!(patch.after(), &[Bgra::new(250, 250, 250, 255)]);
+
+    document.apply_patch(&patch).unwrap();
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], original[0]);
+    assert_eq!(pixels[2], original[2]);
+}
+
+#[test]
+fn add_noise_is_deterministic_for_a_seed_and_varies_with_the_seed() {
+    let document = document_from_pixels(8, 8, vec![Bgra::new(128, 128, 128, 255); 64]);
+
+    let first = add_noise(&document, LayerId::new(1), 50, 42)
+        .expect("noise")
+        .expect("visible change");
+    let repeated = add_noise(&document, LayerId::new(1), 50, 42)
+        .expect("noise")
+        .expect("visible change");
+    let other_seed = add_noise(&document, LayerId::new(1), 50, 43)
+        .expect("noise")
+        .expect("visible change");
+
+    assert_eq!(
+        first.after(),
+        repeated.after(),
+        "noise is not deterministic"
+    );
+    assert_ne!(
+        first.after(),
+        other_seed.after(),
+        "a different seed must produce different noise"
+    );
+    let amplitude = 50 * 255 / 100;
+    for (source, after) in first.before().iter().zip(first.after()) {
+        assert_eq!(after.a, source.a, "noise must preserve alpha exactly");
+        for (before, after) in [
+            (source.b, after.b),
+            (source.g, after.g),
+            (source.r, after.r),
+        ] {
+            let delta = i32::from(after) - i32::from(before);
+            assert!(
+                delta.abs() <= amplitude,
+                "noise delta {delta} exceeds the intensity amplitude {amplitude}"
+            );
+        }
+    }
+}
+
+#[test]
+fn add_noise_preserves_alpha_and_clips_its_patch_to_the_selection() {
+    let original = vec![
+        Bgra::new(10, 20, 30, 0),
+        Bgra::new(100, 110, 120, 17),
+        Bgra::new(150, 160, 170, 128),
+        Bgra::new(200, 210, 220, 255),
+    ];
+    let mut document = document_from_pixels(4, 1, original.clone());
+    let selection = Rect::new(1, 0, 3, 1).unwrap();
+    document.set_selection(Some(selection)).unwrap();
+
+    let patch = add_noise(&document, LayerId::new(1), 100, 7)
+        .expect("noise")
+        .expect("selected pixels change");
+    assert_eq!(patch.rect(), selection);
+    assert_eq!(patch.before(), &original[1..3]);
+    for (before, after) in patch.before().iter().zip(patch.after()) {
+        assert_eq!(after.a, before.a);
+    }
+
+    document.apply_patch(&patch).unwrap();
+    let pixels = document.active_layer().surface().pixels();
+    assert_eq!(pixels[0], original[0]);
+    assert_eq!(pixels[3], original[3]);
+}
+
+#[test]
+fn add_noise_zero_intensity_is_a_noop_and_above_the_limit_is_rejected() {
+    let document = document_from_pixels(2, 1, vec![Bgra::new(10, 20, 30, 255); 2]);
+    assert_eq!(add_noise(&document, LayerId::new(1), 0, 1), Ok(None));
+
+    let error = add_noise(&document, LayerId::new(1), MAX_NOISE_INTENSITY + 1, 1)
+        .expect_err("invalid intensity");
+    assert!(
+        matches!(
+            error,
+            paint_raster::RasterError::NoiseIntensityTooLarge { .. }
+        ),
+        "unexpected error: {error:?}"
+    );
 }

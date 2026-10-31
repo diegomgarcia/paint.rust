@@ -791,6 +791,13 @@ impl AppSession {
             Effect::GaussianBlur { radius } => {
                 paint_raster::gaussian_blur(&self.document, layer_id, radius)
             }
+            Effect::MotionBlur { angle, distance } => {
+                paint_raster::motion_blur(&self.document, layer_id, angle, distance)
+            }
+            Effect::Sharpen { amount } => paint_raster::sharpen(&self.document, layer_id, amount),
+            Effect::AddNoise { intensity, seed } => {
+                paint_raster::add_noise(&self.document, layer_id, intensity, seed)
+            }
         }
     }
 

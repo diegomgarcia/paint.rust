@@ -11,8 +11,9 @@ use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{BlendMode, Document, LayerId};
 use paint_raster::{
     BrushOptions, GradientOptions, GradientRepeat, GradientType, LineCap, LineDash, LineStyle,
-    MAX_ADJUSTMENT_VALUE, MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA, MIN_ADJUSTMENT_VALUE,
-    MIN_HUE_DELTA, ShapeStyle, TextFontFamily, TextStyle,
+    MAX_ADJUSTMENT_VALUE, MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA, MAX_MOTION_BLUR_DISTANCE,
+    MAX_NOISE_INTENSITY, MAX_SHARPEN_AMOUNT, MIN_ADJUSTMENT_VALUE, MIN_HUE_DELTA, ShapeStyle,
+    TextFontFamily, TextStyle,
 };
 
 use crate::checkerboard::paint_checkerboard;
@@ -30,6 +31,11 @@ use crate::selection::{paint_selection, paint_selection_outline};
 
 const DEFAULT_WIDTH: u32 = 800;
 const DEFAULT_HEIGHT: u32 = 600;
+const DEFAULT_MOTION_BLUR_ANGLE: i32 = 25;
+const DEFAULT_MOTION_BLUR_DISTANCE: u32 = 10;
+const DEFAULT_SHARPEN_AMOUNT: u32 = 2;
+const DEFAULT_NOISE_INTENSITY: u32 = 64;
+const DEFAULT_NOISE_SEED: u64 = 1;
 const MAX_PREVIEW_FILE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_PREVIEW_DECODED_BYTES: usize = 64 * 1024 * 1024;
 const PREVIEW_WIDTH: f32 = 180.0;
@@ -196,8 +202,8 @@ pub struct PaintApp {
     layer_properties_blend_mode: BlendMode,
     gaussian_blur_open: bool,
     gaussian_blur_radius: u32,
-    adjustment_dialog: Option<AdjustmentDialog>,
-    adjustment_previewed: Option<Effect>,
+    effect_dialog: Option<EffectDialog>,
+    effect_dialog_previewed: Option<Effect>,
     document_title: String,
     document_thumbnail: Option<egui::TextureHandle>,
     tabs: Vec<Option<DocumentTabState>>,
@@ -322,8 +328,8 @@ impl PaintApp {
             layer_properties_blend_mode: BlendMode::Normal,
             gaussian_blur_open: false,
             gaussian_blur_radius: 2,
-            adjustment_dialog: None,
-            adjustment_previewed: None,
+            effect_dialog: None,
+            effect_dialog_previewed: None,
             document_title: "New Image".to_owned(),
             document_thumbnail: None,
             tabs: vec![None],
@@ -560,12 +566,12 @@ impl PaintApp {
         self.paint_points = state.paint_points;
         self.floating_selection = state.floating_selection;
         self.next_layer_number = state.next_layer_number;
-        self.adjustment_dialog = None;
-        self.adjustment_previewed = None;
+        self.effect_dialog = None;
+        self.effect_dialog_previewed = None;
     }
 
     fn store_active_tab(&mut self) {
-        self.close_adjustment_preview();
+        self.close_effect_preview();
         self.commit_text_preview();
         let state = self.take_active_tab();
         self.tabs[self.active_tab] = Some(state);
@@ -620,7 +626,7 @@ impl PaintApp {
     }
 
     fn close_document_tab(&mut self, index: usize) {
-        self.close_adjustment_preview();
+        self.close_effect_preview();
         if index >= self.tabs.len() {
             return;
         }
@@ -667,7 +673,7 @@ impl PaintApp {
     }
 
     fn new_document(&mut self) {
-        self.close_adjustment_preview();
+        self.close_effect_preview();
         self.session = default_session();
         self.selection_input = SelectionInput::default();
         self.next_layer_number = 1;
@@ -768,8 +774,8 @@ impl PaintApp {
     }
 
     fn execute(&mut self, command: Command, success: impl Into<String>) -> bool {
-        if self.adjustment_dialog.take().is_some() {
-            self.cancel_pending_adjustment();
+        if self.effect_dialog.take().is_some() {
+            self.cancel_pending_effect();
         }
         if !matches!(
             command,
@@ -1306,21 +1312,38 @@ impl PaintApp {
                 NativeCommand::GaussianBlur => {
                     self.open_gaussian_blur_dialog();
                 }
+                NativeCommand::MotionBlur => {
+                    self.open_effect_dialog(EffectDialog::MotionBlur {
+                        angle: DEFAULT_MOTION_BLUR_ANGLE,
+                        distance: DEFAULT_MOTION_BLUR_DISTANCE,
+                    });
+                }
+                NativeCommand::Sharpen => {
+                    self.open_effect_dialog(EffectDialog::Sharpen {
+                        amount: DEFAULT_SHARPEN_AMOUNT,
+                    });
+                }
+                NativeCommand::AddNoise => {
+                    self.open_effect_dialog(EffectDialog::AddNoise {
+                        intensity: DEFAULT_NOISE_INTENSITY,
+                        seed: DEFAULT_NOISE_SEED,
+                    });
+                }
                 NativeCommand::BrightnessContrast => {
-                    self.open_adjustment_dialog(AdjustmentDialog::BrightnessContrast {
+                    self.open_effect_dialog(EffectDialog::BrightnessContrast {
                         brightness: 0,
                         contrast: 0,
                     });
                 }
                 NativeCommand::HueSaturation => {
-                    self.open_adjustment_dialog(AdjustmentDialog::HueSaturation {
+                    self.open_effect_dialog(EffectDialog::HueSaturation {
                         hue: 0,
                         saturation: 0,
                         lightness: 0,
                     });
                 }
                 NativeCommand::AutoLevel => {
-                    self.open_adjustment_dialog(AdjustmentDialog::AutoLevel);
+                    self.open_effect_dialog(EffectDialog::AutoLevel);
                 }
                 NativeCommand::ToggleTools => self.tools_visible = !self.tools_visible,
                 NativeCommand::ToggleColors => self.colors_visible = !self.colors_visible,
@@ -1658,14 +1681,14 @@ impl PaintApp {
                     }
                     ui.separator();
                     if ui.button("Brightness / Contrast…").clicked() {
-                        self.open_adjustment_dialog(AdjustmentDialog::BrightnessContrast {
+                        self.open_effect_dialog(EffectDialog::BrightnessContrast {
                             brightness: 0,
                             contrast: 0,
                         });
                         ui.close();
                     }
                     if ui.button("Hue / Saturation…").clicked() {
-                        self.open_adjustment_dialog(AdjustmentDialog::HueSaturation {
+                        self.open_effect_dialog(EffectDialog::HueSaturation {
                             hue: 0,
                             saturation: 0,
                             lightness: 0,
@@ -1673,7 +1696,7 @@ impl PaintApp {
                         ui.close();
                     }
                     if ui.button("Auto-Level…").clicked() {
-                        self.open_adjustment_dialog(AdjustmentDialog::AutoLevel);
+                        self.open_effect_dialog(EffectDialog::AutoLevel);
                         ui.close();
                     }
                 });
@@ -1691,11 +1714,18 @@ impl PaintApp {
                         }
                     });
                     ui.menu_button("Blurs", |ui| {
+                        if ui.button("Motion Blur…").clicked() {
+                            self.open_effect_dialog(EffectDialog::MotionBlur {
+                                angle: DEFAULT_MOTION_BLUR_ANGLE,
+                                distance: DEFAULT_MOTION_BLUR_DISTANCE,
+                            });
+                            ui.close();
+                        }
                         if ui.button("Gaussian Blur…").clicked() {
                             self.open_gaussian_blur_dialog();
                             ui.close();
                         }
-                        for label in ["Motion Blur", "Radial Blur", "Unfocus", "Zoom Blur"] {
+                        for label in ["Radial Blur", "Unfocus", "Zoom Blur"] {
                             disabled_effect_item(ui, label);
                         }
                     });
@@ -1705,7 +1735,14 @@ impl PaintApp {
                         }
                     });
                     ui.menu_button("Noise", |ui| {
-                        for label in ["Add Noise", "Median", "Reduce Noise"] {
+                        if ui.button("Add Noise…").clicked() {
+                            self.open_effect_dialog(EffectDialog::AddNoise {
+                                intensity: DEFAULT_NOISE_INTENSITY,
+                                seed: DEFAULT_NOISE_SEED,
+                            });
+                            ui.close();
+                        }
+                        for label in ["Median", "Reduce Noise"] {
                             disabled_effect_item(ui, label);
                         }
                     });
@@ -1725,7 +1762,13 @@ impl PaintApp {
                             ui.close();
                         }
                         ui.separator();
-                        for label in ["Glow", "Sharpen", "Soften Portrait", "Vignette"] {
+                        if ui.button("Sharpen…").clicked() {
+                            self.open_effect_dialog(EffectDialog::Sharpen {
+                                amount: DEFAULT_SHARPEN_AMOUNT,
+                            });
+                            ui.close();
+                        }
+                        for label in ["Glow", "Soften Portrait", "Vignette"] {
                             disabled_effect_item(ui, label);
                         }
                     });
@@ -3458,8 +3501,8 @@ impl PaintApp {
         self.layer_properties_open = open;
     }
 
-    fn adjustment_dialog_window(&mut self, context: &egui::Context) {
-        let Some(mut dialog) = self.adjustment_dialog.take() else {
+    fn effect_dialog_window(&mut self, context: &egui::Context) {
+        let Some(mut dialog) = self.effect_dialog.take() else {
             return;
         };
         let mut open = true;
@@ -3485,60 +3528,60 @@ impl PaintApp {
                 });
             });
         if apply {
-            self.apply_adjustment(dialog);
+            self.apply_effect_dialog(dialog);
         } else if cancel || !open {
             let title = dialog.title();
-            self.cancel_pending_adjustment();
+            self.cancel_pending_effect();
             self.status = format!("Canceled {title}");
         } else {
             let effect = dialog.effect();
-            if self.adjustment_previewed != Some(effect) {
+            if self.effect_dialog_previewed != Some(effect) {
                 match self.session.preview_effect(effect) {
                     Ok(_) => {
-                        self.adjustment_previewed = Some(effect);
+                        self.effect_dialog_previewed = Some(effect);
                         self.texture_dirty = true;
                     }
                     Err(error) => {
-                        self.status = format!("Adjustment preview failed: {error}");
+                        self.status = format!("Effect preview failed: {error}");
                     }
                 }
             }
-            self.adjustment_dialog = Some(dialog);
+            self.effect_dialog = Some(dialog);
         }
     }
 
-    fn open_adjustment_dialog(&mut self, dialog: AdjustmentDialog) {
-        self.close_adjustment_preview();
+    fn open_effect_dialog(&mut self, dialog: EffectDialog) {
+        self.close_effect_preview();
         self.finish_active_preview();
         self.finalize_floating_selection();
         self.gaussian_blur_open = false;
         self.session.begin_preview();
-        self.adjustment_previewed = None;
-        self.adjustment_dialog = Some(dialog);
+        self.effect_dialog_previewed = None;
+        self.effect_dialog = Some(dialog);
         self.texture_dirty = true;
     }
 
-    fn apply_adjustment(&mut self, dialog: AdjustmentDialog) {
+    fn apply_effect_dialog(&mut self, dialog: EffectDialog) {
         let effect = dialog.effect();
         let label = effect.history_label();
-        self.cancel_pending_adjustment();
+        self.cancel_pending_effect();
         self.execute(Command::ApplyEffect(effect), format!("Applied {label}"));
     }
 
-    fn cancel_pending_adjustment(&mut self) {
+    fn cancel_pending_effect(&mut self) {
         self.session.cancel_preview();
-        self.adjustment_previewed = None;
+        self.effect_dialog_previewed = None;
         self.texture_dirty = true;
     }
 
-    fn close_adjustment_preview(&mut self) {
-        if self.adjustment_dialog.take().is_some() {
-            self.cancel_pending_adjustment();
+    fn close_effect_preview(&mut self) {
+        if self.effect_dialog.take().is_some() {
+            self.cancel_pending_effect();
         }
     }
 
     fn open_gaussian_blur_dialog(&mut self) {
-        self.close_adjustment_preview();
+        self.close_effect_preview();
         self.gaussian_blur_open = true;
     }
 
@@ -4828,7 +4871,7 @@ impl PaintApp {
             || self.resize_dialog.is_some()
             || self.canvas_size_dialog.is_some()
             || self.pending_discard.is_some()
-            || self.adjustment_dialog.is_some()
+            || self.effect_dialog.is_some()
             || context.text_edit_focused()
         {
             return;
@@ -4940,7 +4983,7 @@ impl eframe::App for PaintApp {
         }
         self.layer_properties_dialog(ui.ctx());
         self.gaussian_blur_dialog(ui.ctx());
-        self.adjustment_dialog_window(ui.ctx());
+        self.effect_dialog_window(ui.ctx());
         self.canvas_panel(ui);
         self.path_dialog(ui);
         self.image_size_dialogs(ui.ctx());
@@ -5285,7 +5328,7 @@ impl SizeFields {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum AdjustmentDialog {
+enum EffectDialog {
     BrightnessContrast {
         brightness: i32,
         contrast: i32,
@@ -5296,14 +5339,28 @@ enum AdjustmentDialog {
         lightness: i32,
     },
     AutoLevel,
+    MotionBlur {
+        angle: i32,
+        distance: u32,
+    },
+    Sharpen {
+        amount: u32,
+    },
+    AddNoise {
+        intensity: u32,
+        seed: u64,
+    },
 }
 
-impl AdjustmentDialog {
+impl EffectDialog {
     const fn title(self) -> &'static str {
         match self {
             Self::BrightnessContrast { .. } => "Brightness / Contrast",
             Self::HueSaturation { .. } => "Hue / Saturation",
             Self::AutoLevel => "Auto-Level",
+            Self::MotionBlur { .. } => "Motion Blur",
+            Self::Sharpen { .. } => "Sharpen",
+            Self::AddNoise { .. } => "Add Noise",
         }
     }
 
@@ -5326,6 +5383,9 @@ impl AdjustmentDialog {
                 lightness,
             },
             Self::AutoLevel => Effect::AutoLevel,
+            Self::MotionBlur { angle, distance } => Effect::MotionBlur { angle, distance },
+            Self::Sharpen { amount } => Effect::Sharpen { amount },
+            Self::AddNoise { intensity, seed } => Effect::AddNoise { intensity, seed },
         }
     }
 
@@ -5366,6 +5426,27 @@ impl AdjustmentDialog {
             Self::AutoLevel => {
                 ui.label("Stretch each RGB channel from the selected pixels to 0-255.");
                 ui.label("A flat selection leaves the image unchanged.");
+            }
+            Self::MotionBlur { angle, distance } => {
+                ui.label("Blur the selection along a direction by sampling a line of pixels.");
+                ui.separator();
+                ui.add(egui::Slider::new(angle, -180..=180).text("Angle"));
+                ui.add(egui::Slider::new(distance, 0..=MAX_MOTION_BLUR_DISTANCE).text("Distance"));
+                ui.label("A distance of zero leaves the selection unchanged.");
+            }
+            Self::Sharpen { amount } => {
+                ui.label("Use an unsharp mask to accent edges in the selection.");
+                ui.separator();
+                ui.add(egui::Slider::new(amount, 0..=MAX_SHARPEN_AMOUNT).text("Amount"));
+                ui.label("An amount of zero leaves the selection unchanged.");
+            }
+            Self::AddNoise { intensity, seed } => {
+                ui.label("Add deterministic RGB noise without changing alpha.");
+                ui.separator();
+                ui.add(egui::Slider::new(intensity, 0..=MAX_NOISE_INTENSITY).text("Intensity"));
+                ui.add(egui::Slider::new(seed, 0..=u64::from(u32::MAX)).text("Seed"));
+                ui.label("A fixed seed reproduces the same preview and result.");
+                ui.label("Zero intensity leaves the selection unchanged.");
             }
         }
     }

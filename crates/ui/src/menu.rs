@@ -28,6 +28,9 @@ pub(crate) enum NativeCommand {
     Grayscale,
     Sepia,
     GaussianBlur,
+    MotionBlur,
+    Sharpen,
+    AddNoise,
     BrightnessContrast,
     HueSaturation,
     AutoLevel,
@@ -59,6 +62,9 @@ impl NativeCommand {
             "effects.grayscale" => Self::Grayscale,
             "effects.sepia" => Self::Sepia,
             "effects.gaussian_blur" => Self::GaussianBlur,
+            "effects.blurs.motion" => Self::MotionBlur,
+            "effects.photo.sharpen" => Self::Sharpen,
+            "effects.noise.add" => Self::AddNoise,
             "adjust.brightness_contrast" => Self::BrightnessContrast,
             "adjust.hue_saturation" => Self::HueSaturation,
             "adjust.auto_level" => Self::AutoLevel,
@@ -188,11 +194,11 @@ impl NativeMenu {
         let blurs = Submenu::new("Blurs", true);
         let gaussian_blur =
             MenuItem::with_id("effects.gaussian_blur", "Gaussian Blur…", true, None);
-        let motion_blur = MenuItem::with_id("effects.blurs.motion", "Motion Blur", false, None);
+        let motion_blur = MenuItem::with_id("effects.blurs.motion", "Motion Blur…", true, None);
         let radial_blur = MenuItem::with_id("effects.blurs.radial", "Radial Blur", false, None);
         let unfocus = MenuItem::with_id("effects.blurs.unfocus", "Unfocus", false, None);
         blurs
-            .append_items(&[&gaussian_blur, &motion_blur, &radial_blur, &unfocus])
+            .append_items(&[&motion_blur, &gaussian_blur, &radial_blur, &unfocus])
             .ok()?;
 
         let distort = Submenu::new("Distort", true);
@@ -205,7 +211,7 @@ impl NativeMenu {
             .ok()?;
 
         let noise = Submenu::new("Noise", true);
-        let add_noise = MenuItem::with_id("effects.noise.add", "Add Noise", false, None);
+        let add_noise = MenuItem::with_id("effects.noise.add", "Add Noise…", true, None);
         let median = MenuItem::with_id("effects.noise.median", "Median", false, None);
         let reduce_noise = MenuItem::with_id("effects.noise.reduce", "Reduce Noise", false, None);
         noise
@@ -216,7 +222,7 @@ impl NativeMenu {
         let grayscale = MenuItem::with_id("effects.grayscale", "Grayscale", true, None);
         let sepia = MenuItem::with_id("effects.sepia", "Sepia", true, None);
         let glow = MenuItem::with_id("effects.photo.glow", "Glow", false, None);
-        let sharpen = MenuItem::with_id("effects.photo.sharpen", "Sharpen", false, None);
+        let sharpen = MenuItem::with_id("effects.photo.sharpen", "Sharpen…", true, None);
         let soft_portrait = MenuItem::with_id(
             "effects.photo.soften_portrait",
             "Soften Portrait",
@@ -361,6 +367,9 @@ mod tests {
             ("effects.grayscale", Grayscale),
             ("effects.sepia", Sepia),
             ("effects.gaussian_blur", GaussianBlur),
+            ("effects.blurs.motion", MotionBlur),
+            ("effects.photo.sharpen", Sharpen),
+            ("effects.noise.add", AddNoise),
             ("adjust.brightness_contrast", BrightnessContrast),
             ("adjust.hue_saturation", HueSaturation),
             ("adjust.auto_level", AutoLevel),

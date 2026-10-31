@@ -62,6 +62,20 @@ pub enum Effect {
     GaussianBlur {
         radius: u32,
     },
+    /// Directional motion blur with an angle in degrees and a distance in pixels.
+    MotionBlur {
+        angle: i32,
+        distance: u32,
+    },
+    /// Unsharp-mask sharpen amount in 0..=20 units.
+    Sharpen {
+        amount: u32,
+    },
+    /// Deterministic seeded noise intensity in 0..=100 percent.
+    AddNoise {
+        intensity: u32,
+        seed: u64,
+    },
 }
 
 impl Effect {
@@ -73,6 +87,9 @@ impl Effect {
             Self::HueSaturation { .. } => "Hue / Saturation",
             Self::AutoLevel => "Auto-Level",
             Self::GaussianBlur { .. } => "Gaussian Blur",
+            Self::MotionBlur { .. } => "Motion Blur",
+            Self::Sharpen { .. } => "Sharpen",
+            Self::AddNoise { .. } => "Add Noise",
         }
     }
 
@@ -82,7 +99,9 @@ impl Effect {
             Self::BrightnessContrast { .. } | Self::HueSaturation { .. } | Self::AutoLevel => {
                 EffectCategory::Adjustment
             }
-            Self::GaussianBlur { .. } => EffectCategory::Blurs,
+            Self::GaussianBlur { .. } | Self::MotionBlur { .. } => EffectCategory::Blurs,
+            Self::Sharpen { .. } => EffectCategory::Photo,
+            Self::AddNoise { .. } => EffectCategory::Noise,
         }
     }
 
@@ -90,6 +109,13 @@ impl Effect {
     pub fn history_label(self) -> String {
         match self {
             Self::GaussianBlur { radius } => format!("Gaussian Blur (radius {radius})"),
+            Self::MotionBlur { angle, distance } => {
+                format!("Motion Blur (angle {angle}, distance {distance})")
+            }
+            Self::Sharpen { amount } => format!("Sharpen (amount {amount})"),
+            Self::AddNoise { intensity, seed } => {
+                format!("Add Noise (intensity {intensity}, seed {seed})")
+            }
             Self::Grayscale
             | Self::Sepia
             | Self::BrightnessContrast { .. }
@@ -129,6 +155,26 @@ mod tests {
             Effect::GaussianBlur { radius: 4 }.category(),
             EffectCategory::Blurs
         );
+        assert_eq!(
+            Effect::MotionBlur {
+                angle: 25,
+                distance: 10
+            }
+            .category(),
+            EffectCategory::Blurs
+        );
+        assert_eq!(
+            Effect::Sharpen { amount: 2 }.category(),
+            EffectCategory::Photo
+        );
+        assert_eq!(
+            Effect::AddNoise {
+                intensity: 64,
+                seed: 1
+            }
+            .category(),
+            EffectCategory::Noise
+        );
         assert_eq!(Effect::Grayscale.history_label(), "Grayscale");
         assert_eq!(
             Effect::BrightnessContrast {
@@ -151,6 +197,26 @@ mod tests {
         assert_eq!(
             Effect::GaussianBlur { radius: 4 }.history_label(),
             "Gaussian Blur (radius 4)"
+        );
+        assert_eq!(
+            Effect::MotionBlur {
+                angle: 25,
+                distance: 10
+            }
+            .history_label(),
+            "Motion Blur (angle 25, distance 10)"
+        );
+        assert_eq!(
+            Effect::Sharpen { amount: 2 }.history_label(),
+            "Sharpen (amount 2)"
+        );
+        assert_eq!(
+            Effect::AddNoise {
+                intensity: 64,
+                seed: 1
+            }
+            .history_label(),
+            "Add Noise (intensity 64, seed 1)"
         );
         assert_eq!(EffectCategory::ALL.len(), 7);
     }

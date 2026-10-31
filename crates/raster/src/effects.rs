@@ -6,6 +6,18 @@ use crate::operations::{copy_pixels, layer, operation_clip};
 
 /// Largest accepted Gaussian blur radius. A radius of zero is a no-op.
 pub const MAX_GAUSSIAN_BLUR_RADIUS: u32 = 200;
+/// Largest accepted motion-blur distance in pixels. A distance of zero is a no-op.
+pub const MAX_MOTION_BLUR_DISTANCE: u32 = 200;
+/// Largest accepted sharpen amount. An amount of zero is a no-op.
+pub const MAX_SHARPEN_AMOUNT: u32 = 20;
+/// Largest accepted noise intensity percentage. Zero intensity is a no-op.
+pub const MAX_NOISE_INTENSITY: u32 = 100;
+
+/// Sharpen amount units per unit of unsharp-mask gain.
+const SHARPEN_GAIN_DIVISOR: i64 = 10;
+/// Rounded 3×3 Gaussian weights used as the unsharp-mask blur.
+const SHARPEN_BLUR_KERNEL: [[u32; 3]; 3] = [[1, 2, 1], [2, 4, 2], [1, 2, 1]];
+const SHARPEN_BLUR_WEIGHT: u64 = 16;
 
 /// Smallest accepted brightness, contrast, saturation, or lightness delta.
 pub const MIN_ADJUSTMENT_VALUE: i32 = -100;
@@ -260,6 +272,259 @@ pub fn gaussian_blur(
                 alpha,
             );
         }
+    }
+
+    if after == before {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+/// Applies a deterministic directional motion blur to the active layer's selection.
+pub fn motion_blur_active(
+    document: &Document,
+    angle: i32,
+    distance: u32,
+) -> Result<Option<PixelPatch>, RasterError> {
+    motion_blur(document, document.active_layer_id(), angle, distance)
+}
+
+/// Applies a deterministic directional motion blur to the given layer's selection.
+///
+/// The effect samples `2 * distance + 1` bilinear positions along the line at `angle`
+/// degrees (clockwise from the positive X axis) centered on each selected pixel. Samples
+/// are evaluated on premultiplied alpha and converted back to straight alpha, so transparent
+/// neighbors do not create dark halos. Sampling clamps to the canvas edge. A distance of
+/// zero is a no-op, and a distance above [`MAX_MOTION_BLUR_DISTANCE`] is rejected.
+pub fn motion_blur(
+    document: &Document,
+    layer_id: LayerId,
+    angle: i32,
+    distance: u32,
+) -> Result<Option<PixelPatch>, RasterError> {
+    if distance > MAX_MOTION_BLUR_DISTANCE {
+        return Err(RasterError::MotionBlurDistanceTooLarge {
+            distance,
+            max: MAX_MOTION_BLUR_DISTANCE,
+        });
+    }
+    let layer = layer(document, layer_id)?;
+    let Some(clip) = operation_clip(document) else {
+        return Ok(None);
+    };
+    let rect = clip.rect;
+    if distance == 0 {
+        return Ok(None);
+    }
+
+    let canvas = document.canvas_rect();
+    let source = layer.surface().read_region(canvas)?;
+    let width = canvas.width() as usize;
+    let height = canvas.height() as usize;
+    let premultiplied = premultiply(&source);
+    let radians = f64::from(angle).to_radians();
+    let (sine, cosine) = radians.sin_cos();
+    let sample_count = u64::from(distance) * 2 + 1;
+
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let rect_width = rect.width() as usize;
+
+    for row in 0..rect.height() as usize {
+        for column in 0..rect_width {
+            let destination_x = rect.left() + column as i64;
+            let destination_y = rect.top() + row as i64;
+            if !clip.selects_xy(destination_x, destination_y) {
+                continue;
+            }
+            let mut accumulator = [0u64; 4];
+            for step in 0..=u64::from(distance) * 2 {
+                let offset = step as f64 - f64::from(distance);
+                let sample_x = destination_x as f64 + offset * cosine;
+                let sample_y = destination_y as f64 + offset * sine;
+                let sample =
+                    bilinear_premultiplied(&premultiplied, width, height, sample_x, sample_y);
+                for (channel, value) in accumulator.iter_mut().zip(sample) {
+                    *channel += u64::from(value);
+                }
+            }
+            let averaged = average_channels(accumulator, sample_count);
+            let alpha = ((averaged[3] + FIXED_POINT_ROUND_U32) >> FIXED_POINT_SHIFT).min(255) as u8;
+            after[row * rect_width + column] = Bgra::new(
+                channel(averaged[0], alpha),
+                channel(averaged[1], alpha),
+                channel(averaged[2], alpha),
+                alpha,
+            );
+        }
+    }
+
+    if after == before {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+/// Applies a deterministic unsharp mask to the active layer's selection.
+pub fn sharpen_active(document: &Document, amount: u32) -> Result<Option<PixelPatch>, RasterError> {
+    sharpen(document, document.active_layer_id(), amount)
+}
+
+/// Applies a real 3×3 unsharp mask to the given layer's selection.
+///
+/// The blur is a rounded Gaussian convolution over premultiplied alpha. The source RGB is
+/// moved away from that blur by `amount / 10` of the difference, clamped to the source alpha
+/// before being converted back to straight alpha. Alpha is preserved exactly and fully
+/// transparent pixels are unchanged. An amount of zero is a no-op, and an amount above
+/// [`MAX_SHARPEN_AMOUNT`] is rejected.
+pub fn sharpen(
+    document: &Document,
+    layer_id: LayerId,
+    amount: u32,
+) -> Result<Option<PixelPatch>, RasterError> {
+    if amount > MAX_SHARPEN_AMOUNT {
+        return Err(RasterError::SharpenAmountTooLarge {
+            amount,
+            max: MAX_SHARPEN_AMOUNT,
+        });
+    }
+    let layer = layer(document, layer_id)?;
+    let Some(clip) = operation_clip(document) else {
+        return Ok(None);
+    };
+    let rect = clip.rect;
+    if amount == 0 {
+        return Ok(None);
+    }
+
+    let canvas = document.canvas_rect();
+    let source = layer.surface().read_region(canvas)?;
+    let width = canvas.width() as usize;
+    let height = canvas.height() as usize;
+    let premultiplied = premultiply(&source);
+    let blurred = sharpen_blur(&premultiplied, width, height);
+
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let rect_left = (rect.left() - canvas.left()) as usize;
+    let rect_top = (rect.top() - canvas.top()) as usize;
+    let rect_width = rect.width() as usize;
+    let amount = i64::from(amount);
+
+    for row in 0..rect.height() as usize {
+        for column in 0..rect_width {
+            let destination_x = rect.left() + column as i64;
+            let destination_y = rect.top() + row as i64;
+            if !clip.selects_xy(destination_x, destination_y) {
+                continue;
+            }
+            let source_pixel = source[(rect_top + row) * width + rect_left + column];
+            if source_pixel.a == 0 {
+                continue;
+            }
+            let index = (rect_top + row) * width + rect_left + column;
+            let original = premultiplied[index];
+            let blurred = blurred[index];
+            let alpha_limit = i64::from(source_pixel.a) << FIXED_POINT_SHIFT;
+            let mut sharpened = [0u32; 4];
+            for channel_index in 0..3 {
+                let difference =
+                    i64::from(original[channel_index]) - i64::from(blurred[channel_index]);
+                let adjusted =
+                    i64::from(original[channel_index]) + difference * amount / SHARPEN_GAIN_DIVISOR;
+                sharpened[channel_index] = adjusted.clamp(0, alpha_limit) as u32;
+            }
+            let alpha = source_pixel.a;
+            after[row * rect_width + column] = Bgra::new(
+                channel(sharpened[0], alpha),
+                channel(sharpened[1], alpha),
+                channel(sharpened[2], alpha),
+                alpha,
+            );
+        }
+    }
+
+    if after == before {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
+}
+
+/// Adds deterministic seeded noise to the active layer's selection.
+pub fn add_noise_active(
+    document: &Document,
+    intensity: u32,
+    seed: u64,
+) -> Result<Option<PixelPatch>, RasterError> {
+    add_noise(document, document.active_layer_id(), intensity, seed)
+}
+
+/// Adds deterministic seeded noise to the given layer's selection.
+///
+/// Each RGB channel receives a uniform offset in `[-amplitude, amplitude]`, where the
+/// amplitude is `intensity * 255 / 100`. The offset for each channel is derived from the
+/// seed and the pixel coordinates, so repeated previews and reapplications are stable.
+/// Alpha is preserved exactly. An intensity of zero is a no-op, and an intensity above
+/// [`MAX_NOISE_INTENSITY`] is rejected.
+pub fn add_noise(
+    document: &Document,
+    layer_id: LayerId,
+    intensity: u32,
+    seed: u64,
+) -> Result<Option<PixelPatch>, RasterError> {
+    if intensity > MAX_NOISE_INTENSITY {
+        return Err(RasterError::NoiseIntensityTooLarge {
+            intensity,
+            max: MAX_NOISE_INTENSITY,
+        });
+    }
+    let layer = layer(document, layer_id)?;
+    let Some(clip) = operation_clip(document) else {
+        return Ok(None);
+    };
+    let rect = clip.rect;
+    if intensity == 0 {
+        return Ok(None);
+    }
+
+    let amplitude = intensity * 255 / 100;
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let width = rect.width() as usize;
+    for (index, (target, source)) in after.iter_mut().zip(&before).enumerate() {
+        let x = rect.left() + (index % width) as i64;
+        let y = rect.top() + (index / width) as i64;
+        if !clip.selects_xy(x, y) {
+            continue;
+        }
+        let offset = |channel: u64| noise_offset(seed, x, y, channel, amplitude);
+        *target = Bgra::new(
+            clamp_channel(i32::from(source.b) + offset(0)),
+            clamp_channel(i32::from(source.g) + offset(1)),
+            clamp_channel(i32::from(source.r) + offset(2)),
+            source.a,
+        );
     }
 
     if after == before {
@@ -539,6 +804,99 @@ fn channel(premultiplied: u32, alpha: u8) -> u8 {
     }
     let premultiplied = (premultiplied + FIXED_POINT_ROUND_U32) >> FIXED_POINT_SHIFT;
     ((u64::from(premultiplied) * 255 + u64::from(alpha) / 2) / u64::from(alpha)) as u8
+}
+
+/// Bilinearly samples the premultiplied canvas, clamping to the edge.
+fn bilinear_premultiplied(
+    source: &[[u32; 4]],
+    width: usize,
+    height: usize,
+    x: f64,
+    y: f64,
+) -> [u32; 4] {
+    let maximum_x = width.saturating_sub(1) as f64;
+    let maximum_y = height.saturating_sub(1) as f64;
+    let x = x.clamp(0.0, maximum_x);
+    let y = y.clamp(0.0, maximum_y);
+    let left = x.floor();
+    let top = y.floor();
+    let left_index = left as usize;
+    let top_index = top as usize;
+    let right_index = (left_index + 1).min(width.saturating_sub(1));
+    let bottom_index = (top_index + 1).min(height.saturating_sub(1));
+    let x_fraction = ((x - left) * FIXED_POINT_SCALE as f64).round() as u64;
+    let y_fraction = ((y - top) * FIXED_POINT_SCALE as f64).round() as u64;
+    let x_remainder = FIXED_POINT_SCALE - x_fraction;
+    let y_remainder = FIXED_POINT_SCALE - y_fraction;
+    let top_left = source[top_index * width + left_index];
+    let top_right = source[top_index * width + right_index];
+    let bottom_left = source[bottom_index * width + left_index];
+    let bottom_right = source[bottom_index * width + right_index];
+
+    let mut sampled = [0u32; 4];
+    for channel_index in 0..4 {
+        let upper = u64::from(top_left[channel_index]) * x_remainder
+            + u64::from(top_right[channel_index]) * x_fraction;
+        let lower = u64::from(bottom_left[channel_index]) * x_remainder
+            + u64::from(bottom_right[channel_index]) * x_fraction;
+        sampled[channel_index] =
+            ((upper * y_remainder + lower * y_fraction + (1 << 31)) >> 32) as u32;
+    }
+    sampled
+}
+
+fn average_channels(accumulator: [u64; 4], count: u64) -> [u32; 4] {
+    debug_assert!(count > 0);
+    let mut averaged = [0u32; 4];
+    for (channel_index, value) in averaged.iter_mut().enumerate() {
+        *value = ((accumulator[channel_index] + count / 2) / count) as u32;
+    }
+    averaged
+}
+
+/// Convolves premultiplied pixels with the 3×3 Gaussian unsharp-mask blur kernel.
+fn sharpen_blur(source: &[[u32; 4]], width: usize, height: usize) -> Vec<[u32; 4]> {
+    let mut output = vec![[0u32; 4]; source.len()];
+    for y in 0..height {
+        for x in 0..width {
+            let mut accumulator = [0u64; 4];
+            for (kernel_y, row) in SHARPEN_BLUR_KERNEL.iter().enumerate() {
+                let sample_y =
+                    (y as isize + kernel_y as isize - 1).clamp(0, height as isize - 1) as usize;
+                for (kernel_x, weight) in row.iter().enumerate() {
+                    let sample_x =
+                        (x as isize + kernel_x as isize - 1).clamp(0, width as isize - 1) as usize;
+                    let sample = source[sample_y * width + sample_x];
+                    let weight = u64::from(*weight);
+                    for (channel_index, value) in accumulator.iter_mut().enumerate() {
+                        *value += weight * u64::from(sample[channel_index]);
+                    }
+                }
+            }
+            output[y * width + x] = divide(accumulator, SHARPEN_BLUR_WEIGHT);
+        }
+    }
+    output
+}
+
+fn noise_offset(seed: u64, x: i64, y: i64, channel: u64, amplitude: u32) -> i32 {
+    let key = seed
+        ^ (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+        ^ channel.wrapping_mul(0x1656_67B1_9E37_79F9);
+    let span = u64::from(amplitude) * 2 + 1;
+    (splitmix64(key) % span) as i32 - amplitude as i32
+}
+
+fn splitmix64(mut value: u64) -> u64 {
+    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    value ^ (value >> 31)
+}
+
+fn clamp_channel(value: i32) -> u8 {
+    value.clamp(0, 255) as u8
 }
 
 fn gaussian_weights(radius: u32) -> Vec<u32> {

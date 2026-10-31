@@ -11,10 +11,12 @@ use thiserror::Error;
 
 pub use compose::{compose, normal_over};
 pub use effects::{
-    MAX_ADJUSTMENT_VALUE, MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA, MIN_ADJUSTMENT_VALUE,
-    MIN_HUE_DELTA, auto_level, auto_level_active, brightness_contrast, brightness_contrast_active,
-    gaussian_blur, gaussian_blur_active, grayscale, grayscale_active, hue_saturation,
-    hue_saturation_active, sepia, sepia_active,
+    MAX_ADJUSTMENT_VALUE, MAX_GAUSSIAN_BLUR_RADIUS, MAX_HUE_DELTA, MAX_MOTION_BLUR_DISTANCE,
+    MAX_NOISE_INTENSITY, MAX_SHARPEN_AMOUNT, MIN_ADJUSTMENT_VALUE, MIN_HUE_DELTA, add_noise,
+    add_noise_active, auto_level, auto_level_active, brightness_contrast,
+    brightness_contrast_active, gaussian_blur, gaussian_blur_active, grayscale, grayscale_active,
+    hue_saturation, hue_saturation_active, motion_blur, motion_blur_active, sepia, sepia_active,
+    sharpen, sharpen_active,
 };
 pub use operations::{
     BrushOptions, GradientOptions, GradientRepeat, GradientType, LineCap, LineDash, LineStyle,
@@ -46,6 +48,12 @@ pub enum RasterError {
     AllocationFailed { requested_bytes: usize },
     #[error("Gaussian blur radius {radius} exceeds the maximum of {max}")]
     BlurRadiusTooLarge { radius: u32, max: u32 },
+    #[error("motion blur distance {distance} exceeds the maximum of {max}")]
+    MotionBlurDistanceTooLarge { distance: u32, max: u32 },
+    #[error("sharpen amount {amount} exceeds the maximum of {max}")]
+    SharpenAmountTooLarge { amount: u32, max: u32 },
+    #[error("noise intensity {intensity} exceeds the maximum of {max}")]
+    NoiseIntensityTooLarge { intensity: u32, max: u32 },
     #[error("font {name} is unavailable")]
     FontUnavailable { name: &'static str },
     #[error("text is {actual} bytes, exceeding the {max}-byte limit")]

@@ -3,6 +3,7 @@ use paint_app::{
 };
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId, SelectionCombineMode};
+use paint_raster::{MAX_MOTION_BLUR_DISTANCE, MAX_NOISE_INTENSITY, MAX_SHARPEN_AMOUNT};
 
 fn select_rect(rect: Rect) -> Command {
     Command::SelectRect {
@@ -1043,4 +1044,208 @@ fn adjustment_effect_commands_are_single_undoable_mutations_and_noops_are_atomic
     );
     assert!(!single_selected.dirty());
     assert!(!single_selected.can_undo());
+}
+
+#[test]
+fn motion_blur_effect_is_one_undoable_mutation_and_noops_are_atomic() {
+    let mut session = session_from_pixels(
+        5,
+        1,
+        vec![
+            Bgra::BLACK,
+            Bgra::BLACK,
+            Bgra::WHITE,
+            Bgra::BLACK,
+            Bgra::BLACK,
+        ],
+    );
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::MotionBlur {
+                angle: 0,
+                distance: 1,
+            }))
+            .expect("motion blur")
+    );
+    assert!(session.dirty());
+    assert!(session.can_undo());
+    assert_eq!(pixel(&session, 2, 0), Bgra::new(85, 85, 85, 255));
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(85, 85, 85, 255));
+    assert_eq!(pixel(&session, 0, 0), Bgra::BLACK);
+    assert_eq!(pixel(&session, 4, 0), Bgra::BLACK);
+
+    assert!(session.undo().unwrap());
+    assert!(!session.dirty());
+    assert_eq!(pixel(&session, 2, 0), Bgra::WHITE);
+    assert!(session.redo().unwrap());
+    assert_eq!(pixel(&session, 2, 0), Bgra::new(85, 85, 85, 255));
+    assert!(session.undo().unwrap());
+
+    assert!(
+        !session
+            .execute(Command::ApplyEffect(Effect::MotionBlur {
+                angle: 45,
+                distance: 0,
+            }))
+            .expect("zero distance")
+    );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::MotionBlur {
+                angle: 0,
+                distance: MAX_MOTION_BLUR_DISTANCE + 1,
+            }))
+            .is_err()
+    );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+    assert_eq!(
+        session.document().active_layer().surface().pixels(),
+        &[
+            Bgra::BLACK,
+            Bgra::BLACK,
+            Bgra::WHITE,
+            Bgra::BLACK,
+            Bgra::BLACK,
+        ]
+    );
+}
+
+#[test]
+fn sharpen_effect_is_one_undoable_mutation_and_noops_are_atomic() {
+    let mut session = session_from_pixels(
+        3,
+        1,
+        vec![
+            Bgra::new(100, 100, 100, 255),
+            Bgra::new(200, 200, 200, 255),
+            Bgra::new(100, 100, 100, 255),
+        ],
+    );
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::Sharpen { amount: 10 }))
+            .expect("sharpen")
+    );
+    assert!(session.can_undo());
+    assert_eq!(pixel(&session, 0, 0), Bgra::new(75, 75, 75, 255));
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(250, 250, 250, 255));
+    assert_eq!(pixel(&session, 2, 0), Bgra::new(75, 75, 75, 255));
+
+    assert!(session.undo().unwrap());
+    assert!(!session.dirty());
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(200, 200, 200, 255));
+    assert!(session.redo().unwrap());
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(250, 250, 250, 255));
+    assert!(session.undo().unwrap());
+
+    assert!(
+        !session
+            .execute(Command::ApplyEffect(Effect::Sharpen { amount: 0 }))
+            .expect("zero amount")
+    );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::Sharpen {
+                amount: MAX_SHARPEN_AMOUNT + 1,
+            }))
+            .is_err()
+    );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+    assert_eq!(pixel(&session, 1, 0), Bgra::new(200, 200, 200, 255));
+}
+
+#[test]
+fn add_noise_effect_is_deterministic_undoable_and_noops_are_atomic() {
+    let original = vec![
+        Bgra::new(10, 20, 30, 0),
+        Bgra::new(100, 110, 120, 17),
+        Bgra::new(150, 160, 170, 128),
+        Bgra::new(200, 210, 220, 255),
+    ];
+    let mut session = session_from_pixels(4, 1, original.clone());
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::AddNoise {
+                intensity: 50,
+                seed: 42,
+            }))
+            .expect("noise")
+    );
+    let noisy = session
+        .document()
+        .active_layer()
+        .surface()
+        .pixels()
+        .to_vec();
+    for (before, after) in original.iter().zip(&noisy) {
+        assert_eq!(after.a, before.a, "noise must preserve alpha");
+    }
+    assert!(session.undo().unwrap());
+    assert_eq!(
+        session.document().active_layer().surface().pixels(),
+        original.as_slice()
+    );
+
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::AddNoise {
+                intensity: 50,
+                seed: 42,
+            }))
+            .expect("repeated noise")
+    );
+    assert_eq!(
+        session.document().active_layer().surface().pixels(),
+        noisy.as_slice(),
+        "the same seed must reproduce the same pixels"
+    );
+    assert!(session.undo().unwrap());
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::AddNoise {
+                intensity: 50,
+                seed: 43,
+            }))
+            .expect("different seed")
+    );
+    assert_ne!(
+        session.document().active_layer().surface().pixels(),
+        noisy.as_slice(),
+        "a different seed must produce different pixels"
+    );
+    assert!(session.undo().unwrap());
+
+    assert!(
+        !session
+            .execute(Command::ApplyEffect(Effect::AddNoise {
+                intensity: 0,
+                seed: 1,
+            }))
+            .expect("zero intensity")
+    );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+
+    assert!(
+        session
+            .execute(Command::ApplyEffect(Effect::AddNoise {
+                intensity: MAX_NOISE_INTENSITY + 1,
+                seed: 1,
+            }))
+            .is_err()
+    );
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+    assert_eq!(
+        session.document().active_layer().surface().pixels(),
+        original.as_slice()
+    );
 }

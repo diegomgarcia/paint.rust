@@ -2202,7 +2202,8 @@ fn effects_menu_uses_paint_net_groups_and_applies_real_effects_undoably() {
     drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(14.0, 15.0));
     menu_item(&mut harness, "Effects", "Blurs");
     harness.get_by_role_and_label(Role::Button, "Gaussian Blur…");
-    assert!(button_is_disabled(&harness, "Motion Blur"));
+    harness.get_by_role_and_label(Role::Button, "Motion Blur…");
+    assert!(button_is_disabled(&harness, "Radial Blur"));
     click(&mut harness, "Gaussian Blur…");
     harness.get_by_role_and_label(Role::Slider, "Radius");
     click(&mut harness, "Apply");
@@ -3530,5 +3531,181 @@ fn command_d_deselects_everything() {
             .document()
             .selection_mask()
             .is_none()
+    );
+}
+
+fn fill_contrast_rectangle(harness: &mut Harness<'_, PaintApp>) {
+    click(harness, "Shapes");
+    click(harness, "Fill");
+    drag_canvas(harness, egui::vec2(5.0, 6.0), egui::vec2(14.0, 15.0));
+}
+
+fn canvas_pixels(harness: &Harness<'_, PaintApp>) -> Vec<Bgra> {
+    harness
+        .state()
+        .session()
+        .compose()
+        .expect("composite")
+        .pixels()
+        .to_vec()
+}
+
+#[test]
+fn motion_blur_dialog_previews_applies_and_escape_cancels() {
+    let mut harness = app();
+    fill_contrast_rectangle(&mut harness);
+    let baseline = canvas_pixels(&harness);
+    let history_length = harness.state().history_entries().len();
+
+    menu_item(&mut harness, "Effects", "Blurs");
+    harness.get_by_role_and_label(Role::Button, "Motion Blur…");
+    click(&mut harness, "Motion Blur…");
+    harness.get_by_role_and_label(Role::Slider, "Angle");
+    harness.get_by_role_and_label(Role::Slider, "Distance");
+    set_slider(&mut harness, "Angle", 0.0);
+    set_slider(&mut harness, "Distance", 6.0);
+    assert_ne!(
+        canvas_pixels(&harness),
+        baseline,
+        "motion blur sliders must update the canvas live"
+    );
+    assert_eq!(
+        harness.state().history_entries().len(),
+        history_length,
+        "a live motion blur preview must not enter history"
+    );
+
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert_eq!(
+        canvas_pixels(&harness),
+        baseline,
+        "Escape must restore the pre-dialog pixels"
+    );
+    assert_eq!(harness.state().history_entries().len(), history_length);
+
+    menu_item(&mut harness, "Effects", "Blurs");
+    click(&mut harness, "Motion Blur…");
+    set_slider(&mut harness, "Angle", 0.0);
+    set_slider(&mut harness, "Distance", 6.0);
+    click(&mut harness, "Apply");
+    assert_eq!(harness.state().history_entries().len(), history_length + 1);
+    assert!(
+        harness
+            .state()
+            .history_entries()
+            .last()
+            .is_some_and(|label| label.contains("Motion Blur")),
+        "history should record the configured motion blur: {:?}",
+        harness.state().history_entries()
+    );
+    assert_ne!(canvas_pixels(&harness), baseline);
+    click(&mut harness, "Undo");
+    assert_eq!(canvas_pixels(&harness), baseline);
+}
+
+#[test]
+fn sharpen_dialog_previews_applies_and_cancel_restores() {
+    let mut harness = app();
+    fill_contrast_rectangle(&mut harness);
+    // A hard black/white edge saturates at 0 and 255, so introduce midtones first.
+    menu_item(&mut harness, "Adjustments", "Brightness / Contrast…");
+    set_slider(&mut harness, "Brightness", 50.0);
+    click(&mut harness, "Apply");
+    let baseline = canvas_pixels(&harness);
+    let history_length = harness.state().history_entries().len();
+
+    menu_item(&mut harness, "Effects", "Photo");
+    harness.get_by_role_and_label(Role::Button, "Sharpen…");
+    click(&mut harness, "Sharpen…");
+    harness.get_by_role_and_label(Role::Slider, "Amount");
+    set_slider(&mut harness, "Amount", 20.0);
+    assert_ne!(
+        canvas_pixels(&harness),
+        baseline,
+        "the sharpen amount slider must update the canvas live"
+    );
+    assert_eq!(harness.state().history_entries().len(), history_length);
+
+    click(&mut harness, "Cancel");
+    assert_eq!(
+        canvas_pixels(&harness),
+        baseline,
+        "Cancel must restore the pre-dialog pixels"
+    );
+    assert_eq!(harness.state().history_entries().len(), history_length);
+
+    menu_item(&mut harness, "Effects", "Photo");
+    click(&mut harness, "Sharpen…");
+    set_slider(&mut harness, "Amount", 20.0);
+    click(&mut harness, "Apply");
+    assert_eq!(harness.state().history_entries().len(), history_length + 1);
+    assert!(
+        harness
+            .state()
+            .history_entries()
+            .last()
+            .is_some_and(|label| label.contains("Sharpen")),
+        "history should record the sharpen amount: {:?}",
+        harness.state().history_entries()
+    );
+    click(&mut harness, "Undo");
+    assert_eq!(canvas_pixels(&harness), baseline);
+}
+
+#[test]
+fn add_noise_dialog_previews_applies_and_cancel_restores() {
+    let mut harness = app();
+    fill_contrast_rectangle(&mut harness);
+    let baseline = canvas_pixels(&harness);
+    let history_length = harness.state().history_entries().len();
+
+    menu_item(&mut harness, "Effects", "Noise");
+    harness.get_by_role_and_label(Role::Button, "Add Noise…");
+    click(&mut harness, "Add Noise…");
+    harness.get_by_role_and_label(Role::Slider, "Intensity");
+    harness.get_by_role_and_label(Role::Slider, "Seed");
+    set_slider(&mut harness, "Intensity", 100.0);
+    set_slider(&mut harness, "Seed", 1337.0);
+    let noisy = canvas_pixels(&harness);
+    assert_ne!(
+        noisy, baseline,
+        "the noise sliders must update the canvas live"
+    );
+    assert_eq!(harness.state().history_entries().len(), history_length);
+
+    click(&mut harness, "Cancel");
+    assert_eq!(
+        canvas_pixels(&harness),
+        baseline,
+        "Cancel must restore the pre-dialog pixels"
+    );
+    assert_eq!(harness.state().history_entries().len(), history_length);
+
+    menu_item(&mut harness, "Effects", "Noise");
+    click(&mut harness, "Add Noise…");
+    set_slider(&mut harness, "Intensity", 100.0);
+    set_slider(&mut harness, "Seed", 1337.0);
+    assert_eq!(
+        canvas_pixels(&harness),
+        noisy,
+        "the same seed must reproduce the same preview"
+    );
+    click(&mut harness, "Apply");
+    assert_eq!(harness.state().history_entries().len(), history_length + 1);
+    assert!(
+        harness
+            .state()
+            .history_entries()
+            .last()
+            .is_some_and(|label| label.contains("Add Noise")),
+        "history should record the noise intensity and seed: {:?}",
+        harness.state().history_entries()
+    );
+    click(&mut harness, "Undo");
+    assert_eq!(
+        canvas_pixels(&harness),
+        baseline,
+        "undo must restore pixels"
     );
 }
