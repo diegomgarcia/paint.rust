@@ -15,6 +15,11 @@ pub(crate) fn paint_selection_outline(painter: &Painter, rect: Rect, phase: f32)
     paint_rect_dashes(painter, rect, phase);
 }
 
+/// Draws only the dashed rectangle border, without the selection tint.
+pub(crate) fn paint_selection_rect_boundary(painter: &Painter, rect: Rect, phase: f32) {
+    paint_rect_dashes(painter, rect, phase);
+}
+
 /// Draws a document selection in canvas coordinates, following the real mask boundary.
 ///
 /// Rectangle selections use their exact rectangle. Mask-backed selections (ellipse, lasso,
@@ -28,6 +33,31 @@ pub(crate) fn paint_selection(
     selection: &Selection,
     phase: f32,
 ) {
+    paint_selection_impl(painter, canvas, zoom, selection, phase, true);
+}
+
+/// Draws only the moving boundary/ants, without the translucent mask tint.
+///
+/// Used while moving pixels/selection: the floating image already shows the content, so
+/// skipping the per-row tint keeps dragging responsive and avoids darkening the float.
+pub(crate) fn paint_selection_boundary(
+    painter: &Painter,
+    canvas: Rect,
+    zoom: f32,
+    selection: &Selection,
+    phase: f32,
+) {
+    paint_selection_impl(painter, canvas, zoom, selection, phase, false);
+}
+
+fn paint_selection_impl(
+    painter: &Painter,
+    canvas: Rect,
+    zoom: f32,
+    selection: &Selection,
+    phase: f32,
+    with_tint: bool,
+) {
     if zoom <= 0.0 {
         return;
     }
@@ -37,18 +67,22 @@ pub(crate) fn paint_selection(
         let bounds = selection.bounds();
         let min = map(bounds.left() as f32, bounds.top() as f32);
         let max = map(bounds.right() as f32, bounds.bottom() as f32);
-        painter.rect_filled(Rect::from_min_max(min, max), 0, selection_tint());
+        if with_tint {
+            painter.rect_filled(Rect::from_min_max(min, max), 0, selection_tint());
+        }
         paint_rect_dashes(&painter, Rect::from_min_max(min, max), phase);
         return;
     };
 
     let bounds = mask.bounds();
     // One run per contiguous selected span, not one probe per pixel.
-    for y in bounds.top()..bounds.bottom() {
-        for (start, end) in mask.row_runs(y) {
-            let min = map(start as f32, y as f32);
-            let max = map(end as f32, (y + 1) as f32);
-            painter.rect_filled(Rect::from_min_max(min, max), 0, selection_tint());
+    if with_tint {
+        for y in bounds.top()..bounds.bottom() {
+            for (start, end) in mask.row_runs(y) {
+                let min = map(start as f32, y as f32);
+                let max = map(end as f32, (y + 1) as f32);
+                painter.rect_filled(Rect::from_min_max(min, max), 0, selection_tint());
+            }
         }
     }
 
