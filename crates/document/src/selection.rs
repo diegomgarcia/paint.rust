@@ -790,7 +790,10 @@ impl Selection {
         self.mask.as_ref().is_some_and(SelectionMask::is_empty)
     }
 
-    fn as_canvas_mask(&self, canvas: Size) -> Result<Option<SelectionMask>, SelectionError> {
+    pub(crate) fn as_canvas_mask(
+        &self,
+        canvas: Size,
+    ) -> Result<Option<SelectionMask>, SelectionError> {
         match &self.mask {
             Some(mask) => mask.clipped_to(canvas),
             None => {

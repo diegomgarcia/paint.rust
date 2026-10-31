@@ -253,6 +253,7 @@ fn new_invert_undo_and_redo_operate_on_the_real_session() {
     assert!(!harness.state().session().can_redo());
 
     menu_item(&mut harness, "File", "New");
+    click(&mut harness, "Apply");
     let session = harness.state().session();
     assert_eq!(
         session.document().size(),
@@ -285,6 +286,7 @@ fn dirty_new_opens_a_new_tab_and_preserves_the_old_document() {
     assert!(before.dirty && before.can_undo && !before.can_redo);
 
     menu_item(&mut harness, "File", "New");
+    click(&mut harness, "Apply");
     assert_eq!(harness.state().document_tab_count(), 2);
     assert_eq!(harness.state().active_document_index(), 1);
     let session = harness.state().session();
@@ -2123,6 +2125,7 @@ fn new_documents_create_switchable_independent_tabs() {
     assert_eq!(harness.state().session().document().layers().len(), 2);
 
     click(&mut harness, "New document");
+    click(&mut harness, "Apply");
     assert_eq!(harness.state().document_tab_count(), 2);
     assert_eq!(harness.state().active_document_index(), 1);
     assert_eq!(harness.state().session().document().layers().len(), 1);
@@ -3480,6 +3483,7 @@ fn document_tabs_can_be_closed_individually_with_a_dirty_guard() {
     harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
     harness.run();
     click(&mut harness, "New document");
+    click(&mut harness, "Apply");
     assert_eq!(harness.state().document_tab_count(), 2);
 
     click(&mut harness, "Close document New Image");
@@ -3491,6 +3495,7 @@ fn document_tabs_can_be_closed_individually_with_a_dirty_guard() {
     assert_eq!(harness.state().document_titles(), ["New Image"]);
 
     click(&mut harness, "New document");
+    click(&mut harness, "Apply");
     menu_item(&mut harness, "Adjustments", "Invert Colors");
     assert!(harness.state().session().dirty());
     click(&mut harness, "Close document New Image 2 •");

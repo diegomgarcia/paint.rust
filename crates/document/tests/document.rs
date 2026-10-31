@@ -426,3 +426,66 @@ fn replace_geometry_rejects_bad_surface_counts_and_sizes_without_mutation() {
     ));
     assert_eq!(document, snapshot);
 }
+
+#[test]
+fn new_with_background_creates_one_filled_background_layer() {
+    for background in [
+        Bgra::WHITE,
+        Bgra::TRANSPARENT,
+        Bgra::BLACK,
+        Bgra::new(1, 2, 3, 4),
+    ] {
+        let document =
+            Document::new_with_background(size(2, 1), background).expect("background document");
+        assert_eq!(document.size(), size(2, 1));
+        assert_eq!(document.layers().len(), 1);
+        assert!(document.active_layer().is_background());
+        assert_eq!(document.active_layer().name(), "Background");
+        assert_eq!(document.active_layer().surface().pixels(), &[background; 2]);
+        assert!(document.selection().is_none());
+    }
+}
+
+#[test]
+fn select_all_and_invert_selection_use_canvas_mask_algebra() {
+    let mut document = Document::new(size(4, 3)).expect("default document");
+    assert!(document.select_all().expect("select all"));
+    assert_eq!(
+        document.selection(),
+        Some(Rect::new(0, 0, 4, 3).expect("canvas rectangle"))
+    );
+    assert!(!document.select_all().expect("select all twice"));
+
+    assert!(
+        document
+            .set_selection(Some(Rect::new(1, 1, 3, 2).expect("inner rectangle")))
+            .expect("inner selection")
+    );
+    assert!(document.invert_selection().expect("invert"));
+    let selection = document.selection_model().expect("inverted selection");
+    assert!(selection.contains_xy(0, 0));
+    assert!(selection.contains_xy(3, 2));
+    assert!(!selection.contains_xy(1, 1));
+    assert!(!selection.contains_xy(2, 1));
+    assert_eq!(
+        document.selection(),
+        Some(Rect::new(0, 0, 4, 3).expect("tight inverted bounds"))
+    );
+
+    assert!(document.invert_selection().expect("invert twice"));
+    let selection = document
+        .selection_model()
+        .expect("double inverted selection");
+    assert!(!selection.contains_xy(0, 0));
+    assert!(selection.contains_xy(1, 1));
+    assert!(selection.contains_xy(2, 1));
+    assert!(!selection.contains_xy(3, 2));
+
+    document.clear_selection().expect("deselect");
+    assert!(
+        !document
+            .invert_selection()
+            .expect("invert without selection")
+    );
+    assert!(document.selection().is_none());
+}

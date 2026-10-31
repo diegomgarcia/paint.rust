@@ -332,6 +332,7 @@ fn switching_tabs_preserves_each_document_path_and_dirty_marker() {
     );
 
     click(&mut harness, "New document");
+    click(&mut harness, "Apply");
     assert_eq!(harness.state().active_document_path(), None);
     assert_eq!(
         harness.state().document_display_titles(),

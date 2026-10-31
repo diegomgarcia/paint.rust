@@ -70,7 +70,15 @@ pub struct Document {
 impl Document {
     /// Creates one active, opaque-white background layer named `Background`.
     pub fn new(size: Size) -> Result<Self, DocumentError> {
-        let surface = Surface::filled(size, Bgra::WHITE)?;
+        Self::new_with_background(size, Bgra::WHITE)
+    }
+
+    /// Creates one active background layer named `Background` filled with `background`.
+    ///
+    /// New Image uses this for every Paint.NET fill choice. Transparent backgrounds keep every
+    /// pixel at zeroed BGRA; the layer still exists so later edits have their usual target.
+    pub fn new_with_background(size: Size, background: Bgra) -> Result<Self, DocumentError> {
+        let surface = Surface::filled(size, background)?;
         let background = Layer::new(LayerId::new(1), "Background", surface).with_background(true);
         Self::from_layers(size, vec![background])
     }
@@ -369,6 +377,50 @@ impl Document {
 
     pub fn clear_selection(&mut self) -> Result<bool, DocumentError> {
         self.set_selection(None)
+    }
+
+    /// Selects the complete canvas as one rectangular selection.
+    ///
+    /// Paint.NET's Edit → Select All replaces the previous selection with the document bounds.
+    /// Selection-only changes do not advance content history or the dirty baseline.
+    pub fn select_all(&mut self) -> Result<bool, DocumentError> {
+        self.set_selection(Some(self.canvas_rect()))
+    }
+
+    /// Replaces the selection with its complement inside the canvas.
+    ///
+    /// Rectangular and mask selections both invert through mask algebra, so a hole in a lasso
+    /// selection becomes selected and the original selected pixels become unselected. Without a
+    /// selection there is nothing to invert and the document is unchanged, matching the disabled
+    /// Invert Selection menu state in Paint.NET.
+    pub fn invert_selection(&mut self) -> Result<bool, DocumentError> {
+        let Some(selection) = self.selection.as_ref() else {
+            return Ok(false);
+        };
+        if selection.is_empty() {
+            return Ok(false);
+        }
+        let canvas = self.canvas_rect();
+        let current = selection
+            .as_canvas_mask(self.size)?
+            .unwrap_or(SelectionMask::empty(canvas)?);
+        let inverted = SelectionMask::full(canvas)?.subtract(&current)?;
+        let canvas_pixels = usize::try_from(canvas.width())
+            .ok()
+            .and_then(|width| {
+                usize::try_from(canvas.height())
+                    .ok()
+                    .and_then(|height| width.checked_mul(height))
+            })
+            .unwrap_or(usize::MAX);
+        let next = inverted.map(|mask| {
+            if mask.bounds() == canvas && mask.selected_count() == canvas_pixels {
+                Selection::rectangle(canvas)
+            } else {
+                Selection::from_mask(mask)
+            }
+        });
+        self.set_selection_shape(next)
     }
 
     pub fn set_layer_name(

@@ -127,7 +127,7 @@ fn command_q_respects_the_dirty_guard() {
     clean.run();
 
     let mut dirty = app();
-    press_command(&mut dirty, Key::I);
+    press_command_shift(&mut dirty, Key::I);
     press_command(&mut dirty, Key::Q);
     focus(&mut dirty, Role::Button, "Cancel");
     press(&mut dirty, Key::Enter);
@@ -162,7 +162,7 @@ fn command_w_respects_the_dirty_guard() {
     clean.run();
 
     let mut dirty = app();
-    press_command(&mut dirty, Key::I);
+    press_command_shift(&mut dirty, Key::I);
     press_command(&mut dirty, Key::W);
     assert!(!dirty.state().close_approved());
     dirty.get_by_role_and_label(Role::Button, "Discard");
@@ -246,6 +246,8 @@ fn tab_enter_space_and_dirty_new_are_keyboard_usable() {
     let before = harness.state().session().snapshot().expect("snapshot");
 
     press_command(&mut harness, Key::N);
+    harness.get_by_role_and_label(Role::Button, "Apply").click();
+    harness.run();
     assert_eq!(harness.state().document_tab_count(), 2);
     assert_eq!(harness.state().active_document_index(), 1);
     assert!(!harness.state().session().dirty());
@@ -275,7 +277,7 @@ fn tab_enter_space_and_dirty_new_are_keyboard_usable() {
 #[test]
 fn keyboard_editing_history_and_text_field_shortcut_isolation() {
     let mut harness = app();
-    press_command(&mut harness, Key::I);
+    press_command_shift(&mut harness, Key::I);
     assert_composed(&harness, Bgra::BLACK);
     assert!(harness.state().session().dirty());
     assert!(harness.state().session().can_undo());
@@ -440,7 +442,7 @@ fn keyboard_open_and_failed_open_recovery_preserve_then_replace_session() {
     let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
     harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
     harness.run();
-    press_command(&mut harness, Key::I);
+    press_command_shift(&mut harness, Key::I);
     let before_document = harness.state().session().document().clone();
     let before = harness.state().session().snapshot().expect("snapshot");
 

@@ -8,7 +8,7 @@ use paint_app::{
     SelectionCombineMode,
 };
 use paint_core::{Bgra, Point, Rect, Size, Surface};
-use paint_document::{BlendMode, Document, LayerId};
+use paint_document::{BlendMode, Document, Layer, LayerId};
 use paint_raster::{
     BrushOptions, GradientOptions, GradientRepeat, GradientType, LevelsChannel, LevelsSettings,
     LineCap, LineDash, LineStyle, MAX_ADJUSTMENT_VALUE, MAX_BLACK_AND_WHITE_WEIGHT,
@@ -229,6 +229,7 @@ pub struct PaintApp {
     active_tab: usize,
     next_layer_number: usize,
     status: String,
+    new_image_dialog: Option<NewImageDialogState>,
     resize_dialog: Option<ResizeImageDialogState>,
     canvas_size_dialog: Option<CanvasSizeDialogState>,
     path_dialog: Option<PathDialog>,
@@ -361,6 +362,7 @@ impl PaintApp {
             active_tab: 0,
             next_layer_number: 1,
             status: "New 800×600 opaque-white document".to_owned(),
+            new_image_dialog: None,
             resize_dialog: None,
             canvas_size_dialog: None,
             path_dialog: None,
@@ -761,24 +763,26 @@ impl PaintApp {
         }
     }
 
-    fn new_tab(&mut self) {
-        self.store_active_tab();
-        self.tabs.push(None);
-        self.active_tab = self.tabs.len() - 1;
-        self.new_document();
-        self.document_title = format!("New Image {}", self.active_tab + 1);
-    }
-
     fn has_dirty_documents(&self) -> bool {
         self.session.dirty() || self.tabs.iter().flatten().any(|tab| tab.session.dirty())
     }
 
     fn new_document(&mut self) {
+        self.new_document_with_session(
+            default_session(),
+            "New Image".to_owned(),
+            "New 800×600 opaque-white document".to_owned(),
+        );
+    }
+
+    /// Installs a fresh session in the active tab slot and resets all per-document UI state.
+    fn new_document_with_session(&mut self, session: AppSession, title: String, status: String) {
         self.close_effect_preview();
-        self.session = default_session();
+        self.session = session;
         self.selection_input = SelectionInput::default();
         self.next_layer_number = 1;
         self.path_dialog = None;
+        self.new_image_dialog = None;
         self.resize_dialog = None;
         self.canvas_size_dialog = None;
         self.pending_discard = None;
@@ -793,11 +797,36 @@ impl PaintApp {
         self.history_entries = vec!["New Image".to_owned()];
         self.redo_entries.clear();
         self.reset_transient_tool_state();
-        self.document_title = "New Image".to_owned();
+        self.document_title = title;
         self.document_path = None;
         self.document_thumbnail = None;
-        self.status = "New 800×600 opaque-white document".to_owned();
+        self.status = status;
         self.reset_layer_interaction_state();
+    }
+
+    /// Creates a new tab from the New Image dialog using the chosen size and background.
+    fn create_new_document(&mut self, size: Size, background: Bgra) {
+        self.finalize_floating_selection();
+        self.store_active_tab();
+        self.tabs.push(None);
+        self.active_tab = self.tabs.len() - 1;
+        let title = format!("New Image {}", self.active_tab + 1);
+        let status = format!(
+            "New {}×{} {} document",
+            size.width(),
+            size.height(),
+            background_label(background)
+        );
+        let session = AppSession::new(
+            Document::new_with_background(size, background)
+                .expect("validated New Image size and background"),
+        );
+        self.new_document_with_session(session, title, status);
+    }
+
+    fn show_new_image_dialog(&mut self) {
+        self.finalize_floating_selection();
+        self.new_image_dialog = Some(NewImageDialogState::new());
     }
 
     fn show_path_dialog(&mut self, kind: PathDialogKind) {
@@ -857,8 +886,7 @@ impl PaintApp {
     }
 
     fn request_new(&mut self) {
-        self.finalize_floating_selection();
-        self.new_tab();
+        self.show_new_image_dialog();
     }
 
     fn request_quit(&mut self, context: &egui::Context) {
@@ -1390,26 +1418,24 @@ impl PaintApp {
         }
     }
 
-    fn paste_clipboard(&mut self, context: &egui::Context) -> bool {
-        self.finish_active_preview();
-        self.finalize_floating_selection();
-        let mut content = self.clipboard.clone();
-        if content.is_none()
-            && let Some(surface) = external_clipboard_surface(context)
-        {
-            let bounds = Rect::from_size(surface.size());
-            match ClipboardContent::new(surface, bounds) {
-                Ok(imported) => content = Some(imported),
-                Err(error) => {
-                    self.status = format!("Could not import the clipboard image: {error}");
-                    return false;
-                }
-            }
+    fn clipboard_content(
+        &self,
+        context: &egui::Context,
+    ) -> Result<Option<ClipboardContent>, String> {
+        if let Some(content) = self.clipboard.clone() {
+            return Ok(Some(content));
         }
-        let Some(content) = content else {
-            self.status = "The clipboard does not contain an image".to_owned();
-            return false;
+        let Some(surface) = external_clipboard_surface(context) else {
+            return Ok(None);
         };
+        let bounds = Rect::from_size(surface.size());
+        ClipboardContent::new(surface, bounds)
+            .map(Some)
+            .map_err(|error| format!("Could not import the clipboard image: {error}"))
+    }
+
+    /// Installs clipboard content as a floating paste over the current active layer.
+    fn begin_floating_paste(&mut self, context: &egui::Context, content: ClipboardContent) -> bool {
         let (dest_x, dest_y) = content.destination(self.session.document().size());
         let selection = match content.selection_at(dest_x, dest_y) {
             Ok(selection) => selection,
@@ -1446,7 +1472,122 @@ impl PaintApp {
         });
         self.active_tool = Tool::Move;
         self.texture_dirty = true;
+        true
+    }
+
+    fn paste_clipboard(&mut self, context: &egui::Context) -> bool {
+        self.finish_active_preview();
+        self.finalize_floating_selection();
+        let content = match self.clipboard_content(context) {
+            Ok(Some(content)) => content,
+            Ok(None) => {
+                self.status = "The clipboard does not contain an image".to_owned();
+                return false;
+            }
+            Err(error) => {
+                self.status = error;
+                return false;
+            }
+        };
+        if !self.begin_floating_paste(context, content) {
+            return false;
+        }
         self.status = "Pasted pixels; drag to place them or press Finish".to_owned();
+        true
+    }
+
+    /// Pastes clipboard pixels into a new transparent layer of the active document.
+    ///
+    /// This mirrors Paint.NET's Paste Into New Layer: one Add New Layer history step, then the
+    /// pasted pixels stay floating so they can be positioned before Finish commits them.
+    fn paste_into_new_layer(&mut self, context: &egui::Context) -> bool {
+        self.finish_active_preview();
+        self.finalize_floating_selection();
+        let content = match self.clipboard_content(context) {
+            Ok(Some(content)) => content,
+            Ok(None) => {
+                self.status = "The clipboard does not contain an image".to_owned();
+                return false;
+            }
+            Err(error) => {
+                self.status = error;
+                return false;
+            }
+        };
+        let number = self.next_layer_number;
+        let name = format!("Layer {number}");
+        if !self.execute(
+            Command::AddLayer {
+                name: name.clone(),
+                opacity: u8::MAX,
+                visible: true,
+            },
+            format!("Added {name}"),
+        ) {
+            return false;
+        }
+        self.next_layer_number = self.next_layer_number.saturating_add(1);
+        if !self.begin_floating_paste(context, content) {
+            return false;
+        }
+        self.status = format!("Pasted pixels into {name}; drag to place them or press Finish");
+        true
+    }
+
+    /// Creates a new image sized to the clipboard bounds and fills it with the clipboard pixels.
+    fn paste_into_new_image(&mut self, context: &egui::Context) -> bool {
+        self.finish_active_preview();
+        self.finalize_floating_selection();
+        let content = match self.clipboard_content(context) {
+            Ok(Some(content)) => content,
+            Ok(None) => {
+                self.status = "The clipboard does not contain an image".to_owned();
+                return false;
+            }
+            Err(error) => {
+                self.status = error;
+                return false;
+            }
+        };
+        let bounds = content.bounds();
+        let size = bounds.size();
+        let limits = self.session.limits();
+        let pixels = u64::from(size.width()) * u64::from(size.height());
+        if size.width() > limits.max_width
+            || size.height() > limits.max_height
+            || pixels > limits.max_pixels
+        {
+            self.status = format!(
+                "Cannot create a {}×{} image; the maximum is {}×{} and {} pixels",
+                size.width(),
+                size.height(),
+                limits.max_width,
+                limits.max_height,
+                limits.max_pixels
+            );
+            return false;
+        }
+        let layer = Layer::new(LayerId::new(1), "Pasted Image", content.surface().clone())
+            .with_background(true);
+        let document = match Document::from_layers(size, vec![layer]) {
+            Ok(document) => document,
+            Err(error) => {
+                self.status = format!("Could not create the pasted image: {error}");
+                return false;
+            }
+        };
+        self.store_active_tab();
+        self.tabs.push(None);
+        self.active_tab = self.tabs.len() - 1;
+        let title = format!("Pasted Image {}", self.active_tab + 1);
+        let status = format!(
+            "Pasted clipboard pixels into a new {}×{} image",
+            size.width(),
+            size.height()
+        );
+        self.new_document_with_session(AppSession::new(document), title, status);
+        self.history_entries = vec!["Paste Into New Image".to_owned()];
+        self.fit_canvas_requested = true;
         true
     }
 
@@ -1629,6 +1770,38 @@ impl PaintApp {
                         self.paste_clipboard(context);
                     }
                 }
+                NativeCommand::PasteIntoNewLayer => {
+                    if !context.text_edit_focused() {
+                        self.paste_into_new_layer(context);
+                    }
+                }
+                NativeCommand::PasteIntoNewImage => {
+                    if !context.text_edit_focused() {
+                        self.paste_into_new_image(context);
+                    }
+                }
+                NativeCommand::EraseSelection => {
+                    if !context.text_edit_focused() && self.has_selection() {
+                        self.execute(Command::EraseSelection, "Erased the selected pixels");
+                    }
+                }
+                NativeCommand::FillSelection => {
+                    if !context.text_edit_focused() && self.has_selection() {
+                        let color = self.fill_color;
+                        self.execute(
+                            Command::FillSelection(color),
+                            "Filled the selection with the primary color",
+                        );
+                    }
+                }
+                NativeCommand::InvertSelection => {
+                    if self.has_selection() {
+                        self.execute(Command::InvertSelection, "Inverted the selection");
+                    }
+                }
+                NativeCommand::SelectAll => {
+                    self.execute(Command::SelectAll, "Selected the whole canvas");
+                }
                 NativeCommand::Deselect => {
                     self.execute(Command::ClearSelection, "Selection cleared");
                 }
@@ -1770,7 +1943,7 @@ impl PaintApp {
                     let new_response = ui.button("New");
                     focus_first_menu_item_on_keyboard_open(ui, &new_response);
                     if new_response.clicked() {
-                        self.request_new();
+                        self.show_new_image_dialog();
                         ui.close();
                     }
                     if ui.button("Open PNG…").clicked() {
@@ -1779,7 +1952,10 @@ impl PaintApp {
                     }
                     ui.separator();
                     if ui
-                        .add_enabled(self.can_save(), egui::Button::new("Save"))
+                        .add_enabled(
+                            self.can_save(),
+                            egui::Button::new("Save"),
+                        )
                         .clicked()
                     {
                         self.save_active_document();
@@ -1805,22 +1981,33 @@ impl PaintApp {
                     }
                 });
                 ui.menu_button("Edit", |ui| {
-                    let undo = ui.add_enabled(self.session.can_undo(), egui::Button::new("Undo"));
+                    let undo = ui.add_enabled(
+                        self.session.can_undo(),
+                        egui::Button::new("Undo"),
+                    );
                     focus_first_menu_item_on_keyboard_open(ui, &undo);
                     if undo.clicked() {
                         self.execute(Command::Undo, "Undid the last edit");
                         ui.close();
                     }
                     if ui
-                        .add_enabled(self.session.can_redo(), egui::Button::new("Redo"))
+                        .add_enabled(
+                            self.session.can_redo(),
+                            egui::Button::new("Redo"),
+                        )
                         .clicked()
                     {
                         self.execute(Command::Redo, "Redid the next edit");
                         ui.close();
                     }
                     ui.separator();
+                    let has_selection = self.has_selection();
+                    let has_clipboard = self.clipboard.is_some();
                     if ui
-                        .add_enabled(self.has_selection(), egui::Button::new("Cut"))
+                        .add_enabled(
+                            has_selection,
+                            egui::Button::new("Cut"),
+                        )
                         .on_hover_text("Copy the selected pixels and erase them")
                         .clicked()
                     {
@@ -1836,17 +2023,86 @@ impl PaintApp {
                         ui.close();
                     }
                     if ui
-                        .add_enabled(self.clipboard.is_some(), egui::Button::new("Paste"))
+                        .add_enabled(
+                            has_clipboard,
+                            egui::Button::new("Paste"),
+                        )
                         .on_hover_text("Paste clipboard pixels as a floating selection")
                         .clicked()
                     {
                         self.paste_clipboard(ui.ctx());
                         ui.close();
                     }
+                    if ui
+                        .add_enabled(
+                            has_clipboard,
+                            egui::Button::new("Paste Into New Layer"),
+                        )
+                        .on_hover_text(
+                            "Paste clipboard pixels into a new layer of the active document",
+                        )
+                        .clicked()
+                    {
+                        self.paste_into_new_layer(ui.ctx());
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            has_clipboard,
+                            egui::Button::new("Paste Into New Image"),
+                        )
+                        .on_hover_text("Create a new image sized to the clipboard pixels")
+                        .clicked()
+                    {
+                        self.paste_into_new_image(ui.ctx());
+                        ui.close();
+                    }
                     ui.separator();
                     if ui
                         .add_enabled(
-                            self.session.document().selection().is_some(),
+                            has_selection,
+                            egui::Button::new("Erase Selection"),
+                        )
+                        .on_hover_text("Erase the selected pixels and deselect")
+                        .clicked()
+                    {
+                        self.execute(Command::EraseSelection, "Erased the selected pixels");
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            has_selection,
+                            egui::Button::new("Fill Selection"),
+                        )
+                        .on_hover_text(
+                            "Fill the selection with the primary color; Shift+Backspace uses the secondary color",
+                        )
+                        .clicked()
+                    {
+                        let color = self.fill_color;
+                        self.execute(
+                            Command::FillSelection(color),
+                            "Filled the selection with the primary color",
+                        );
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            has_selection,
+                            egui::Button::new("Invert Selection"),
+                        )
+                        .clicked()
+                    {
+                        self.execute(Command::InvertSelection, "Inverted the selection");
+                        ui.close();
+                    }
+                    if ui.button("Select All").clicked() {
+                        self.execute(Command::SelectAll, "Selected the whole canvas");
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            has_selection,
                             egui::Button::new("Deselect"),
                         )
                         .clicked()
@@ -2267,7 +2523,10 @@ impl PaintApp {
                     ui.separator();
                     ui.label("Keyboard shortcuts (Cmd/Ctrl):");
                     ui.label("N New | O Open | S Save | Shift+S Save As | Shift+E Export");
-                    ui.label("I Invert | F Fill | R Rectangle selection");
+                    ui.label("A Select All | D Deselect | I Invert Selection | Shift+I Invert Colors");
+                    ui.label("Delete Erase Selection | Backspace Fill Selection | Shift+Backspace Secondary");
+                    ui.label("V Paste | Shift+V Paste Into New Layer | Alt+V Paste Into New Image");
+                    ui.label("F Fill layer | R Rectangle selection");
                     ui.label("Layers menu flips the complete active layer");
                     ui.label("Shift+L Add layer | Z Undo | Shift+Z Redo");
                     ui.separator();
@@ -4108,8 +4367,96 @@ impl PaintApp {
     }
 
     fn image_size_dialogs(&mut self, context: &egui::Context) {
+        self.new_image_dialog(context);
         self.resize_image_dialog(context);
         self.canvas_size_dialog(context);
+    }
+
+    fn new_image_dialog(&mut self, context: &egui::Context) {
+        let Some(mut dialog) = self.new_image_dialog.take() else {
+            return;
+        };
+        let limits = self.session.limits();
+        let mut apply = false;
+        let mut cancel =
+            context.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        let mut open = true;
+        egui::Window::new("New Image")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(320.0)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(context, |ui| {
+                ui.label("Create a new image in its own document tab.");
+                ui.separator();
+                ui.horizontal(|ui| {
+                    let label = ui.label("New image width");
+                    ui.add(egui::TextEdit::singleline(&mut dialog.width).desired_width(72.0))
+                        .labelled_by(label.id);
+                    ui.label("pixels");
+                });
+                ui.horizontal(|ui| {
+                    let label = ui.label("New image height");
+                    ui.add(egui::TextEdit::singleline(&mut dialog.height).desired_width(72.0))
+                        .labelled_by(label.id);
+                    ui.label("pixels");
+                });
+                ui.separator();
+                ui.strong("Background");
+                ui.horizontal_wrapped(|ui| {
+                    for (background, label) in NEW_IMAGE_BACKGROUNDS {
+                        ui.radio_value(&mut dialog.background, background, label);
+                    }
+                });
+                let validated = dialog.validated_size(limits);
+                ui.separator();
+                match &validated {
+                    Ok(size) => {
+                        ui.label(format!(
+                            "New image: {} × {} pixels, {} background",
+                            size.width(),
+                            size.height(),
+                            background_label(
+                                dialog
+                                    .background
+                                    .color(self.fill_color, self.secondary_color)
+                            )
+                        ));
+                    }
+                    Err(error) => {
+                        ui.colored_label(egui::Color32::LIGHT_RED, format!("Error: {error}"));
+                    }
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(validated.is_ok(), egui::Button::new("Apply"))
+                        .clicked()
+                    {
+                        apply = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if cancel || !open {
+            self.status = "New Image canceled".to_owned();
+            return;
+        }
+        if !apply {
+            self.new_image_dialog = Some(dialog);
+            return;
+        }
+        let Ok(size) = dialog.validated_size(limits) else {
+            self.new_image_dialog = Some(dialog);
+            return;
+        };
+        let background = dialog
+            .background
+            .color(self.fill_color, self.secondary_color);
+        self.create_new_document(size, background);
     }
 
     fn resize_image_dialog(&mut self, context: &egui::Context) {
@@ -5411,6 +5758,7 @@ impl PaintApp {
 
     fn handle_keyboard_shortcuts(&mut self, context: &egui::Context) {
         if self.path_dialog.is_some()
+            || self.new_image_dialog.is_some()
             || self.resize_dialog.is_some()
             || self.canvas_size_dialog.is_some()
             || self.pending_discard.is_some()
@@ -5431,12 +5779,17 @@ impl PaintApp {
         let command_shift = command | egui::Modifiers::SHIFT;
         let command_alt = command | egui::Modifiers::ALT;
 
-        // Paint.NET reserves these for Copy Merged and Paste Into New Layer/Image, which are not
-        // implemented here; consume them so a plain Copy/Paste does not run instead.
-        if shortcut_pressed(context, command_shift, egui::Key::C)
-            || shortcut_pressed(context, command_shift, egui::Key::V)
-            || shortcut_pressed(context, command_alt, egui::Key::V)
-        {
+        // Paint.NET reserves Ctrl+Shift+C for Copy Merged, which is not implemented here; consume
+        // it so a plain Copy does not run instead.
+        if shortcut_pressed(context, command_shift, egui::Key::C) {
+            return;
+        }
+        if shortcut_pressed(context, command_shift, egui::Key::V) {
+            self.paste_into_new_layer(context);
+            return;
+        }
+        if shortcut_pressed(context, command_alt, egui::Key::V) {
+            self.paste_into_new_image(context);
             return;
         }
         if shortcut_pressed(context, command, egui::Key::C) {
@@ -5449,6 +5802,36 @@ impl PaintApp {
         }
         if shortcut_pressed(context, command, egui::Key::V) {
             self.paste_clipboard(context);
+            return;
+        }
+
+        if context
+            .input_mut(|input| input.consume_key(egui::Modifiers::SHIFT, egui::Key::Backspace))
+        {
+            if self.has_selection() {
+                let color = self.secondary_color;
+                self.execute(
+                    Command::FillSelection(color),
+                    "Filled the selection with the secondary color",
+                );
+            }
+            return;
+        }
+        if context.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Backspace))
+        {
+            if self.has_selection() {
+                let color = self.fill_color;
+                self.execute(
+                    Command::FillSelection(color),
+                    "Filled the selection with the primary color",
+                );
+            }
+            return;
+        }
+        if context.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Delete)) {
+            if self.has_selection() {
+                self.execute(Command::EraseSelection, "Erased the selected pixels");
+            }
             return;
         }
 
@@ -5482,6 +5865,10 @@ impl PaintApp {
             self.add_layer();
             return;
         }
+        if shortcut_pressed(context, command_shift, egui::Key::I) {
+            self.execute(Command::Invert, "Inverted colors on the active layer");
+            return;
+        }
         if shortcut_pressed(context, command, egui::Key::N) {
             self.request_new();
             return;
@@ -5491,7 +5878,13 @@ impl PaintApp {
             return;
         }
         if shortcut_pressed(context, command, egui::Key::I) {
-            self.execute(Command::Invert, "Inverted colors on the active layer");
+            if self.has_selection() {
+                self.execute(Command::InvertSelection, "Inverted the selection");
+            }
+            return;
+        }
+        if shortcut_pressed(context, command, egui::Key::A) {
+            self.execute(Command::SelectAll, "Selected the whole canvas");
             return;
         }
         if shortcut_pressed(context, command, egui::Key::R) {
@@ -5504,7 +5897,7 @@ impl PaintApp {
             return;
         }
         if shortcut_pressed(context, command, egui::Key::D) {
-            if self.session.document().selection().is_some() {
+            if self.has_selection() {
                 self.execute(Command::ClearSelection, "Selection cleared");
             }
             return;
@@ -6184,6 +6577,46 @@ impl EffectDialog {
     }
 }
 
+struct NewImageDialogState {
+    width: String,
+    height: String,
+    background: CanvasFill,
+}
+
+impl NewImageDialogState {
+    fn new() -> Self {
+        Self {
+            width: DEFAULT_WIDTH.to_string(),
+            height: DEFAULT_HEIGHT.to_string(),
+            background: CanvasFill::White,
+        }
+    }
+
+    fn validated_size(&self, limits: ResourceLimits) -> Result<Size, String> {
+        let width = parse_dimension(&self.width, "New image width")?;
+        let height = parse_dimension(&self.height, "New image height")?;
+        let size = Size::new(width, height)
+            .map_err(|_| "Width and height must be at least 1 pixel".to_owned())?;
+        if size.width() > limits.max_width || size.height() > limits.max_height {
+            return Err(format!(
+                "New image {}×{} exceeds the maximum {}×{}",
+                size.width(),
+                size.height(),
+                limits.max_width,
+                limits.max_height
+            ));
+        }
+        let pixels = u64::from(size.width()) * u64::from(size.height());
+        if pixels > limits.max_pixels {
+            return Err(format!(
+                "New image needs {pixels} pixels; the maximum is {}",
+                limits.max_pixels
+            ));
+        }
+        Ok(size)
+    }
+}
+
 struct ResizeImageDialogState {
     fields: SizeFields,
 }
@@ -6221,6 +6654,18 @@ enum CanvasFill {
     Secondary,
 }
 
+impl CanvasFill {
+    const fn color(self, primary: Bgra, secondary: Bgra) -> Bgra {
+        match self {
+            Self::Transparent => Bgra::TRANSPARENT,
+            Self::White => Bgra::WHITE,
+            Self::Black => Bgra::BLACK,
+            Self::Primary => primary,
+            Self::Secondary => secondary,
+        }
+    }
+}
+
 const CANVAS_FILLS: [(CanvasFill, &str); 5] = [
     (CanvasFill::Transparent, "Fill: transparent"),
     (CanvasFill::White, "Fill: white"),
@@ -6228,6 +6673,24 @@ const CANVAS_FILLS: [(CanvasFill, &str); 5] = [
     (CanvasFill::Primary, "Fill: primary color"),
     (CanvasFill::Secondary, "Fill: secondary color"),
 ];
+
+/// Paint.NET's `CanvasSizeFillColor` order, used by the New Image background selector.
+const NEW_IMAGE_BACKGROUNDS: [(CanvasFill, &str); 5] = [
+    (CanvasFill::Transparent, "Background: transparent"),
+    (CanvasFill::Primary, "Background: primary color"),
+    (CanvasFill::Secondary, "Background: secondary color"),
+    (CanvasFill::White, "Background: white"),
+    (CanvasFill::Black, "Background: black"),
+];
+
+const fn background_label(fill: Bgra) -> &'static str {
+    match fill {
+        Bgra::TRANSPARENT => "transparent",
+        Bgra::WHITE => "opaque-white",
+        Bgra::BLACK => "opaque-black",
+        _ => "primary-color",
+    }
+}
 
 const fn canvas_anchor_label(anchor: CanvasAnchor) -> &'static str {
     match anchor {
@@ -6674,6 +7137,8 @@ fn window_close_button(ui: &mut egui::Ui, label: &'static str) -> bool {
 fn history_label(command: &Command) -> Option<String> {
     match command {
         Command::Fill(_) | Command::FloodFill { .. } => Some("Paint Bucket".to_owned()),
+        Command::FillSelection(_) => Some("Fill Selection".to_owned()),
+        Command::EraseSelection => Some("Erase Selection".to_owned()),
         Command::Stroke { label, .. } | Command::StrokeLine { label, .. } => {
             Some((*label).to_owned())
         }
@@ -6718,6 +7183,8 @@ fn history_label(command: &Command) -> Option<String> {
         | Command::SelectMagicWand { .. }
         | Command::TranslateSelection { .. }
         | Command::ClearSelection
+        | Command::SelectAll
+        | Command::InvertSelection
         | Command::SetActiveLayer { .. }
         | Command::Undo
         | Command::Redo => None,

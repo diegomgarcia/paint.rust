@@ -634,3 +634,182 @@ fn magic_wand_image_sampling_uses_the_composed_surface() {
     assert!(!session.dirty());
     assert!(!session.can_undo());
 }
+
+#[test]
+fn select_all_and_invert_selection_are_selection_only_commands() {
+    let mut session = session_with_color(8, 6, Bgra::WHITE);
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+
+    assert!(session.execute(Command::SelectAll).expect("select all"));
+    assert_eq!(
+        session.document().selection(),
+        Some(rect(0, 0, 8, 6)),
+        "Select All covers the complete canvas"
+    );
+    assert!(
+        !session.dirty(),
+        "selection changes never dirty the document"
+    );
+    assert!(
+        !session.can_undo(),
+        "selection changes stay out of content history"
+    );
+
+    assert!(
+        session
+            .execute(Command::SelectRect {
+                rect: rect(2, 1, 5, 4),
+                mode: SelectionCombineMode::Replace,
+            })
+            .expect("inner rectangle")
+    );
+    assert!(session.execute(Command::InvertSelection).expect("invert"));
+    let inverted = session
+        .document()
+        .selection_model()
+        .expect("inverted selection");
+    assert!(inverted.contains_xy(0, 0));
+    assert!(inverted.contains_xy(7, 5));
+    assert!(!inverted.contains_xy(2, 1));
+    assert!(!inverted.contains_xy(4, 3));
+    assert!(!session.dirty());
+    assert!(!session.can_undo());
+    assert!(
+        session
+            .execute(Command::InvertSelection)
+            .expect("invert again")
+    );
+    let restored = session
+        .document()
+        .selection_model()
+        .expect("double inverted selection");
+    assert!(!restored.contains_xy(0, 0));
+    assert!(restored.contains_xy(2, 1));
+    assert!(restored.contains_xy(4, 3));
+
+    assert!(session.execute(Command::ClearSelection).expect("deselect"));
+    assert!(
+        !session
+            .execute(Command::InvertSelection)
+            .expect("nothing to invert")
+    );
+    assert!(
+        session
+            .execute(Command::SelectAll)
+            .expect("select all again"),
+        "Select All remains available without a previous selection"
+    );
+}
+
+#[test]
+fn invert_selection_complements_lasso_masks_and_clips_to_the_canvas() {
+    let mut session = session_with_color(6, 6, Bgra::WHITE);
+    session
+        .execute(Command::SelectLasso {
+            points: vec![Point::new(1, 1), Point::new(5, 1), Point::new(5, 5)],
+            mode: SelectionCombineMode::Replace,
+        })
+        .expect("lasso selection");
+    assert!(session.document().selection_mask().is_some());
+
+    assert!(session.execute(Command::InvertSelection).expect("invert"));
+    let selection = session.document().selection_model().expect("inverted mask");
+    assert!(
+        selection.mask().is_some(),
+        "the lasso complement stays a mask"
+    );
+    assert!(selection.contains_xy(0, 0));
+    assert!(selection.contains_xy(5, 5));
+    assert!(!selection.contains_xy(2, 2));
+    assert_eq!(
+        selection.bounds(),
+        rect(0, 0, 6, 6),
+        "the complement is clipped to the canvas"
+    );
+}
+
+#[test]
+fn erase_selection_clears_pixels_and_selection_then_undo_restores_both() {
+    let mut session = session_with_color(6, 4, Bgra::WHITE);
+    session
+        .execute(Command::SelectRect {
+            rect: rect(1, 1, 4, 3),
+            mode: SelectionCombineMode::Replace,
+        })
+        .expect("selection");
+    session
+        .execute(Command::FillSelection(Bgra::BLACK))
+        .expect("fill selection");
+    assert_eq!(pixel(&session, 2, 2), Bgra::BLACK);
+    assert!(session.can_undo());
+
+    assert!(
+        session
+            .execute(Command::EraseSelection)
+            .expect("erase selection")
+    );
+    assert_eq!(pixel(&session, 2, 2), Bgra::TRANSPARENT);
+    assert_eq!(pixel(&session, 0, 0), Bgra::WHITE);
+    assert!(
+        session.document().selection().is_none(),
+        "Erase Selection deselects like Paint.NET"
+    );
+
+    assert!(session.execute(Command::Undo).expect("undo erase"));
+    assert_eq!(pixel(&session, 2, 2), Bgra::BLACK);
+    assert_eq!(
+        session.document().selection(),
+        Some(rect(1, 1, 4, 3)),
+        "undo restores the selection with the pixels"
+    );
+}
+
+#[test]
+fn erase_selection_without_a_selection_is_a_no_op_without_history() {
+    let mut session = session_with_color(4, 4, Bgra::WHITE);
+    assert!(
+        !session
+            .execute(Command::EraseSelection)
+            .expect("no selection")
+    );
+    assert!(!session.can_undo());
+    assert!(!session.dirty());
+    assert_eq!(pixel(&session, 0, 0), Bgra::WHITE);
+}
+
+#[test]
+fn fill_selection_requires_a_selection_and_is_undoable() {
+    let mut session = session_with_color(5, 5, Bgra::WHITE);
+    assert!(
+        !session
+            .execute(Command::FillSelection(Bgra::BLACK))
+            .expect("fill without selection")
+    );
+    assert!(!session.can_undo());
+    assert_eq!(pixel(&session, 0, 0), Bgra::WHITE);
+
+    session
+        .execute(Command::SelectRect {
+            rect: rect(1, 1, 3, 3),
+            mode: SelectionCombineMode::Replace,
+        })
+        .expect("selection");
+    assert!(
+        session
+            .execute(Command::FillSelection(Bgra::BLACK))
+            .expect("fill selection")
+    );
+    assert_eq!(pixel(&session, 1, 1), Bgra::BLACK);
+    assert_eq!(pixel(&session, 2, 2), Bgra::BLACK);
+    assert_eq!(pixel(&session, 0, 0), Bgra::WHITE);
+    assert_eq!(pixel(&session, 4, 4), Bgra::WHITE);
+
+    assert!(session.execute(Command::Undo).expect("undo fill"));
+    assert_eq!(pixel(&session, 1, 1), Bgra::WHITE);
+    assert_eq!(
+        session.document().selection(),
+        Some(rect(1, 1, 3, 3)),
+        "Fill Selection leaves the selection installed"
+    );
+}

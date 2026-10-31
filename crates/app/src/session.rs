@@ -130,6 +130,10 @@ impl AppSession {
             } => self.select_magic_wand(point, tolerance, global, sampling, mode),
             Command::TranslateSelection { dx, dy } => self.translate_selection(dx, dy),
             Command::ClearSelection => self.clear_selection(),
+            Command::SelectAll => self.select_all(),
+            Command::InvertSelection => self.invert_selection(),
+            Command::EraseSelection => self.erase_selection(),
+            Command::FillSelection(color) => self.fill_selection(color),
             Command::Fill(color) => self.fill(color),
             Command::Stroke {
                 label: _,
@@ -322,6 +326,68 @@ impl AppSession {
 
     pub fn clear_selection(&mut self) -> Result<bool, SessionError> {
         Ok(self.document.clear_selection()?)
+    }
+
+    /// Selects the complete canvas without entering content history or dirtying the document.
+    pub fn select_all(&mut self) -> Result<bool, SessionError> {
+        Ok(self.document.select_all()?)
+    }
+
+    /// Complements the current selection inside the canvas, preserving its mask shape.
+    pub fn invert_selection(&mut self) -> Result<bool, SessionError> {
+        Ok(self.document.invert_selection()?)
+    }
+
+    /// Erases the selected pixels to transparent and clears the selection as one undo step.
+    ///
+    /// Paint.NET's Erase Selection is Fill Selection with transparent pixels followed by a
+    /// deselect. Both sides ride on [`Mutation::PixelsWithSelection`] so Undo restores the erased
+    /// pixels and the pre-erase selection together.
+    pub fn erase_selection(&mut self) -> Result<bool, SessionError> {
+        let Some(selection) = self
+            .document
+            .selection_model()
+            .cloned()
+            .filter(|selection| !selection.is_empty())
+        else {
+            return Ok(false);
+        };
+        let patch = match paint_raster::fill(
+            &self.document,
+            self.document.active_layer_id(),
+            Bgra::TRANSPARENT,
+        )? {
+            Some(patch) => patch,
+            None => {
+                // A fully transparent selection still deselects as one history entry; the equal
+                // before/after patch carries the undo step and restores the selection.
+                let Some(bounds) = selection.bounds().clip_to(self.document.size()) else {
+                    return Ok(self.document.clear_selection()?);
+                };
+                let layer = self.document.active_layer();
+                let before = layer.surface().read_region(bounds)?;
+                PixelPatch::new(layer.id(), layer.revision(), bounds, before.clone(), before)
+                    .map_err(DocumentError::from)?
+            }
+        };
+        let mutation = Mutation::PixelsWithSelection {
+            patch,
+            before_selection: Some(selection),
+            after_selection: None,
+        };
+        self.apply_new_mutation(mutation)
+    }
+
+    /// Fills only a non-empty selection, keeping the selection active for later edits.
+    pub fn fill_selection(&mut self, color: Bgra) -> Result<bool, SessionError> {
+        if self
+            .document
+            .selection_model()
+            .is_none_or(Selection::is_empty)
+        {
+            return Ok(false);
+        }
+        self.fill(color)
     }
 
     pub fn fill(&mut self, color: Bgra) -> Result<bool, SessionError> {

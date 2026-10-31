@@ -23,6 +23,12 @@ pub(crate) enum NativeCommand {
     Cut,
     Copy,
     Paste,
+    PasteIntoNewLayer,
+    PasteIntoNewImage,
+    EraseSelection,
+    FillSelection,
+    InvertSelection,
+    SelectAll,
     Deselect,
     ZoomIn,
     ZoomOut,
@@ -68,6 +74,12 @@ impl NativeCommand {
             "edit.cut" => Self::Cut,
             "edit.copy" => Self::Copy,
             "edit.paste" => Self::Paste,
+            "edit.paste_into_new_layer" => Self::PasteIntoNewLayer,
+            "edit.paste_into_new_image" => Self::PasteIntoNewImage,
+            "edit.erase_selection" => Self::EraseSelection,
+            "edit.fill_selection" => Self::FillSelection,
+            "edit.invert_selection" => Self::InvertSelection,
+            "edit.select_all" => Self::SelectAll,
             "edit.deselect" => Self::Deselect,
             "view.zoom_in" => Self::ZoomIn,
             "view.zoom_out" => Self::ZoomOut,
@@ -125,6 +137,12 @@ pub(crate) struct NativeMenu {
     cut: MenuItem,
     copy: MenuItem,
     paste: MenuItem,
+    paste_into_new_layer: MenuItem,
+    paste_into_new_image: MenuItem,
+    erase_selection: MenuItem,
+    fill_selection: MenuItem,
+    invert_selection: MenuItem,
+    select_all: MenuItem,
     deselect: MenuItem,
     tools: CheckMenuItem,
     colors: CheckMenuItem,
@@ -226,6 +244,48 @@ impl NativeMenu {
             false,
             Some(Accelerator::new(Modifiers::META, Code::KeyV)),
         );
+        let paste_into_new_layer = MenuItem::with_id(
+            "edit.paste_into_new_layer",
+            "Paste Into New Layer",
+            false,
+            Some(Accelerator::new(
+                Modifiers::META | Modifiers::SHIFT,
+                Code::KeyV,
+            )),
+        );
+        let paste_into_new_image = MenuItem::with_id(
+            "edit.paste_into_new_image",
+            "Paste Into New Image",
+            false,
+            Some(Accelerator::new(
+                Modifiers::META | Modifiers::ALT,
+                Code::KeyV,
+            )),
+        );
+        let erase_selection = MenuItem::with_id(
+            "edit.erase_selection",
+            "Erase Selection",
+            false,
+            Some(Accelerator::new(Modifiers::empty(), Code::Delete)),
+        );
+        let fill_selection = MenuItem::with_id(
+            "edit.fill_selection",
+            "Fill Selection",
+            false,
+            Some(Accelerator::new(Modifiers::empty(), Code::Backspace)),
+        );
+        let invert_selection = MenuItem::with_id(
+            "edit.invert_selection",
+            "Invert Selection",
+            false,
+            Some(Accelerator::new(Modifiers::META, Code::KeyI)),
+        );
+        let select_all = MenuItem::with_id(
+            "edit.select_all",
+            "Select All",
+            true,
+            Some(Accelerator::new(Modifiers::META, Code::KeyA)),
+        );
         let deselect = MenuItem::with_id(
             "edit.deselect",
             "Deselect",
@@ -239,7 +299,13 @@ impl NativeMenu {
             &cut,
             &copy,
             &paste,
+            &paste_into_new_layer,
+            &paste_into_new_image,
             &PredefinedMenuItem::separator(),
+            &erase_selection,
+            &fill_selection,
+            &invert_selection,
+            &select_all,
             &deselect,
         ])
         .ok()?;
@@ -464,6 +530,12 @@ impl NativeMenu {
             cut,
             copy,
             paste,
+            paste_into_new_layer,
+            paste_into_new_image,
+            erase_selection,
+            fill_selection,
+            invert_selection,
+            select_all,
             deselect,
             tools,
             colors,
@@ -492,6 +564,16 @@ impl NativeMenu {
         self.copy.set_enabled(!state.text_focus);
         self.paste
             .set_enabled(!state.text_focus && state.has_clipboard);
+        self.paste_into_new_layer
+            .set_enabled(!state.text_focus && state.has_clipboard);
+        self.paste_into_new_image
+            .set_enabled(!state.text_focus && state.has_clipboard);
+        self.erase_selection
+            .set_enabled(!state.text_focus && state.has_selection);
+        self.fill_selection
+            .set_enabled(!state.text_focus && state.has_selection);
+        self.invert_selection.set_enabled(state.has_selection);
+        self.select_all.set_enabled(true);
         self.deselect.set_enabled(state.has_selection);
         self.tools.set_checked(state.tools_visible);
         self.colors.set_checked(state.colors_visible);
@@ -521,6 +603,12 @@ mod tests {
             ("edit.cut", Cut),
             ("edit.copy", Copy),
             ("edit.paste", Paste),
+            ("edit.paste_into_new_layer", PasteIntoNewLayer),
+            ("edit.paste_into_new_image", PasteIntoNewImage),
+            ("edit.erase_selection", EraseSelection),
+            ("edit.fill_selection", FillSelection),
+            ("edit.invert_selection", InvertSelection),
+            ("edit.select_all", SelectAll),
             ("edit.deselect", Deselect),
             ("view.zoom_in", ZoomIn),
             ("view.zoom_out", ZoomOut),

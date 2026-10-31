@@ -76,6 +76,14 @@ pub enum Command {
         dy: i32,
     },
     ClearSelection,
+    /// Selects the complete canvas as a rectangular selection.
+    SelectAll,
+    /// Replaces the selection with its complement inside the canvas.
+    InvertSelection,
+    /// Erases the selected pixels to transparent and clears the selection.
+    EraseSelection,
+    /// Fills the selected pixels with `color`, keeping the selection active.
+    FillSelection(Bgra),
     /// Crops the canvas to the current selection, clipped to the canvas, and clears it.
     CropToSelection,
     /// Resamples every layer to the requested pixel dimensions.
