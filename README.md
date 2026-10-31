@@ -6,19 +6,42 @@ An original, cross-platform Rust image editor being developed against a pinned P
 
 ## Implemented preview slice
 
-- A real `eframe`/`egui` native window with an 800×600 opaque-white new document and an actual composed-surface canvas.
-- A Paint.NET-oriented workspace: File/Edit/View/Layers/Adjustments/Tools/Help menus, a toolbar, a fixed left Tools rail, a Tool Options strip, Colors stacked above Layers in a right dock, a central canvas, and a full-width status bar. It includes first-party runtime-drawn New/Open/Export, Undo/Redo, selection, fill, picker, and Add Layer icons; a primary-color preview with hex and alpha; an interactive HSV color wheel; exact RGB/RGBA hex input; horizontal and vertical active-layer flips; a composed-canvas color picker; an 11-swatch palette; and cached per-layer thumbnails. The canvas has 25%-step zoom controls and fit-to-window. Layout follows Paint.NET's interaction hierarchy, but exact shape/pixel parity is not claimed. Icons are original geometry, not copied Paint.NET assets; see [icon provenance](docs/ICON_PROVENANCE.md).
-- Rectangle, ellipse, lasso (freehand polygon), and magic-wand (contiguous or global, tolerance) selections backed by a real per-pixel mask, with rectangle-compatible bounds for status, zoom, and marching ants. Chosen-BGRA fill, erasing and all paint operations clip to the mask; RGB-only Invert, undo/redo, layer creation/selection, visibility, and opacity run through the single-writer `AppSession`.
-- Flat PNG open and atomic PNG export. Opening creates one layer; exporting preserves the layered session, history, and modified state. PNG is not lossless layered-document persistence.
-- Dirty New, Open, Command-Q, Command-W, File → Close Window/Quit, and native window-close paths require explicit Discard confirmation; Cancel preserves the current session, and exporting does not bypass the close guard.
-- Non-rectangular selections can be combined only by replacement in this preview; marching ants for mask selections show the tight bounding box while painting consults the exact mask.
-- Keyboard-only core workflows with real Tab/Shift+Tab focus navigation, Enter/Space activation, arrow-adjusted values, and Escape dialog cancellation. The Keyboard menu documents preview-only Cmd/Ctrl bindings: N New, O Open, Shift+E Export, I Invert, F Fill, R Rectangle selection, Shift+L Add layer, Z Undo, and Shift+Z Redo.
-- A deterministic real-binary headless protocol with semantic snapshots, exact output checks, malformed-input failures, and per-file atomic replacement.
-- Bounded PNG and data-only PDN3/NRBF libraries. An authentic signed Paint.NET 5.1.12 2×2 Normal/BGRA fixture passes exact reader/composite acceptance. The writer remains experimental and self-round-trip-tested only until stock acceptance is demonstrated.
-- An isolated Rust↔.NET source-owned plugin transport proof. This does not load arbitrary Paint.NET plugin DLLs.
-- The current source also builds a reproducible x86_64 Linux artifact in an isolated ARM64 Lima VZ/Rosetta VM. It passed 219 Rust tests across 40 suite records, strict Linux Clippy/format, deterministic packaging, and independent extraction smoke; clean-target independence was established at `5af5981`. This is emulated userspace evidence, not native x86_64 hardware CI or native Linux window acceptance.
+- Native `eframe`/`egui` editor with multi-document tabs, dirty markers, per-tab paths,
+  close guard, Save/Save As (PNG), Open, and atomic Export.
+- Paint.NET-oriented workspace: native macOS menus plus in-window File/Edit/View/Image/
+  Layers/Adjustments/Effects/Window/Help menus; compact icon toolbar; two-column Tools
+  strip; Tool Options; floating/docked Colors, Layers and History panels; canvas; status
+  bar with units and zoom.
+- All 19 Paint.NET tools are present: Rectangle/Ellipse/Lasso/Magic Wand selection,
+  Move Selected Pixels, Move Selection, Zoom, Pan, Paint Bucket, Gradient, Paintbrush,
+  Eraser, Pencil, Color Picker, Clone Stamp, Recolor, Text, Line/Curve and Shapes.
+- Real per-pixel selection masks with Replace/Union/Subtract/Intersect/Xor, Shift/Alt
+  modifiers, magic-wand Active Layer/Image sampling, blue tint and marching ants along
+  the actual mask boundary.
+- Raster tools with live previews: brush hardness/spacing, soft eraser, gradient
+  types/repeat, shape Outline/Fill/Both, text rasterization, clone stamp, line caps/dash,
+  recolor, flood fill, color picker sampling, and whole-layer/floating moves.
+- Image operations: Crop to Selection, Resize, Canvas Size, Rotate 90/180, Flips and
+  Flatten. Layer operations: add/delete/duplicate/merge/reorder, rename/properties,
+  visibility, opacity, and real Normal/Multiply/Screen/Overlay blending.
+- Effects/Adjustments: Invert, Grayscale, Sepia, Gaussian/Motion blur, Sharpen, Add Noise,
+  Brightness/Contrast, Hue/Saturation, Auto-Level (with previews and undo).
+- Clipboard Copy/Cut/Paste, Select All/Invert/Erase/Fill and Paste Into actions where
+  implemented by the current menus; keyboard shortcuts are documented in Help.
+- Grid, rulers, Pixel/Inch/Centimeter units, fit/zoom, and PNG-only document semantics.
+- Deterministic headless trace/PNG/snapshot path and macOS native keyboard/dirty-close gate.
 
-The development UI uses a custom dark `egui` theme, original first-party icon geometry, and a text-path PNG dialog. On macOS the default native menu bar is intentionally disabled so Command-Q and Command-W pass through the document dirty guard; application actions remain in the in-window menu. The layout is parity-oriented, but exact pixel parity is not claimed; it does not include a native OS file picker or full image-library management. The Open dialog has an app-drawn, bounded folder browser: it lists at most 200 directories and regular `.png` files, skips hidden and symlink entries, and previews one bounded PNG without changing the current session. Keyboard evidence is semantic `egui_kittest` input/focus coverage, not native OS, screen-reader, or Paint.NET shortcut-parity evidence. Use disposable test documents; the preview is not a complete document-safety or Paint.NET workflow implementation.
+The development UI uses a custom dark `egui` theme and original first-party/Lucide vector
+icons; it never embeds Paint.NET bitmaps or code. Paint.NET is a behavioral/layout reference
+only. The editor is not pixel-identical to Paint.NET and does not load Paint.NET plugins.
+
+Known gaps for 0.1.0: layered documents are not saved (Save writes a flattened PNG);
+several advanced effects/adjustments remain disabled; Move uses integer translation without
+scale/rotation; shape interior for `Both` uses the primary color; text is committed as
+pixels with left alignment; OS clipboard and native-menu interaction are not fully exercised
+by headless tests; DPI/print/color-profile metadata is absent. See
+[UI_PARITY_DIFF.md](docs/reference/UI_PARITY_DIFF.md) and
+[release notes](docs/releases/v0.1.0.md) for the current matrix.
 
 ## Prerequisites
 
