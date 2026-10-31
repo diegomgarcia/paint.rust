@@ -1,4 +1,7 @@
 use paint_core::{Bgra, Point, Rect, Size};
+use paint_raster::TextStyle;
+
+use crate::Effect;
 
 /// Placement of existing content when the canvas is resized.
 ///
@@ -37,8 +40,6 @@ impl CanvasAnchor {
         (x, y)
     }
 }
-
-use crate::Effect;
 
 /// One UI-neutral operation submitted to the single-writer session.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -106,6 +107,20 @@ pub enum Command {
         target: Bgra,
         replacement: Bgra,
         tolerance: u8,
+    },
+    /// Rasterizes one text placement into the active layer and selection.
+    PlaceText {
+        origin: Point,
+        content: String,
+        style: TextStyle,
+        color: Bgra,
+    },
+    /// Clones pixels from a fixed source along a round brush stroke.
+    CloneStamp {
+        points: Vec<Point>,
+        size: u32,
+        source: Point,
+        hardness: u8,
     },
     /// Moves the selection contents, or the whole layer without a selection.
     Move {

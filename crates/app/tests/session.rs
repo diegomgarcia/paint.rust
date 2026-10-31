@@ -697,3 +697,134 @@ fn zero_radius_blur_is_a_noop_and_invalid_radius_is_rejected_atomically() {
         &[Bgra::WHITE, Bgra::BLACK, Bgra::WHITE]
     );
 }
+
+#[test]
+fn place_text_is_one_undoable_selection_clipped_content_edit() {
+    let mut session = session_with_color(160, 80, Bgra::WHITE);
+    session
+        .execute(Command::SelectRect(
+            Rect::new(0, 0, 48, 80).expect("selection"),
+        ))
+        .unwrap();
+    let original = session
+        .document()
+        .active_layer()
+        .surface()
+        .pixels()
+        .to_vec();
+    assert!(
+        session
+            .execute(Command::PlaceText {
+                origin: Point::new(8, 8),
+                content: "Ag".to_owned(),
+                style: paint_raster::TextStyle {
+                    family: paint_raster::TextFontFamily::Sans,
+                    size: 48,
+                    bold: false,
+                    italic: false,
+                    antialias: true,
+                },
+                color: Bgra::BLACK,
+            })
+            .unwrap()
+    );
+    assert!(session.dirty());
+    assert!(session.can_undo());
+    let pixels = session.document().active_layer().surface().pixels();
+    assert!(
+        pixels.iter().enumerate().any(|(index, pixel)| {
+            (index % 160) < 48 && pixel.a == 255 && pixel.r < 128 && pixel.g < 128
+        }),
+        "committed text should contain opaque ink inside the selection"
+    );
+    for y in 0..80 {
+        for x in 48..160 {
+            assert_eq!(
+                *session
+                    .document()
+                    .active_layer()
+                    .surface()
+                    .pixel(Point::new(x, y))
+                    .expect("pixel"),
+                Bgra::WHITE,
+                "text leaked outside the selection at ({x}, {y})"
+            );
+        }
+    }
+
+    assert!(session.undo().unwrap());
+    assert_eq!(
+        session.document().active_layer().surface().pixels(),
+        original
+    );
+    assert!(!session.dirty());
+    assert!(session.redo().unwrap());
+    assert!(session.dirty());
+}
+
+#[test]
+fn clone_stamp_is_one_undoable_selection_clipped_content_edit() {
+    let size = Size::new(64, 64).expect("size");
+    let mut pixels = vec![Bgra::WHITE; 64 * 64];
+    for y in 8..16 {
+        for x in 8..40 {
+            pixels[y * 64 + x] = Bgra::BLACK;
+        }
+    }
+    let source = Surface::from_pixels(size, pixels).expect("source surface");
+    let document = Document::from_layers(
+        size,
+        vec![Layer::new(LayerId::new(30), "clone", source).with_background(true)],
+    )
+    .expect("document");
+    let mut session = AppSession::new(document);
+    let original = session
+        .document()
+        .active_layer()
+        .surface()
+        .pixels()
+        .to_vec();
+    session
+        .execute(Command::SelectRect(
+            Rect::new(44, 0, 46, 64).expect("selection"),
+        ))
+        .unwrap();
+    assert!(
+        session
+            .execute(Command::CloneStamp {
+                points: vec![Point::new(40, 12), Point::new(48, 12)],
+                size: 1,
+                source: Point::new(12, 12),
+                hardness: 100,
+            })
+            .unwrap()
+    );
+    assert!(session.can_undo());
+    for x in 44..46 {
+        assert_eq!(
+            *session
+                .document()
+                .active_layer()
+                .surface()
+                .pixel(Point::new(x, 12))
+                .expect("cloned pixel"),
+            Bgra::BLACK
+        );
+    }
+    for x in [43, 46, 47] {
+        assert_eq!(
+            *session
+                .document()
+                .active_layer()
+                .surface()
+                .pixel(Point::new(x, 12))
+                .expect("unclipped pixel"),
+            Bgra::WHITE
+        );
+    }
+    assert!(session.undo().unwrap());
+    assert_eq!(
+        session.document().active_layer().surface().pixels(),
+        original
+    );
+}

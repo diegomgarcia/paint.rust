@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use paint_app::{AppSession, CanvasAnchor, Command, Effect, ResourceLimits};
 use paint_core::{Bgra, Point, Rect, Size};
 use paint_document::{Document, LayerId};
-use paint_raster::MAX_GAUSSIAN_BLUR_RADIUS;
+use paint_raster::{MAX_GAUSSIAN_BLUR_RADIUS, TextFontFamily, TextStyle};
 
 use crate::checkerboard::paint_checkerboard;
 use crate::colors::{
@@ -77,6 +77,18 @@ pub struct PaintApp {
     active_tool: Tool,
     shape_mode: ShapeMode,
     brush_size: u32,
+    clone_hardness: u8,
+    clone_source: Option<Point>,
+    clone_offset: Option<(i64, i64)>,
+    clone_alt_down: bool,
+    text_content: String,
+    text_font_family: TextFontFamily,
+    text_size: u32,
+    text_bold: bool,
+    text_italic: bool,
+    text_antialias: bool,
+    text_origin: Option<Point>,
+    text_applied_key: Option<TextPreviewKey>,
     recolor_tolerance: u8,
     fill_tolerance: u8,
     fill_global: bool,
@@ -162,6 +174,18 @@ impl PaintApp {
             active_tool: Tool::Select,
             shape_mode: ShapeMode::Rectangle,
             brush_size: 45,
+            clone_hardness: 80,
+            clone_source: None,
+            clone_offset: None,
+            clone_alt_down: false,
+            text_content: String::new(),
+            text_font_family: TextFontFamily::Sans,
+            text_size: 48,
+            text_bold: false,
+            text_italic: false,
+            text_antialias: true,
+            text_origin: None,
+            text_applied_key: None,
             recolor_tolerance: 50,
             fill_tolerance: 50,
             fill_global: false,
@@ -367,6 +391,7 @@ impl PaintApp {
     }
 
     fn store_active_tab(&mut self) {
+        self.commit_text_preview();
         let state = self.take_active_tab();
         self.tabs[self.active_tab] = Some(state);
     }
@@ -381,6 +406,7 @@ impl PaintApp {
         };
         self.load_active_tab(state);
         self.active_tab = index;
+        self.reset_transient_tool_state();
         self.layer_properties_open = false;
         self.gaussian_blur_open = false;
         self.resize_dialog = None;
@@ -418,6 +444,7 @@ impl PaintApp {
         self.layer_thumbnails.clear();
         self.history_entries = vec!["New Image".to_owned()];
         self.redo_entries.clear();
+        self.reset_transient_tool_state();
         self.document_title = "New Image".to_owned();
         self.document_thumbnail = None;
         self.status = "New 800×600 opaque-white document".to_owned();
@@ -485,6 +512,7 @@ impl PaintApp {
                 self.path_dialog = None;
                 self.resize_dialog = None;
                 self.canvas_size_dialog = None;
+                self.reset_transient_tool_state();
                 self.status = format!("Opened flattened PNG: {}", path_buffer.display());
             }
             Err(error) => {
@@ -495,6 +523,9 @@ impl PaintApp {
     }
 
     fn execute(&mut self, command: Command, success: impl Into<String>) -> bool {
+        if !matches!(command, Command::SelectRect(_) | Command::ClearSelection) {
+            self.finish_active_preview();
+        }
         if !matches!(command, Command::SelectRect(_)) {
             self.finalize_floating_selection();
         }
@@ -560,6 +591,243 @@ impl PaintApp {
             Err(error) => self.status = format!("Could not finish the stroke: {error}"),
         }
         self.paint_points.clear();
+    }
+
+    fn text_style(&self) -> TextStyle {
+        TextStyle {
+            family: self.text_font_family,
+            size: self.text_size,
+            bold: self.text_bold,
+            italic: self.text_italic,
+            antialias: self.text_antialias,
+        }
+    }
+
+    /// Re-rasterizes the live text preview only when placement or style inputs change.
+    fn sync_text_preview(&mut self) {
+        if self.active_tool != Tool::Text {
+            return;
+        }
+        let Some(origin) = self.text_origin else {
+            self.text_applied_key = None;
+            if self.session.has_preview() {
+                self.session.cancel_preview();
+                self.texture_dirty = true;
+            }
+            return;
+        };
+        if self.text_content.trim().is_empty() {
+            self.text_applied_key = None;
+            if self.session.has_preview() {
+                self.session.cancel_preview();
+                self.texture_dirty = true;
+            }
+            return;
+        }
+        let key = TextPreviewKey {
+            origin,
+            content: self.text_content.clone(),
+            style: self.text_style(),
+            color: self.fill_color,
+            layer_id: self.session.document().active_layer_id(),
+            selection: self.session.document().selection(),
+        };
+        if self.text_applied_key.as_ref() == Some(&key) {
+            return;
+        }
+        if !self.session.has_preview() {
+            self.session.begin_preview();
+        }
+        match self.session.preview_text(
+            origin,
+            &self.text_content,
+            self.text_style(),
+            self.fill_color,
+        ) {
+            Ok(_) => {
+                self.text_applied_key = Some(key);
+                self.texture_dirty = true;
+            }
+            Err(error) => {
+                self.text_applied_key = Some(key);
+                self.status = format!("Text preview failed: {error}");
+            }
+        }
+    }
+
+    /// Commits the live text preview as one undoable history entry.
+    fn commit_text_preview(&mut self) -> bool {
+        if self.active_tool != Tool::Text {
+            return false;
+        }
+        let had_preview = self.session.has_preview();
+        self.text_applied_key = None;
+        if !had_preview {
+            self.text_origin = None;
+            return false;
+        }
+        match self.session.finish_preview() {
+            Ok(true) => {
+                self.history_entries.push("Text".to_owned());
+                self.redo_entries.clear();
+                self.text_origin = None;
+                self.texture_dirty = true;
+                self.status = "Placed text on the active layer".to_owned();
+                true
+            }
+            Ok(false) => {
+                self.text_origin = None;
+                self.texture_dirty = true;
+                false
+            }
+            Err(error) => {
+                self.status = format!("Could not place the text: {error}");
+                false
+            }
+        }
+    }
+
+    fn cancel_text_preview(&mut self) {
+        self.session.cancel_preview();
+        self.text_origin = None;
+        self.text_applied_key = None;
+        self.paint_points.clear();
+        self.texture_dirty = true;
+        self.status = "Canceled the text preview".to_owned();
+    }
+
+    fn text_tool_options(&mut self, ui: &mut egui::Ui) {
+        ui.label("Text");
+        egui::ComboBox::from_label("Font family")
+            .selected_text(self.text_font_family.label())
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut self.text_font_family, TextFontFamily::Sans, "Sans");
+                ui.selectable_value(&mut self.text_font_family, TextFontFamily::Mono, "Mono");
+            });
+        let size_label = ui.label("Font size");
+        ui.add(
+            egui::DragValue::new(&mut self.text_size)
+                .range(1..=paint_raster::MAX_TEXT_SIZE)
+                .suffix(" px"),
+        )
+        .labelled_by(size_label.id);
+        ui.toggle_value(&mut self.text_bold, "Bold");
+        ui.toggle_value(&mut self.text_italic, "Italic");
+        ui.checkbox(&mut self.text_antialias, "Antialiasing");
+        let color = self.fill_color;
+        ui.colored_label(
+            egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+            "Primary color",
+        );
+        let content_label = ui.label("Text content");
+        ui.add(
+            egui::TextEdit::multiline(&mut self.text_content)
+                .desired_rows(2)
+                .desired_width(220.0)
+                .hint_text("Type text"),
+        )
+        .labelled_by(content_label.id);
+        if let Some(origin) = self.text_origin {
+            ui.label(format!("Origin: ({}, {})", origin.x, origin.y));
+        } else {
+            ui.label("Click the canvas to set the text origin");
+        }
+        self.sync_text_preview();
+        if ui
+            .add_enabled(self.session.has_preview(), egui::Button::new("Place text"))
+            .clicked()
+        {
+            self.commit_text_preview();
+        }
+        if ui.button("Cancel text").clicked() {
+            self.cancel_text_preview();
+        }
+    }
+
+    fn clone_tool_options(&mut self, ui: &mut egui::Ui) {
+        ui.label("Clone Stamp");
+        ui.label("Width");
+        ui.add(
+            egui::DragValue::new(&mut self.brush_size)
+                .range(1..=64)
+                .suffix(" px"),
+        );
+        let hardness_label = ui.label("Hardness");
+        ui.add(
+            egui::DragValue::new(&mut self.clone_hardness)
+                .range(0..=100)
+                .suffix("%"),
+        )
+        .labelled_by(hardness_label.id);
+        if let Some(source) = self.clone_source {
+            ui.label(format!("Source: ({}, {})", source.x, source.y));
+            if let Some((offset_x, offset_y)) = self.clone_offset {
+                ui.label(format!("Offset: ({offset_x}, {offset_y})"));
+            }
+        } else {
+            ui.label("Alt-click the canvas to set the clone source");
+        }
+        ui.add_enabled_ui(self.clone_source.is_some(), |ui| {
+            if ui.button("Clear clone source").clicked() {
+                self.clone_source = None;
+                self.clone_offset = None;
+            }
+        });
+        ui.label("Samples the active layer before the stroke");
+        ui.label("Drag from any point to clone the source offset");
+    }
+
+    fn preview_live_clone(&mut self) {
+        let Some(source) = self.clone_source else {
+            return;
+        };
+        let size = self.brush_size.max(1);
+        match self.session.preview_clone_stamp(
+            &self.paint_points,
+            size,
+            source,
+            self.clone_hardness,
+        ) {
+            Ok(_) => self.texture_dirty = true,
+            Err(error) => self.status = format!("Clone preview failed: {error}"),
+        }
+    }
+
+    fn finish_live_clone(&mut self) {
+        match self.session.finish_preview() {
+            Ok(true) => {
+                self.history_entries.push("Clone Stamp".to_owned());
+                self.redo_entries.clear();
+                self.texture_dirty = true;
+                self.status = "Cloned pixels from the source".to_owned();
+            }
+            Ok(false) => {}
+            Err(error) => self.status = format!("Could not finish the clone stroke: {error}"),
+        }
+        self.paint_points.clear();
+    }
+
+    /// Finishes whichever live preview belongs to the active tool before a new command.
+    fn finish_active_preview(&mut self) {
+        if !self.session.has_preview() {
+            return;
+        }
+        match self.active_tool {
+            Tool::Text => {
+                self.commit_text_preview();
+            }
+            Tool::CloneStamp => self.finish_live_clone(),
+            Tool::Pencil | Tool::Brush | Tool::Eraser => self.finish_live_stroke(),
+            _ => {}
+        }
+    }
+
+    fn reset_transient_tool_state(&mut self) {
+        self.text_origin = None;
+        self.text_applied_key = None;
+        self.clone_source = None;
+        self.clone_offset = None;
+        self.clone_alt_down = false;
     }
 
     fn add_layer(&mut self) {
@@ -1402,6 +1670,9 @@ impl PaintApp {
                 .clicked()
                 {
                     if self.active_tool != $tool {
+                        if self.active_tool == Tool::Text {
+                            self.commit_text_preview();
+                        }
                         self.finalize_floating_selection();
                     }
                     self.active_tool = $tool;
@@ -1451,11 +1722,11 @@ impl PaintApp {
                 tool!(ui, Icon::EyeDropper, "Color Picker", Tool::Picker);
             });
             row(ui, &mut |ui| {
-                tool_slot!(ui, Icon::CloneStamp, "Clone Stamp", false);
+                tool!(ui, Icon::CloneStamp, "Clone Stamp", Tool::CloneStamp);
                 tool!(ui, Icon::Recolor, "Recolor", Tool::Recolor);
             });
             row(ui, &mut |ui| {
-                tool_slot!(ui, Icon::Text, "Text", false);
+                tool!(ui, Icon::Text, "Text", Tool::Text);
                 tool!(ui, Icon::Line, "Line / Curve", Tool::Line);
             });
             row(ui, &mut |ui| {
@@ -1639,6 +1910,8 @@ impl PaintApp {
                         .labelled_by(tolerance_label.id);
                         ui.label("Drag over matching pixels to recolor");
                     }
+                    Tool::Text => self.text_tool_options(ui),
+                    Tool::CloneStamp => self.clone_tool_options(ui),
                     Tool::Pan => {
                         ui.label("Pan");
                         ui.label("Drag to move the canvas view");
@@ -2745,6 +3018,39 @@ impl PaintApp {
                         let pointer = response.interact_pointer_pos();
                         self.cursor_point = pointer
                             .and_then(|position| canvas_point_at(position, rect, zoom, size));
+                        if self.active_tool == Tool::Text
+                            && let Some(origin) = self.text_origin
+                        {
+                            let marker = rect.min
+                                + egui::vec2(origin.x as f32 * zoom, origin.y as f32 * zoom);
+                            let stroke = egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE);
+                            ui.painter().line_segment(
+                                [marker - egui::vec2(7.0, 0.0), marker + egui::vec2(7.0, 0.0)],
+                                stroke,
+                            );
+                            ui.painter().line_segment(
+                                [marker - egui::vec2(0.0, 7.0), marker + egui::vec2(0.0, 7.0)],
+                                stroke,
+                            );
+                            ui.painter().circle_stroke(marker, 4.0, stroke);
+                        }
+                        if self.active_tool == Tool::CloneStamp
+                            && let Some(source) = self.clone_source
+                        {
+                            let marker = rect.min
+                                + egui::vec2(source.x as f32 * zoom, source.y as f32 * zoom);
+                            let radius = (self.brush_size.max(1) as f32 * zoom / 2.0).max(2.0);
+                            let stroke = egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE);
+                            ui.painter().circle_stroke(marker, radius, stroke);
+                            ui.painter().line_segment(
+                                [marker - egui::vec2(6.0, 0.0), marker + egui::vec2(6.0, 0.0)],
+                                stroke,
+                            );
+                            ui.painter().line_segment(
+                                [marker - egui::vec2(0.0, 6.0), marker + egui::vec2(0.0, 6.0)],
+                                stroke,
+                            );
+                        }
                         if picking {
                             if response.clicked()
                                 && let Some(point) = pointer.and_then(|position| {
@@ -2784,6 +3090,81 @@ impl PaintApp {
                                         "Filled a contiguous area".to_owned()
                                     },
                                 ));
+                            }
+                        } else if self.active_tool == Tool::Text {
+                            if response.clicked()
+                                && let Some(point) = pointer.and_then(|position| {
+                                    canvas_point_at(position, rect, zoom, size)
+                                })
+                            {
+                                self.text_origin = Some(point);
+                                self.text_applied_key = None;
+                                self.status = format!(
+                                    "Text origin set at ({}, {}); type text in Tool Options",
+                                    point.x, point.y
+                                );
+                            }
+                        } else if self.active_tool == Tool::CloneStamp {
+                            let point = pointer
+                                .and_then(|position| canvas_point_at(position, rect, zoom, size));
+                            let alt = ui.input(|input| input.modifiers.alt);
+                            if alt {
+                                if response.is_pointer_button_down_on()
+                                    && !self.clone_alt_down
+                                    && let Some(point) = point
+                                {
+                                    self.clone_source = Some(point);
+                                    self.clone_offset = None;
+                                    self.clone_alt_down = true;
+                                    self.status =
+                                        format!("Clone source set at ({}, {})", point.x, point.y);
+                                }
+                                self.drag_start = None;
+                                self.drag_current = None;
+                                self.paint_points.clear();
+                                if self.session.has_preview() {
+                                    self.session.cancel_preview();
+                                    self.texture_dirty = true;
+                                }
+                            } else {
+                                if response.is_pointer_button_down_on()
+                                    && self.drag_start.is_none()
+                                    && let Some(point) = point
+                                {
+                                    if let Some(source) = self.clone_source {
+                                        self.drag_start = Some(point);
+                                        self.drag_current = Some(point);
+                                        self.paint_points.clear();
+                                        self.paint_points.push(point);
+                                        self.clone_offset = Some((
+                                            i64::from(point.x) - i64::from(source.x),
+                                            i64::from(point.y) - i64::from(source.y),
+                                        ));
+                                        self.session.begin_preview();
+                                        self.preview_live_clone();
+                                    } else {
+                                        self.status =
+                                            "Alt-click the canvas to set a clone source first"
+                                                .to_owned();
+                                    }
+                                }
+                                if response.dragged()
+                                    && self.drag_start.is_some()
+                                    && let Some(point) = point
+                                {
+                                    self.drag_current = Some(point);
+                                    if self.paint_points.last() != Some(&point) {
+                                        self.paint_points.push(point);
+                                        self.preview_live_clone();
+                                    }
+                                }
+                                if response.drag_stopped() && self.drag_start.take().is_some() {
+                                    self.drag_current = None;
+                                    self.finish_live_clone();
+                                }
+                            }
+                            if !response.is_pointer_button_down_on() {
+                                self.clone_alt_down = false;
                             }
                         } else if self.active_tool != Tool::Picker {
                             let point = || {
@@ -3386,6 +3767,14 @@ impl PaintApp {
         {
             return;
         }
+        if self.active_tool == Tool::Text
+            && (self.session.has_preview() || self.text_origin.is_some())
+            && context
+                .input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.cancel_text_preview();
+            return;
+        }
         let command = egui::Modifiers::COMMAND;
         let command_shift = command | egui::Modifiers::SHIFT;
 
@@ -3513,6 +3902,18 @@ enum Tool {
     Move,
     Pan,
     Picker,
+    Text,
+    CloneStamp,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TextPreviewKey {
+    origin: Point,
+    content: String,
+    style: TextStyle,
+    color: Bgra,
+    layer_id: LayerId,
+    selection: Option<Rect>,
 }
 
 #[derive(Clone, Copy)]
@@ -4093,6 +4494,8 @@ fn history_label(command: &Command) -> Option<String> {
         Command::FillEllipse { .. } => Some("Ellipse".to_owned()),
         Command::Gradient { .. } => Some("Gradient".to_owned()),
         Command::Recolor { .. } => Some("Recolor".to_owned()),
+        Command::PlaceText { .. } => Some("Text".to_owned()),
+        Command::CloneStamp { .. } => Some("Clone Stamp".to_owned()),
         Command::Move { .. } => Some("Move Selected Pixels".to_owned()),
         Command::Invert => Some("Invert Colors".to_owned()),
         Command::ApplyEffect(effect) => Some(effect.history_label()),

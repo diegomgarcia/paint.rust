@@ -1872,3 +1872,393 @@ fn effects_menu_uses_paint_net_groups_and_applies_real_effects_undoably() {
         Bgra::WHITE
     );
 }
+
+fn alt_click_canvas_at(harness: &mut Harness<'_, PaintApp>, offset: egui::Vec2) {
+    let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
+    let position = canvas.rect().min + offset;
+    let modifiers = egui::Modifiers::ALT;
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::ModifiersChanged(modifiers));
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::PointerMoved(position));
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: position,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers,
+    });
+    harness.run();
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: position,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers,
+    });
+    harness.run();
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    harness.run();
+}
+
+fn changed_pixel_count(before: &[Bgra], after: &[Bgra]) -> usize {
+    before
+        .iter()
+        .zip(after)
+        .filter(|(before, after)| before != after)
+        .count()
+}
+
+#[test]
+fn text_and_clone_stamp_are_enabled_with_target_specific_options() {
+    let mut harness = app();
+    for label in ["Text", "Clone Stamp"] {
+        assert!(
+            !button_is_disabled(&harness, label),
+            "{label} should no longer be a disabled toolbox slot"
+        );
+    }
+
+    click(&mut harness, "Text");
+    harness.get_by_label("Text content");
+    harness.get_by_label("Font family");
+    harness.get_by_label("Font size");
+    harness.get_by_label("Bold");
+    harness.get_by_label("Italic");
+    harness.get_by_label("Antialiasing");
+    harness.get_by_role_and_label(Role::Button, "Place text");
+    harness.get_by_role_and_label(Role::Button, "Cancel text");
+
+    click(&mut harness, "Clone Stamp");
+    harness.get_by_label("Hardness");
+    harness.get_by_role_and_label(Role::Button, "Clear clone source");
+    harness.get_by_label_contains("Alt-click the canvas");
+}
+
+#[test]
+fn text_tool_previews_commits_and_undoes_real_layer_pixels() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Text");
+    replace_field(&mut harness, "Text content", "Ag");
+    let before = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixels()
+        .to_vec();
+
+    click_canvas_at(&mut harness, egui::vec2(10.0, 10.0));
+    harness.run();
+    let preview = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixels()
+        .to_vec();
+    assert!(
+        changed_pixel_count(&before, &preview) > 0,
+        "text should be visible as a live preview before commit"
+    );
+    assert!(
+        preview.iter().any(|pixel| pixel.a == 255 && pixel.r < 128),
+        "the live preview should contain opaque glyph ink"
+    );
+    assert!(
+        !harness.state().session().can_undo(),
+        "the live text preview must not enter undo history"
+    );
+
+    click(&mut harness, "Place text");
+    assert!(harness.state().session().can_undo());
+    let committed = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixels()
+        .to_vec();
+    assert_eq!(
+        committed, preview,
+        "commit should preserve the previewed pixels"
+    );
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Text")
+    );
+
+    click(&mut harness, "Undo");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixels(),
+        before.as_slice()
+    );
+}
+
+#[test]
+fn text_preview_clips_to_the_selection_and_style_flags_restyle_it() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(6.0, 6.0), egui::vec2(46.0, 60.0));
+    click(&mut harness, "Text");
+    replace_field(&mut harness, "Text content", "MM");
+    click_canvas_at(&mut harness, egui::vec2(8.0, 8.0));
+    harness.run();
+
+    let selection = harness
+        .state()
+        .session()
+        .document()
+        .selection()
+        .expect("selection");
+    let preview = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixels()
+        .to_vec();
+    let non_white = preview
+        .iter()
+        .enumerate()
+        .filter(|(_, pixel)| **pixel != Bgra::WHITE)
+        .count();
+    assert!(non_white > 0, "clipped text preview should still draw ink");
+    for (index, pixel) in preview.iter().enumerate() {
+        if *pixel != Bgra::WHITE {
+            let x = (index % 800) as i64;
+            let y = (index / 800) as i64;
+            assert!(
+                x >= selection.left()
+                    && x < selection.right()
+                    && y >= selection.top()
+                    && y < selection.bottom(),
+                "text preview leaked outside the selection at ({x}, {y})"
+            );
+        }
+    }
+    let regular_ink = preview.iter().filter(|pixel| pixel.r < 128).count();
+    assert!(!harness.state().session().can_undo());
+
+    harness.get_by_label("Bold").click();
+    harness.run();
+    let bold = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixels()
+        .to_vec();
+    let bold_ink = bold.iter().filter(|pixel| pixel.r < 128).count();
+    assert!(
+        bold_ink > regular_ink,
+        "bold preview should have more ink: bold={bold_ink} regular={regular_ink}"
+    );
+    assert!(
+        !harness.state().session().can_undo(),
+        "restyling the preview must remain undo-free"
+    );
+
+    click(&mut harness, "Place text");
+    assert!(harness.state().session().can_undo());
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixels(),
+        bold.as_slice()
+    );
+}
+
+#[test]
+fn clone_stamp_alt_click_sets_source_and_cloned_strokes_are_undoable() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Pencil");
+    drag_canvas(&mut harness, egui::vec2(8.0, 40.0), egui::vec2(40.0, 40.0));
+
+    click(&mut harness, "Clone Stamp");
+    alt_click_canvas_at(&mut harness, egui::vec2(20.0, 40.0));
+    harness.get_by_label_contains("Source: (20, 40)");
+    drag_canvas(
+        &mut harness,
+        egui::vec2(100.0, 100.0),
+        egui::vec2(120.0, 100.0),
+    );
+
+    let session = harness.state().session();
+    assert!(session.can_undo());
+    assert_eq!(
+        *session
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(105, 100))
+            .expect("cloned pixel"),
+        Bgra::BLACK
+    );
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Clone Stamp")
+    );
+    harness.get_by_label_contains("Offset: (80, 60)");
+
+    click(&mut harness, "Undo");
+    assert_eq!(
+        *harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(105, 100))
+            .expect("restored pixel"),
+        Bgra::WHITE
+    );
+}
+
+#[test]
+fn clone_stamp_respects_selection_clipping() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Pencil");
+    drag_canvas(&mut harness, egui::vec2(8.0, 40.0), egui::vec2(40.0, 40.0));
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(
+        &mut harness,
+        egui::vec2(96.0, 90.0),
+        egui::vec2(116.0, 110.0),
+    );
+    click(&mut harness, "Clone Stamp");
+    alt_click_canvas_at(&mut harness, egui::vec2(20.0, 40.0));
+    drag_canvas(
+        &mut harness,
+        egui::vec2(100.0, 100.0),
+        egui::vec2(110.0, 100.0),
+    );
+
+    let session = harness.state().session();
+    let selection = session.document().selection().expect("selection");
+    assert_eq!(
+        *session
+            .document()
+            .active_layer()
+            .surface()
+            .pixel(Point::new(100, 100))
+            .expect("cloned pixel"),
+        Bgra::BLACK
+    );
+    for (x, y) in [(95, 100), (118, 100), (100, 88), (100, 112)] {
+        assert_eq!(
+            *session
+                .document()
+                .active_layer()
+                .surface()
+                .pixel(Point::new(x, y))
+                .expect("unclipped pixel"),
+            Bgra::WHITE,
+            "clone leaked outside the selection at ({x}, {y})"
+        );
+    }
+    assert!(selection.contains(Point::new(100, 100)));
+}
+
+#[test]
+fn text_cancel_discards_the_preview_and_tool_switch_commits_it() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Text");
+    replace_field(&mut harness, "Text content", "Hi");
+    let before = harness
+        .state()
+        .session()
+        .document()
+        .active_layer()
+        .surface()
+        .pixels()
+        .to_vec();
+    click_canvas_at(&mut harness, egui::vec2(12.0, 12.0));
+    harness.run();
+    assert!(
+        changed_pixel_count(
+            &before,
+            harness
+                .state()
+                .session()
+                .document()
+                .active_layer()
+                .surface()
+                .pixels()
+        ) > 0
+    );
+
+    click(&mut harness, "Cancel text");
+    assert_eq!(
+        harness
+            .state()
+            .session()
+            .document()
+            .active_layer()
+            .surface()
+            .pixels(),
+        before.as_slice()
+    );
+    assert!(!harness.state().session().can_undo());
+    assert!(harness.state().status().contains("Canceled"));
+
+    click_canvas_at(&mut harness, egui::vec2(12.0, 12.0));
+    harness.run();
+    click(&mut harness, "Paintbrush");
+    assert!(harness.state().session().can_undo());
+    assert_eq!(
+        harness.state().history_entries().last().map(String::as_str),
+        Some("Text")
+    );
+    assert!(
+        changed_pixel_count(
+            &before,
+            harness
+                .state()
+                .session()
+                .document()
+                .active_layer()
+                .surface()
+                .pixels()
+        ) > 0
+    );
+}
+
+#[test]
+fn clone_stamp_without_a_source_does_not_edit_the_document() {
+    let mut harness = app();
+    dock_tools(&mut harness);
+    click(&mut harness, "Clone Stamp");
+    click_canvas_at(&mut harness, egui::vec2(40.0, 40.0));
+    assert!(
+        harness.state().status().contains("Alt-click the canvas"),
+        "status should explain how to set a clone source"
+    );
+    assert!(!harness.state().session().dirty());
+    assert!(!harness.state().session().can_undo());
+}

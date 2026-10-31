@@ -1,6 +1,9 @@
 use paint_core::{Bgra, Point, Rect, Size, Surface};
 use paint_document::{Document, Layer, LayerId, Revision};
-use paint_raster::{compose, fill, flip_horizontal, flip_vertical, invert, normal_over};
+use paint_raster::{
+    TextFontFamily, TextStyle, clone_stamp, compose, fill, flip_horizontal, flip_vertical, invert,
+    normal_over, text,
+};
 
 fn size(width: u32, height: u32) -> Size {
     Size::new(width, height).expect("test dimensions")
@@ -601,4 +604,327 @@ fn recolor_stroke_only_changes_matching_pixels_under_the_brush() {
     assert_eq!(pixels[0], Bgra::new(255, 0, 0, 255));
     assert_eq!(pixels[2], Bgra::new(0, 0, 255, 255));
     assert_eq!(pixels[4], Bgra::new(0, 0, 255, 255));
+}
+
+const TEXT_STYLE: TextStyle = TextStyle {
+    family: TextFontFamily::Sans,
+    size: 48,
+    bold: false,
+    italic: false,
+    antialias: true,
+};
+
+#[test]
+fn text_renders_real_glyphs_in_one_patch_and_clips_to_a_signed_selection() {
+    let mut document =
+        Document::from_layers(size(160, 80), vec![solid_layer(21, 160, 80, Bgra::WHITE)])
+            .expect("document");
+    let original = document.active_layer().surface().pixels().to_vec();
+    let origin = Point::new(8, 8);
+    let patch = text(
+        &document,
+        LayerId::new(21),
+        origin,
+        "Ag",
+        TEXT_STYLE,
+        Bgra::BLACK,
+    )
+    .expect("text operation")
+    .expect("glyph ink");
+    assert_eq!(
+        document.active_layer().surface().pixels(),
+        original.as_slice(),
+        "text must not mutate the document before the patch is applied"
+    );
+    assert!(patch.rect().left() >= 0);
+    assert!(patch.rect().top() >= 0);
+    assert!(
+        patch.rect().width() > 8,
+        "text should cover several columns"
+    );
+    assert!(
+        patch
+            .after()
+            .iter()
+            .any(|pixel| pixel.a == 255 && pixel.r < 128),
+        "text should have opaque dark glyph pixels"
+    );
+
+    document
+        .set_selection(Some(Rect::new(-20, -20, 40, 80).expect("signed selection")))
+        .expect("selection");
+    let clipped = text(
+        &document,
+        LayerId::new(21),
+        origin,
+        "Ag",
+        TEXT_STYLE,
+        Bgra::BLACK,
+    )
+    .expect("clipped text")
+    .expect("glyph ink inside selection");
+    assert!(clipped.rect().left() >= 0);
+    assert!(clipped.rect().top() >= 0);
+    assert!(clipped.rect().right() <= 40);
+    assert!(clipped.rect().bottom() <= 80);
+    document.apply_patch(&clipped).expect("apply text");
+    for y in 0..80 {
+        for x in 0..160 {
+            let expected = if x < 40 { None } else { Some(Bgra::WHITE) };
+            if let Some(expected) = expected {
+                assert_eq!(
+                    *document
+                        .active_layer()
+                        .surface()
+                        .pixel(Point::new(x, y))
+                        .expect("canvas pixel"),
+                    expected,
+                    "text leaked outside the selection at ({x}, {y})"
+                );
+            }
+        }
+    }
+    document
+        .apply_inverse(&clipped)
+        .expect("undo generated text patch");
+    assert_eq!(document.active_layer().surface().pixels(), original);
+}
+
+#[test]
+fn text_style_flags_and_antialiasing_change_the_rendered_mask() {
+    let document =
+        Document::from_layers(size(240, 140), vec![solid_layer(22, 240, 140, Bgra::WHITE)])
+            .expect("document");
+    let render = |style: TextStyle| {
+        text(
+            &document,
+            LayerId::new(22),
+            Point::new(4, 4),
+            "Ag",
+            style,
+            Bgra::BLACK,
+        )
+        .expect("text operation")
+        .expect("glyph ink")
+    };
+    let regular = render(TEXT_STYLE);
+    let bold = render(TextStyle {
+        bold: true,
+        ..TEXT_STYLE
+    });
+    let italic = render(TextStyle {
+        italic: true,
+        ..TEXT_STYLE
+    });
+    let aliased = render(TextStyle {
+        antialias: false,
+        ..TEXT_STYLE
+    });
+    let mono = render(TextStyle {
+        family: TextFontFamily::Mono,
+        ..TEXT_STYLE
+    });
+
+    let inked = |patch: &paint_document::PixelPatch| {
+        patch
+            .after()
+            .iter()
+            .zip(patch.before())
+            .filter(|(after, before)| after != before)
+            .count()
+    };
+    assert!(
+        inked(&bold) > inked(&regular),
+        "bold should cover more pixels than regular: bold={} regular={}",
+        inked(&bold),
+        inked(&regular)
+    );
+    assert_ne!(
+        italic.after(),
+        regular.after(),
+        "italic must change the rendered mask"
+    );
+    assert_ne!(
+        mono.after(),
+        regular.after(),
+        "the monospaced family must produce a different layout"
+    );
+    assert!(
+        regular
+            .after()
+            .iter()
+            .zip(regular.before())
+            .any(|(after, before)| after != before && after.r > 0 && after.r < 255),
+        "antialiased text should produce partial-coverage edge pixels"
+    );
+    assert!(
+        aliased
+            .after()
+            .iter()
+            .zip(aliased.before())
+            .filter(|(after, before)| after != before)
+            .all(|(after, _)| after == &Bgra::BLACK),
+        "disabled antialiasing should only write the solid text color"
+    );
+}
+
+#[test]
+fn text_is_an_explicit_noop_for_blank_content_and_rejects_invalid_sizes() {
+    let document = Document::from_layers(size(64, 64), vec![solid_layer(23, 64, 64, Bgra::WHITE)])
+        .expect("document");
+    for content in ["", "   ", "\n\t"] {
+        assert_eq!(
+            text(
+                &document,
+                LayerId::new(23),
+                Point::new(0, 0),
+                content,
+                TEXT_STYLE,
+                Bgra::BLACK,
+            ),
+            Ok(None)
+        );
+    }
+    assert!(
+        text(
+            &document,
+            LayerId::new(23),
+            Point::new(0, 0),
+            "x",
+            TextStyle {
+                size: 0,
+                ..TEXT_STYLE
+            },
+            Bgra::BLACK,
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn clone_stamp_copies_offset_source_pixels_through_a_hard_brush_and_selection() {
+    let mut pixels = vec![Bgra::WHITE; 64 * 64];
+    for y in 8..16 {
+        for x in 8..40 {
+            pixels[y * 64 + x] = Bgra::BLACK;
+        }
+    }
+    let mut document = Document::from_layers(
+        size(64, 64),
+        vec![Layer::new(
+            LayerId::new(24),
+            "clone source",
+            Surface::from_pixels(size(64, 64), pixels).expect("source surface"),
+        )],
+    )
+    .expect("document");
+    let source = Point::new(12, 12);
+    let patch = clone_stamp(
+        &document,
+        LayerId::new(24),
+        &[Point::new(40, 12), Point::new(48, 12)],
+        1,
+        source,
+        100,
+    )
+    .expect("clone operation")
+    .expect("cloned pixels");
+    assert_eq!(
+        patch.rect(),
+        Rect::new(40, 12, 49, 13).expect("one-pixel stroke")
+    );
+    document.apply_patch(&patch).expect("apply clone");
+    for x in 40..49 {
+        assert_eq!(
+            *document
+                .active_layer()
+                .surface()
+                .pixel(Point::new(x, 12))
+                .expect("cloned pixel"),
+            Bgra::BLACK,
+            "pixel ({x}, 12) should clone the black source"
+        );
+    }
+    assert_eq!(
+        *document
+            .active_layer()
+            .surface()
+            .pixel(Point::new(44, 20))
+            .expect("outside brush"),
+        Bgra::WHITE
+    );
+
+    let mut selection_pixels = vec![Bgra::WHITE; 64 * 64];
+    for y in 8..16 {
+        for x in 8..40 {
+            selection_pixels[y * 64 + x] = Bgra::BLACK;
+        }
+    }
+    let mut clipped_document = Document::from_layers(
+        size(64, 64),
+        vec![Layer::new(
+            LayerId::new(25),
+            "clone selection",
+            Surface::from_pixels(size(64, 64), selection_pixels).expect("surface"),
+        )],
+    )
+    .expect("document");
+    clipped_document
+        .set_selection(Some(Rect::new(44, 0, 46, 64).expect("selection")))
+        .expect("selection");
+    let clipped = clone_stamp(
+        &clipped_document,
+        LayerId::new(25),
+        &[Point::new(40, 12), Point::new(48, 12)],
+        1,
+        source,
+        100,
+    )
+    .expect("clipped clone")
+    .expect("selection overlaps stroke");
+    assert!(clipped.rect().left() >= 44);
+    assert!(clipped.rect().right() <= 46);
+    assert_eq!(clipped.after().len(), 2);
+}
+
+#[test]
+fn clone_stamp_hardness_softens_the_brush_edge() {
+    let mut pixels = vec![Bgra::WHITE; 64 * 64];
+    for y in 4..20 {
+        for x in 8..40 {
+            pixels[y * 64 + x] = Bgra::BLACK;
+        }
+    }
+    let document = Document::from_layers(
+        size(64, 64),
+        vec![Layer::new(
+            LayerId::new(26),
+            "soft clone",
+            Surface::from_pixels(size(64, 64), pixels).expect("surface"),
+        )],
+    )
+    .expect("document");
+    let render = |hardness: u8| {
+        clone_stamp(
+            &document,
+            LayerId::new(26),
+            &[Point::new(40, 12)],
+            9,
+            Point::new(12, 12),
+            hardness,
+        )
+        .expect("clone")
+        .expect("pixels")
+    };
+    let hard = render(100);
+    let soft = render(0);
+    let pixel = |patch: &paint_document::PixelPatch, x: i64, y: i64| {
+        let index = ((y - patch.rect().top()) * i64::from(patch.rect().width())
+            + (x - patch.rect().left())) as usize;
+        patch.after()[index]
+    };
+    assert_eq!(pixel(&hard, 43, 12), Bgra::BLACK);
+    let edge = pixel(&soft, 43, 12);
+    assert_ne!(edge, Bgra::WHITE);
+    assert_ne!(edge, Bgra::BLACK);
 }

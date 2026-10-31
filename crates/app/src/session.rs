@@ -52,7 +52,7 @@ pub struct AppSession {
     limits: ResourceLimits,
     clean_fingerprint: [u8; 32],
     content_fingerprint: [u8; 32],
-    stroke_preview: Option<Document>,
+    preview: Option<Document>,
 }
 
 impl AppSession {
@@ -76,7 +76,7 @@ impl AppSession {
             limits,
             clean_fingerprint: fingerprint,
             content_fingerprint: fingerprint,
-            stroke_preview: None,
+            preview: None,
         }
     }
 
@@ -143,6 +143,18 @@ impl AppSession {
                 replacement,
                 tolerance,
             } => self.recolor(&points, size, target, replacement, tolerance),
+            Command::PlaceText {
+                origin,
+                content,
+                style,
+                color,
+            } => self.place_text(origin, &content, style, color),
+            Command::CloneStamp {
+                points,
+                size,
+                source,
+                hardness,
+            } => self.clone_stamp(&points, size, source, hardness),
             Command::Move { dx, dy } => self.translate(dx, dy),
             Command::Invert => self.invert(),
             Command::ApplyEffect(effect) => self.apply_effect(effect),
@@ -211,9 +223,29 @@ impl AppSession {
         }
     }
 
+    /// Starts a live preview; the document is rewound to this snapshot on every preview update.
+    pub fn begin_preview(&mut self) {
+        if self.preview.is_none() {
+            self.preview = Some(self.document.clone());
+        }
+    }
+
+    /// Whether a live preview is currently holding an undo-free document snapshot.
+    pub fn has_preview(&self) -> bool {
+        self.preview.is_some()
+    }
+
     /// Starts a live stroke preview; the document is rewound to this snapshot each frame.
     pub fn begin_stroke_preview(&mut self) {
-        self.stroke_preview = Some(self.document.clone());
+        self.begin_preview();
+    }
+
+    fn rewind_preview(&mut self) -> Result<Document, SessionError> {
+        let Some(before) = self.preview.clone() else {
+            return Err(SessionError::DocumentInvariant("preview was not started"));
+        };
+        self.document = before.clone();
+        Ok(before)
     }
 
     /// Recomputes the whole in-progress stroke against the preview snapshot.
@@ -223,12 +255,7 @@ impl AppSession {
         size: u32,
         color: Option<Bgra>,
     ) -> Result<bool, SessionError> {
-        let Some(before) = self.stroke_preview.clone() else {
-            return Err(SessionError::DocumentInvariant(
-                "stroke preview was not started",
-            ));
-        };
-        self.document = before;
+        self.rewind_preview()?;
         let patch = paint_raster::stroke(
             &self.document,
             self.document.active_layer_id(),
@@ -236,6 +263,50 @@ impl AppSession {
             size,
             color,
         )?;
+        self.apply_preview_patch(patch)
+    }
+
+    /// Recomputes a text placement against the preview snapshot.
+    pub fn preview_text(
+        &mut self,
+        origin: Point,
+        content: &str,
+        style: paint_raster::TextStyle,
+        color: Bgra,
+    ) -> Result<bool, SessionError> {
+        self.rewind_preview()?;
+        let patch = paint_raster::text(
+            &self.document,
+            self.document.active_layer_id(),
+            origin,
+            content,
+            style,
+            color,
+        )?;
+        self.apply_preview_patch(patch)
+    }
+
+    /// Recomputes a clone stamp stroke against the preview snapshot.
+    pub fn preview_clone_stamp(
+        &mut self,
+        points: &[Point],
+        size: u32,
+        source: Point,
+        hardness: u8,
+    ) -> Result<bool, SessionError> {
+        self.rewind_preview()?;
+        let patch = paint_raster::clone_stamp(
+            &self.document,
+            self.document.active_layer_id(),
+            points,
+            size,
+            source,
+            hardness,
+        )?;
+        self.apply_preview_patch(patch)
+    }
+
+    fn apply_preview_patch(&mut self, patch: Option<PixelPatch>) -> Result<bool, SessionError> {
         let changed = if let Some(patch) = patch {
             self.document.apply_patch(&patch)?;
             true
@@ -246,9 +317,9 @@ impl AppSession {
         Ok(changed)
     }
 
-    /// Commits the live stroke as one undoable document mutation.
-    pub fn finish_stroke_preview(&mut self) -> Result<bool, SessionError> {
-        let Some(before) = self.stroke_preview.take() else {
+    /// Commits the live preview as one undoable document mutation.
+    pub fn finish_preview(&mut self) -> Result<bool, SessionError> {
+        let Some(before) = self.preview.take() else {
             return Ok(false);
         };
         if before == self.document {
@@ -263,6 +334,19 @@ impl AppSession {
         self.redo.clear();
         self.refresh_content_fingerprint();
         Ok(true)
+    }
+
+    /// Commits the live stroke as one undoable document mutation.
+    pub fn finish_stroke_preview(&mut self) -> Result<bool, SessionError> {
+        self.finish_preview()
+    }
+
+    /// Discards a live preview and restores the exact pre-preview document.
+    pub fn cancel_preview(&mut self) {
+        if let Some(before) = self.preview.take() {
+            self.document = before;
+            self.refresh_content_fingerprint();
+        }
     }
 
     pub fn stroke(
@@ -360,6 +444,48 @@ impl AppSession {
             target,
             replacement,
             tolerance,
+        )?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn place_text(
+        &mut self,
+        origin: Point,
+        content: &str,
+        style: paint_raster::TextStyle,
+        color: Bgra,
+    ) -> Result<bool, SessionError> {
+        let patch = paint_raster::text(
+            &self.document,
+            self.document.active_layer_id(),
+            origin,
+            content,
+            style,
+            color,
+        )?;
+        match patch {
+            Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),
+            None => Ok(false),
+        }
+    }
+
+    pub fn clone_stamp(
+        &mut self,
+        points: &[Point],
+        size: u32,
+        source: Point,
+        hardness: u8,
+    ) -> Result<bool, SessionError> {
+        let patch = paint_raster::clone_stamp(
+            &self.document,
+            self.document.active_layer_id(),
+            points,
+            size,
+            source,
+            hardness,
         )?;
         match patch {
             Some(patch) => self.apply_new_mutation(Mutation::Pixels(patch)),

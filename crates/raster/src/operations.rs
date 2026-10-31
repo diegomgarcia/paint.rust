@@ -282,7 +282,7 @@ pub fn fill_ellipse(
     )?))
 }
 
-fn clip_rect(
+pub(crate) fn clip_rect(
     operation: Rect,
     left: i64,
     top: i64,
@@ -982,4 +982,141 @@ fn rotate_surface(
         }
     }
     Ok(Surface::from_pixels(new_size, pixels)?)
+}
+
+/// Clones pixels from `source` along a round brush stroke.
+///
+/// The first point anchors the stroke: every destination pixel samples
+/// `source + (destination - points[0])`, so moving the stamp carries the source
+/// along with it. `hardness` is a percentage: 100 is a hard edge and 0 fades
+/// smoothly from the center to the brush radius. Sampling always reads the layer
+/// before the stroke, and the resulting patch is clipped to the active selection.
+pub fn clone_stamp(
+    document: &Document,
+    layer_id: LayerId,
+    points: &[paint_core::Point],
+    size: u32,
+    source: paint_core::Point,
+    hardness: u8,
+) -> Result<Option<PixelPatch>, RasterError> {
+    let layer = layer(document, layer_id)?;
+    let Some(operation) = operation_rect(document) else {
+        return Ok(None);
+    };
+    let Some(origin) = points.first().copied() else {
+        return Ok(None);
+    };
+    let radius = size.max(1).saturating_sub(1) / 2;
+    let radius_i64 = i64::from(radius);
+    let mut min_x = i64::from(origin.x);
+    let mut min_y = i64::from(origin.y);
+    let mut max_x = min_x;
+    let mut max_y = min_y;
+    for point in points {
+        min_x = min_x.min(i64::from(point.x));
+        min_y = min_y.min(i64::from(point.y));
+        max_x = max_x.max(i64::from(point.x));
+        max_y = max_y.max(i64::from(point.y));
+    }
+    let Some(rect) = clip_rect(
+        operation,
+        min_x - radius_i64,
+        min_y - radius_i64,
+        max_x + radius_i64 + 1,
+        max_y + radius_i64 + 1,
+    )?
+    else {
+        return Ok(None);
+    };
+    let before = layer.surface().read_region(rect)?;
+    let requested_bytes = rect.size().checked_buffer_len()?;
+    let mut after = copy_pixels(&before, requested_bytes)?;
+    let left = rect.left();
+    let top = rect.top();
+    let width = i64::from(rect.width());
+    let height = i64::from(rect.height());
+    let source_x = i64::from(source.x);
+    let source_y = i64::from(source.y);
+    let origin_x = i64::from(origin.x);
+    let origin_y = i64::from(origin.y);
+    let radius_f = f64::from(radius);
+    let hardness = f64::from(hardness.min(100)) / 100.0;
+    let inner_radius = radius_f * hardness;
+
+    let mut stamp = |center_x: i64, center_y: i64| {
+        for py in (center_y - radius_i64)..=(center_y + radius_i64) {
+            if py < top || py >= top + height {
+                continue;
+            }
+            for px in (center_x - radius_i64)..=(center_x + radius_i64) {
+                if px < left || px >= left + width {
+                    continue;
+                }
+                let dx = (px - center_x) as f64;
+                let dy = (py - center_y) as f64;
+                let distance = dx.hypot(dy);
+                if radius > 0 && distance > radius_f {
+                    continue;
+                }
+                let cov = if radius == 0 || distance <= inner_radius {
+                    u8::MAX
+                } else {
+                    let t = (distance - inner_radius) / (radius_f - inner_radius);
+                    let smooth = t * t * (3.0 - 2.0 * t);
+                    ((1.0 - smooth) * 255.0).round() as u8
+                };
+                if cov == 0 {
+                    continue;
+                }
+                let sample_x = source_x + (px - origin_x);
+                let sample_y = source_y + (py - origin_y);
+                if sample_x < 0 || sample_y < 0 {
+                    continue;
+                }
+                let Ok(sample_x) = u32::try_from(sample_x) else {
+                    continue;
+                };
+                let Ok(sample_y) = u32::try_from(sample_y) else {
+                    continue;
+                };
+                let Some(sampled) = layer
+                    .surface()
+                    .get(paint_core::Point::new(sample_x, sample_y))
+                else {
+                    continue;
+                };
+                let alpha = ((u16::from(sampled.a) * u16::from(cov) + 127) / 255) as u8;
+                if alpha == 0 {
+                    continue;
+                }
+                let source_pixel = Bgra::new(sampled.b, sampled.g, sampled.r, alpha);
+                let index = ((py - top) * width + (px - left)) as usize;
+                after[index] = crate::normal_over(after[index], source_pixel, u8::MAX);
+            }
+        }
+    };
+
+    stamp(origin_x, origin_y);
+    for pair in points.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let dx = i64::from(b.x) - i64::from(a.x);
+        let dy = i64::from(b.y) - i64::from(a.y);
+        let steps = dx.unsigned_abs().max(dy.unsigned_abs());
+        for step in 1..=steps {
+            let x = i64::from(a.x) + (dx * i64::from(step as u32)) / i64::from(steps as u32);
+            let y = i64::from(a.y) + (dy * i64::from(step as u32)) / i64::from(steps as u32);
+            stamp(x, y);
+        }
+    }
+
+    if before == after {
+        return Ok(None);
+    }
+    Ok(Some(PixelPatch::new(
+        layer_id,
+        layer.revision(),
+        rect,
+        before,
+        after,
+    )?))
 }

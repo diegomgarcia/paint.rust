@@ -12,6 +12,7 @@ license.workspace = true
 paint-core.workspace = true
 paint-document.workspace = true
 thiserror.workspace = true
+ab_glyph.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

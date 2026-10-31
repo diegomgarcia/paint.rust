@@ -3,6 +3,7 @@
 mod compose;
 mod effects;
 mod operations;
+mod text;
 
 use paint_core::{GeometryError, SurfaceError};
 use paint_document::{BlendMode, DocumentError, LayerId, PatchError};
@@ -14,11 +15,12 @@ pub use effects::{
     sepia, sepia_active,
 };
 pub use operations::{
-    Rotation, canvas_surfaces, crop_surfaces, fill, fill_active, fill_ellipse, fill_rect,
-    flip_horizontal, flip_vertical, flood_fill, global_fill, invert, invert_active,
+    Rotation, canvas_surfaces, clone_stamp, crop_surfaces, fill, fill_active, fill_ellipse,
+    fill_rect, flip_horizontal, flip_vertical, flood_fill, global_fill, invert, invert_active,
     linear_gradient, recolor, recolor_stroke, resize_surfaces, rotate_surfaces, stamp, stroke,
     translate,
 };
+pub use text::{MAX_TEXT_BYTES, MAX_TEXT_SIZE, TextFontFamily, TextStyle, text};
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum RasterError {
@@ -38,4 +40,10 @@ pub enum RasterError {
     AllocationFailed { requested_bytes: usize },
     #[error("Gaussian blur radius {radius} exceeds the maximum of {max}")]
     BlurRadiusTooLarge { radius: u32, max: u32 },
+    #[error("font {name} is unavailable")]
+    FontUnavailable { name: &'static str },
+    #[error("text is {actual} bytes, exceeding the {max}-byte limit")]
+    TextTooLong { actual: usize, max: usize },
+    #[error("font size {size} px is outside the supported 1..={max} px range")]
+    TextSizeOutOfRange { size: u32, max: u32 },
 }
