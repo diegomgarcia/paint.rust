@@ -4309,6 +4309,142 @@ impl PaintApp {
                                     }
                                 }
                             }
+                            if let (Some(start), Some(end)) = (self.drag_start, self.drag_current) {
+                                let start_pos = rect.min
+                                    + egui::vec2(start.x as f32 * zoom, start.y as f32 * zoom);
+                                let end_pos = rect.min
+                                    + egui::vec2(
+                                        (end.x + 1) as f32 * zoom,
+                                        (end.y + 1) as f32 * zoom,
+                                    );
+                                let marquee = egui::Rect::from_min_max(start_pos, end_pos);
+                                if self.active_tool == Tool::Select {
+                                    ui.painter().rect_filled(
+                                        marquee,
+                                        0,
+                                        egui::Color32::from_white_alpha(24),
+                                    );
+                                    paint_selection_outline(ui.painter(), marquee, phase);
+                                } else if self.active_tool == Tool::EllipseSelect {
+                                    let center = marquee.center();
+                                    let radius = marquee.size() / 2.0;
+                                    let ellipse: Vec<egui::Pos2> = (0..64)
+                                        .map(|step| {
+                                            let angle = std::f32::consts::TAU * step as f32 / 64.0;
+                                            center
+                                                + egui::vec2(
+                                                    radius.x * angle.cos(),
+                                                    radius.y * angle.sin(),
+                                                )
+                                        })
+                                        .collect();
+                                    ui.painter().add(egui::Shape::convex_polygon(
+                                        ellipse,
+                                        egui::Color32::from_rgba_unmultiplied(34, 112, 200, 50),
+                                        egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
+                                    ));
+                                } else if self.active_tool == Tool::Lasso
+                                    && self.paint_points.len() >= 2
+                                {
+                                    let path: Vec<egui::Pos2> = self
+                                        .paint_points
+                                        .iter()
+                                        .map(|point| {
+                                            rect.min
+                                                + egui::vec2(
+                                                    (point.x as f32 + 0.5) * zoom,
+                                                    (point.y as f32 + 0.5) * zoom,
+                                                )
+                                        })
+                                        .collect();
+                                    ui.painter().add(egui::Shape::Path(egui::epaint::PathShape {
+                                        points: path,
+                                        closed: true,
+                                        fill: egui::Color32::from_rgba_unmultiplied(
+                                            34, 112, 200, 50,
+                                        ),
+                                        stroke: egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE)
+                                            .into(),
+                                    }));
+                                } else if matches!(
+                                    self.active_tool,
+                                    Tool::Move | Tool::MoveSelection
+                                ) {
+                                    if let Some(floating) = &self.floating_selection {
+                                        let min = rect.min
+                                            + egui::vec2(
+                                                (floating.floating.bounds.left()
+                                                    + floating.offset_x)
+                                                    as f32
+                                                    * zoom,
+                                                (floating.floating.bounds.top() + floating.offset_y)
+                                                    as f32
+                                                    * zoom,
+                                            );
+                                        let max = rect.min
+                                            + egui::vec2(
+                                                (floating.floating.bounds.right()
+                                                    + floating.offset_x)
+                                                    as f32
+                                                    * zoom,
+                                                (floating.floating.bounds.bottom()
+                                                    + floating.offset_y)
+                                                    as f32
+                                                    * zoom,
+                                            );
+                                        let preview = egui::Rect::from_min_max(min, max);
+                                        ui.painter().rect_filled(
+                                            preview,
+                                            0,
+                                            egui::Color32::from_white_alpha(20),
+                                        );
+                                        paint_selection_outline(ui.painter(), preview, phase);
+                                    } else if let Some(selection) =
+                                        self.session.document().selection()
+                                    {
+                                        let dx = i64::from(end.x) - i64::from(start.x);
+                                        let dy = i64::from(end.y) - i64::from(start.y);
+                                        let min = rect.min
+                                            + egui::vec2(
+                                                (selection.left() + dx) as f32 * zoom,
+                                                (selection.top() + dy) as f32 * zoom,
+                                            );
+                                        let max = rect.min
+                                            + egui::vec2(
+                                                (selection.right() + dx) as f32 * zoom,
+                                                (selection.bottom() + dy) as f32 * zoom,
+                                            );
+                                        let preview = egui::Rect::from_min_max(min, max);
+                                        ui.painter().rect_filled(
+                                            preview,
+                                            0,
+                                            egui::Color32::from_white_alpha(20),
+                                        );
+                                        paint_selection_outline(ui.painter(), preview, phase);
+                                    }
+                                } else if self.active_tool == Tool::Shapes {
+                                    ui.painter().rect_filled(
+                                        marquee,
+                                        0,
+                                        egui::Color32::from_white_alpha(24),
+                                    );
+                                    ui.painter().rect_stroke(
+                                        marquee,
+                                        0,
+                                        egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
+                                        egui::StrokeKind::Inside,
+                                    );
+                                } else if matches!(self.active_tool, Tool::Line | Tool::Gradient) {
+                                    ui.painter().line_segment(
+                                        [
+                                            start_pos + egui::vec2(zoom / 2.0, zoom / 2.0),
+                                            end_pos - egui::vec2(zoom / 2.0, zoom / 2.0),
+                                        ],
+                                        egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
+                                    );
+                                }
+                            }
+
                             if response.drag_stopped()
                                 && let (Some(start), Some(end)) =
                                     (self.drag_start.take(), self.drag_current.take())
@@ -4467,135 +4603,6 @@ impl PaintApp {
                                     }
                                     _ => None,
                                 };
-                            }
-                            if let (Some(start), Some(end)) = (self.drag_start, self.drag_current) {
-                                let start_pos = rect.min
-                                    + egui::vec2(start.x as f32 * zoom, start.y as f32 * zoom);
-                                let end_pos = rect.min
-                                    + egui::vec2(
-                                        (end.x + 1) as f32 * zoom,
-                                        (end.y + 1) as f32 * zoom,
-                                    );
-                                let marquee = egui::Rect::from_min_max(start_pos, end_pos);
-                                if self.active_tool == Tool::Select {
-                                    ui.painter().rect_filled(
-                                        marquee,
-                                        0,
-                                        egui::Color32::from_white_alpha(24),
-                                    );
-                                    paint_selection_outline(ui.painter(), marquee, phase);
-                                } else if self.active_tool == Tool::EllipseSelect {
-                                    let center = marquee.center();
-                                    let radius = marquee.size() / 2.0;
-                                    let ellipse: Vec<egui::Pos2> = (0..64)
-                                        .map(|step| {
-                                            let angle = std::f32::consts::TAU * step as f32 / 64.0;
-                                            center
-                                                + egui::vec2(
-                                                    radius.x * angle.cos(),
-                                                    radius.y * angle.sin(),
-                                                )
-                                        })
-                                        .collect();
-                                    ui.painter().add(egui::Shape::closed_line(
-                                        ellipse,
-                                        egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
-                                    ));
-                                } else if self.active_tool == Tool::Lasso
-                                    && self.paint_points.len() >= 2
-                                {
-                                    let path: Vec<egui::Pos2> = self
-                                        .paint_points
-                                        .iter()
-                                        .map(|point| {
-                                            rect.min
-                                                + egui::vec2(
-                                                    (point.x as f32 + 0.5) * zoom,
-                                                    (point.y as f32 + 0.5) * zoom,
-                                                )
-                                        })
-                                        .collect();
-                                    ui.painter().add(egui::Shape::closed_line(
-                                        path,
-                                        egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
-                                    ));
-                                } else if matches!(
-                                    self.active_tool,
-                                    Tool::Move | Tool::MoveSelection
-                                ) {
-                                    if let Some(floating) = &self.floating_selection {
-                                        let min = rect.min
-                                            + egui::vec2(
-                                                (floating.floating.bounds.left()
-                                                    + floating.offset_x)
-                                                    as f32
-                                                    * zoom,
-                                                (floating.floating.bounds.top() + floating.offset_y)
-                                                    as f32
-                                                    * zoom,
-                                            );
-                                        let max = rect.min
-                                            + egui::vec2(
-                                                (floating.floating.bounds.right()
-                                                    + floating.offset_x)
-                                                    as f32
-                                                    * zoom,
-                                                (floating.floating.bounds.bottom()
-                                                    + floating.offset_y)
-                                                    as f32
-                                                    * zoom,
-                                            );
-                                        let preview = egui::Rect::from_min_max(min, max);
-                                        ui.painter().rect_filled(
-                                            preview,
-                                            0,
-                                            egui::Color32::from_white_alpha(20),
-                                        );
-                                        paint_selection_outline(ui.painter(), preview, phase);
-                                    } else if let Some(selection) =
-                                        self.session.document().selection()
-                                    {
-                                        let dx = i64::from(end.x) - i64::from(start.x);
-                                        let dy = i64::from(end.y) - i64::from(start.y);
-                                        let min = rect.min
-                                            + egui::vec2(
-                                                (selection.left() + dx) as f32 * zoom,
-                                                (selection.top() + dy) as f32 * zoom,
-                                            );
-                                        let max = rect.min
-                                            + egui::vec2(
-                                                (selection.right() + dx) as f32 * zoom,
-                                                (selection.bottom() + dy) as f32 * zoom,
-                                            );
-                                        let preview = egui::Rect::from_min_max(min, max);
-                                        ui.painter().rect_filled(
-                                            preview,
-                                            0,
-                                            egui::Color32::from_white_alpha(20),
-                                        );
-                                        paint_selection_outline(ui.painter(), preview, phase);
-                                    }
-                                } else if self.active_tool == Tool::Shapes {
-                                    ui.painter().rect_filled(
-                                        marquee,
-                                        0,
-                                        egui::Color32::from_white_alpha(24),
-                                    );
-                                    ui.painter().rect_stroke(
-                                        marquee,
-                                        0,
-                                        egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
-                                        egui::StrokeKind::Inside,
-                                    );
-                                } else if matches!(self.active_tool, Tool::Line | Tool::Gradient) {
-                                    ui.painter().line_segment(
-                                        [
-                                            start_pos + egui::vec2(zoom / 2.0, zoom / 2.0),
-                                            end_pos - egui::vec2(zoom / 2.0, zoom / 2.0),
-                                        ],
-                                        egui::Stroke::new(1.5, egui::Color32::LIGHT_BLUE),
-                                    );
-                                }
                             }
                         }
                     } else {
