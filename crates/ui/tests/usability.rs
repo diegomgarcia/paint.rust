@@ -27,6 +27,7 @@ fn floating_app() -> Harness<'static, PaintApp> {
         .with_size(egui::Vec2::new(1_400.0, 1_000.0))
         .build_eframe(|cc| PaintApp::new(cc));
     harness.run();
+    harness.state_mut().use_native_file_dialogs(false);
     harness
 }
 
@@ -37,6 +38,7 @@ fn fast_app() -> Harness<'static, PaintApp> {
         .build_eframe(|cc| PaintApp::new_docked(cc));
     harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
     harness.run();
+    harness.state_mut().use_native_file_dialogs(false);
     harness
 }
 

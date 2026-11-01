@@ -8,7 +8,7 @@ use paint_image_io::{
     DecodeError, PngLimits, RasterFormat, RasterLimits, atomic_write, decode_image_with_limits,
     decode_png_with_limits, encode_png, write_image_atomic, write_png_atomic,
 };
-use paint_pdn3::encode_pdn;
+use paint_pdn3::{PdnLimits, decode_pdn_with_limits, encode_pdn};
 
 use crate::{AppSession, ResourceLimits, SessionError, TraceOutput};
 
@@ -109,6 +109,22 @@ impl AppSession {
         self.export_png_atomic(path)?;
         self.mark_clean();
         Ok(())
+    }
+
+    /// Opens a layered PDN file as a clean session.
+    pub fn open_pdn(path: impl AsRef<Path>) -> Result<Self, SessionError> {
+        Self::open_pdn_with_limits(path, ResourceLimits::default())
+    }
+
+    /// Opens a layered PDN file with explicit document and PDN decoder limits.
+    pub fn open_pdn_with_limits(
+        path: impl AsRef<Path>,
+        limits: ResourceLimits,
+    ) -> Result<Self, SessionError> {
+        let path = path.as_ref();
+        let bytes = read_bounded(path, PdnLimits::default().max_input_bytes)?;
+        let decoded = decode_pdn_with_limits(&bytes, &PdnLimits::default())?;
+        Self::with_limits(decoded.document, limits)
     }
 
     /// Encodes the layered document as a PDN3 container. This is a real layered

@@ -12,8 +12,9 @@ A fast, modular image editor written in Rust, inspired by Paint.NET's direct, to
 Any help is appreciated! Comments, suggestions, issues, PRs! Give us a star to help!
 
 > **Development preview:** Paint.Rust is early. There are no installers or public binaries yet;
-> build it from source. Save As supports layered PDN (experimental interoperability) and flat
-> PNG/JPEG/TIFF/BMP/TGA/DDS/GIF/WebP. Opening is currently limited to PNG. Paint.Rust is an
+> build it from source. **PDR** stores the full session (layers, selection and undo/redo
+> history); PDN stores layers with experimental interoperability; PNG/JPEG/TIFF/BMP/TGA/DDS/GIF/
+> WebP are flat formats. Open supports PDR, PDN and all eight flat formats. Paint.Rust is an
 > original project, not affiliated with or endorsed by Paint.NET, and it does not use Paint.NET
 > code or assets.
 
@@ -34,7 +35,7 @@ The main goals are:
 
 ## Current status
 
-- **587 workspace tests** passing.
+- **619 workspace tests** passing.
 - Strict `clippy -D warnings`, formatting and `xtask verify` gates passing.
 - Native macOS keyboard, focus, dirty-close and screenshot gate passing.
 - macOS Apple Silicon is the only platform currently covered by the native window/input gate.
@@ -43,7 +44,7 @@ The main goals are:
 
 ## Features
 
-- Multi-document tabs with per-tab paths, dirty markers, close guard, PNG Open and
+- Multi-document tabs with per-tab paths, dirty markers, close guard, native Open and
   format-aware Save/Save As/Export.
 - All 19 Paint.NET-ordered tools: Rectangle/Ellipse/Lasso/Magic Wand selection, Move Selected
   Pixels, Move Selection, Zoom, Pan, Paint Bucket, Gradient, Paintbrush, Eraser, Pencil,
@@ -69,20 +70,22 @@ The main goals are:
 
 ### Save formats
 
-| Format | Status | Notes |
-|---|---|---|
-| PDN | Save | Layered document; Paint.NET interoperability is experimental |
-| PNG | Save | Lossless RGBA, bounded encoder |
-| JPEG | Save | Quality 90, alpha flattened over white |
-| TIFF | Save | RGBA |
-| BMP | Save | RGBA BMP |
-| TGA | Save | RLE-capable RGBA |
-| DDS | Save | Uncompressed BGRA |
-| GIF | Save | Static single-frame GIF |
-| WebP | Save | Lossless VP8L |
-| AVIF, HEIC, JPEG XL, JPEG XR | Not yet | External/native codecs are not bundled |
+| Format | Open | Save | Notes |
+|---|---|---|---|
+| **PDR** | Yes | Yes | Full Paint.Rust session: layers, selection and undo/redo history |
+| PDN | Yes | Yes | Layered document; Paint.NET interoperability is experimental |
+| PNG | Yes | Yes | Lossless RGBA, bounded encoder |
+| JPEG | Yes | Yes | Quality 90, alpha flattened over white |
+| TIFF | Yes | Yes | RGBA |
+| BMP | Yes | Yes | RGBA BMP |
+| TGA | Yes | Yes | RLE-capable RGBA |
+| DDS | Yes | Yes | Uncompressed BGRA |
+| GIF | Yes | Yes | Static single-frame GIF |
+| WebP | Yes | Yes | Lossless VP8L |
+| AVIF, HEIC, JPEG XL, JPEG XR | No | No | External/native codecs are not bundled |
 
-Opening currently accepts PNG only. PDN files can be saved but not reopened by this preview.
+PDR is the recommended format to continue work later; it preserves the History panel stacks
+and the exact document state. The flat formats intentionally flatten the composition.
 
 ## How should I use it?
 
@@ -182,8 +185,8 @@ See [the implementation plan](docs/IMPLEMENTATION_PLAN.md),
 
 ## Known issues and limitations
 
-1. **PDN open is not implemented.** Layered PDN save works, but this preview cannot reopen
-   PDN files yet; flat formats intentionally store only composed pixels.
+1. **PDR files grow with history.** Version 1 stores one raw document snapshot per undo/redo
+   entry, without compression, so long histories and large canvases produce large files.
 2. **AVIF, HEIC, JPEG XL and JPEG XR are not available.** They require native/external codecs
    that are not bundled.
 3. **No public installer or binary.** The preview builds from source; distribution still needs
@@ -201,7 +204,7 @@ See [the implementation plan](docs/IMPLEMENTATION_PLAN.md),
 
 ## Roadmap
 
-- PDN open/load and broader interoperability tests against stock Paint.NET.
+- Broader PDN interoperability tests against stock Paint.NET and PDR compression.
 - Complete the remaining adjustments and effects with previews and undo.
 - Move scale/rotation handles and Freeform shapes.
 - Windows/Linux native gates and hosted three-OS CI.

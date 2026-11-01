@@ -990,6 +990,106 @@ impl PaintApp {
         self.path_dialog = Some(PathDialog::new(kind));
     }
 
+    fn show_open_dialog(&mut self) {
+        if !self.native_file_dialogs {
+            self.show_path_dialog(PathDialogKind::Open);
+            return;
+        }
+        let current = self.document_path.clone().unwrap_or_default();
+        let Some(path) = crate::native_file_dialog::open_panel("Open Image", &current) else {
+            return;
+        };
+        self.open_path(&path);
+    }
+
+    /// Test hook for the native-open dispatch; production uses the OS panel.
+    #[doc(hidden)]
+    pub fn open_path_for_test(&mut self, path: &Path) {
+        self.open_path(path);
+    }
+
+    fn open_path(&mut self, path: &Path) {
+        let extension = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.to_ascii_lowercase());
+        match extension.as_deref() {
+            Some("pdr") => match paint_app::AppSession::open_pdr_with_limits_and_labels(
+                path,
+                self.session.limits(),
+                paint_app::PdrLimits::default(),
+            ) {
+                Ok((session, labels)) => {
+                    let (undo, redo) = labels
+                        .map(|labels| (labels.undo, labels.redo))
+                        .unwrap_or_default();
+                    self.install_opened_session(path, session, undo, redo, "Opened PDR");
+                }
+                Err(error) => self.status = format!("Open failed: {error}"),
+            },
+            Some("pdn") => match paint_app::AppSession::open_pdn(path) {
+                Ok(session) => {
+                    self.install_opened_session(
+                        path,
+                        session,
+                        vec!["Open PDN".to_owned()],
+                        Vec::new(),
+                        "Opened layered PDN",
+                    );
+                }
+                Err(error) => self.status = format!("Open failed: {error}"),
+            },
+            Some(extension)
+                if paint_image_io::RasterFormat::from_extension(extension).is_some() =>
+            {
+                match paint_app::AppSession::open_image_with_limits(path, self.session.limits()) {
+                    Ok(session) => {
+                        let label = format!("Open {extension}");
+                        self.install_opened_session(
+                            path,
+                            session,
+                            vec![label],
+                            Vec::new(),
+                            "Opened flattened image",
+                        );
+                    }
+                    Err(error) => self.status = format!("Open failed: {error}"),
+                }
+            }
+            _ => self.status = format!("Unsupported file type: {}", path.display()),
+        }
+    }
+
+    fn install_opened_session(
+        &mut self,
+        path: &Path,
+        session: paint_app::AppSession,
+        undo_labels: Vec<String>,
+        redo_labels: Vec<String>,
+        action: &str,
+    ) {
+        self.finalize_floating_selection();
+        self.store_active_tab();
+        self.tabs.push(None);
+        self.active_tab = self.tabs.len() - 1;
+        self.session = session;
+        self.document_title = file_title(path);
+        self.document_path = Some(path.to_path_buf());
+        self.document_thumbnail = None;
+        self.next_layer_number = 1;
+        self.history_entries = undo_labels;
+        self.redo_entries = redo_labels;
+        self.texture_dirty = true;
+        self.zoom = 1.0;
+        self.layer_thumbnails.clear();
+        self.path_dialog = None;
+        self.resize_dialog = None;
+        self.canvas_size_dialog = None;
+        self.reset_transient_tool_state();
+        self.reset_layer_interaction_state();
+        self.status = format!("{action}: {}", path.display());
+    }
+
     /// Test/fallback path dialog. Production Save As opens the native panel directly.
     fn show_fallback_save_dialog(&mut self) {
         self.finish_active_preview();
@@ -1044,8 +1144,31 @@ impl PaintApp {
         }
     }
 
+    fn pdr_history_labels(&self) -> paint_app::PdrHistoryLabels {
+        fn aligned(entries: &[String], count: usize) -> Vec<String> {
+            if entries.len() >= count {
+                entries[entries.len() - count..].to_vec()
+            } else {
+                let mut labels = vec!["Edit".to_owned(); count - entries.len()];
+                labels.extend(entries.iter().cloned());
+                labels
+            }
+        }
+        paint_app::PdrHistoryLabels {
+            undo: aligned(&self.history_entries, self.session.undo_len()),
+            redo: aligned(&self.redo_entries, self.session.redo_len()),
+        }
+    }
+
     fn finish_save(&mut self, path: &Path, format: SaveFormatChoice) {
-        match format.save(&mut self.session, path) {
+        let result = if format == SaveFormatChoice::Pdr {
+            let labels = self.pdr_history_labels();
+            self.session
+                .save_pdr_atomic_with_labels(path, Some(&labels))
+        } else {
+            format.save(&mut self.session, path)
+        };
+        match result {
             Ok(()) => {
                 self.document_title = file_title(path);
                 self.document_path = Some(path.to_path_buf());
@@ -1099,7 +1222,14 @@ impl PaintApp {
         }
         let format = SaveFormatChoice::from_path(&path)
             .unwrap_or(SaveFormatChoice::Raster(paint_image_io::SaveFormat::Png));
-        match format.save(&mut self.session, &path) {
+        let result = if format == SaveFormatChoice::Pdr {
+            let labels = self.pdr_history_labels();
+            self.session
+                .save_pdr_atomic_with_labels(&path, Some(&labels))
+        } else {
+            format.save(&mut self.session, &path)
+        };
+        match result {
             Ok(()) => {
                 self.texture_dirty = true;
                 self.status = format!("Saved {}: {}", format.short_label(), path.display());
@@ -2168,7 +2298,7 @@ impl PaintApp {
         for command in NativeMenu::poll() {
             match command {
                 NativeCommand::New => self.request_new(),
-                NativeCommand::Open => self.show_path_dialog(PathDialogKind::Open),
+                NativeCommand::Open => self.show_open_dialog(),
                 NativeCommand::Save => {
                     if self.document_path.is_some() {
                         self.save_active_document();
@@ -2395,7 +2525,7 @@ impl PaintApp {
                     )
                     .clicked()
                     {
-                        self.show_path_dialog(PathDialogKind::Open);
+                        self.show_open_dialog();
                         ui.close();
                     }
                     ui.separator();
@@ -3327,7 +3457,7 @@ impl PaintApp {
                 self.request_new();
             }
             if icon_button(ui, &self.icons, Icon::OpenFile, "Open PNG file", true).clicked() {
-                self.show_path_dialog(PathDialogKind::Open);
+                self.show_open_dialog();
             }
             if vector_icon_button_sized(ui, VectorIcon::Save, "Save document", true, icon_size)
                 .clicked()
@@ -6486,6 +6616,7 @@ impl PaintApp {
     }
 
     fn path_dialog(&mut self, ui: &mut egui::Ui) {
+        let pdr_labels = self.pdr_history_labels();
         let Some(dialog) = self.path_dialog.as_mut() else {
             return;
         };
@@ -6764,7 +6895,14 @@ impl PaintApp {
                 if path.extension().is_none() {
                     path.set_extension(format.extension());
                 }
-                match format.save(&mut self.session, &path) {
+                let result = if format == SaveFormatChoice::Pdr {
+                    let labels = pdr_labels.clone();
+                    self.session
+                        .save_pdr_atomic_with_labels(&path, Some(&labels))
+                } else {
+                    format.save(&mut self.session, &path)
+                };
+                match result {
                     Ok(()) => {
                         self.document_title = file_title(&path);
                         self.document_path = Some(path.clone());
@@ -7008,7 +7146,7 @@ impl PaintApp {
             return;
         }
         if shortcut_pressed(context, command, egui::Key::O) {
-            self.show_path_dialog(PathDialogKind::Open);
+            self.show_open_dialog();
             return;
         }
         if shortcut_pressed(context, command, egui::Key::I) {
@@ -7469,12 +7607,14 @@ impl CanvasUnit {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SaveFormatChoice {
+    Pdr,
     Pdn,
     Raster(paint_image_io::SaveFormat),
 }
 
 impl SaveFormatChoice {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 10] = [
+        Self::Pdr,
         Self::Pdn,
         Self::Raster(paint_image_io::SaveFormat::Png),
         Self::Raster(paint_image_io::SaveFormat::Jpeg),
@@ -7498,6 +7638,7 @@ impl SaveFormatChoice {
 
     const fn label(self) -> &'static str {
         match self {
+            Self::Pdr => "Paint.Rust (*.pdr)",
             Self::Pdn => "Paint.NET (*.pdn)",
             Self::Raster(format) => format.label(),
         }
@@ -7505,6 +7646,7 @@ impl SaveFormatChoice {
 
     const fn short_label(self) -> &'static str {
         match self {
+            Self::Pdr => "PDR",
             Self::Pdn => "PDN",
             Self::Raster(paint_image_io::SaveFormat::Png) => "PNG",
             Self::Raster(paint_image_io::SaveFormat::Jpeg) => "JPEG",
@@ -7519,6 +7661,7 @@ impl SaveFormatChoice {
 
     const fn extension(self) -> &'static str {
         match self {
+            Self::Pdr => "pdr",
             Self::Pdn => "pdn",
             Self::Raster(format) => format.extension(),
         }
@@ -7526,6 +7669,7 @@ impl SaveFormatChoice {
 
     const fn extensions(self) -> &'static [&'static str] {
         match self {
+            Self::Pdr => &["pdr"],
             Self::Pdn => &["pdn"],
             Self::Raster(format) => format.extensions(),
         }
@@ -7533,6 +7677,7 @@ impl SaveFormatChoice {
 
     fn from_path(path: &Path) -> Option<Self> {
         match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+            "pdr" => Some(Self::Pdr),
             "pdn" => Some(Self::Pdn),
             extension => paint_image_io::SaveFormat::from_extension(extension).map(Self::Raster),
         }
@@ -7544,6 +7689,7 @@ impl SaveFormatChoice {
         path: &Path,
     ) -> Result<(), paint_app::SessionError> {
         match self {
+            Self::Pdr => unreachable!("PDR needs UI history labels; handled by finish_save"),
             Self::Pdn => session.save_pdn_atomic(path),
             Self::Raster(format) => session.save_image_atomic(path, format),
         }
@@ -7555,6 +7701,7 @@ impl SaveFormatChoice {
         path: &Path,
     ) -> Result<(), paint_app::SessionError> {
         match self {
+            Self::Pdr => unreachable!("PDR is a layered save, not a flat export"),
             Self::Pdn => unreachable!("PDN is a layered save, not a flat export"),
             Self::Raster(format) => session.export_image_atomic(path, format),
         }

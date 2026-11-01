@@ -109,6 +109,16 @@ impl AppSession {
         !self.redo.is_empty()
     }
 
+    /// Number of undo entries currently available.
+    pub fn undo_len(&self) -> usize {
+        self.undo.len()
+    }
+
+    /// Number of redo entries currently available.
+    pub fn redo_len(&self) -> usize {
+        self.redo.len()
+    }
+
     /// Establishes the current content as clean after a successful open or save.
     /// History remains valid; moving away from and back to this baseline updates dirty exactly.
     pub fn mark_clean(&mut self) {

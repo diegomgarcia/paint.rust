@@ -11,7 +11,7 @@ This is a status summary, not a release announcement.
 
 | Gate | Status | Evidence or blocker |
 |---|---|---|
-| Workspace format, strict Clippy, tests | **PASS** | 587 tests; `-D warnings`; `xtask verify` |
+| Workspace format, strict Clippy, tests | **PASS** | 619 tests; `-D warnings`; `xtask verify` |
 | Deterministic core and headless traces | **PASS** | Workspace and UI test suites |
 | macOS release build | **PASS** | `cargo build --release -p paint-ui --locked` |
 | Native macOS window/input/dirty-close gate | **PASS** | Final save-format gate run |
@@ -26,8 +26,8 @@ This is a status summary, not a release announcement.
 
 ## What is demonstrated
 
-- Native `eframe`/`egui` editor with multi-document tabs, dirty guards, PNG Open/Save/Export,
-  clipboard actions and undo/redo.
+- Native `eframe`/`egui` editor with multi-document tabs, dirty guards, native Open/Save/Export,
+  complete PDR session history, clipboard actions and undo/redo.
 - 19-tool toolbox, compact contextual ToolConfigStrip, inline canvas text editing and
   Paint.NET-inspired menus and panels.
 - Mask-backed selections, layers/blending, image operations and previewable effects.

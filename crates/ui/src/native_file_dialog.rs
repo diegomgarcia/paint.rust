@@ -152,3 +152,22 @@ pub(crate) fn save_panel(
     }
     Some((path, index))
 }
+
+/// Shows the native open panel with the supported image extensions.
+pub(crate) fn open_panel(title: &str, current: &Path) -> Option<PathBuf> {
+    let mut dialog = rfd::FileDialog::new()
+        .set_title(title)
+        .add_filter("Paint.Rust document", &["pdr"])
+        .add_filter("Paint.NET document", &["pdn"])
+        .add_filter(
+            "Images",
+            &[
+                "png", "jpg", "jpeg", "jpe", "jfif", "exif", "tif", "tiff", "bmp", "dib", "tga",
+                "dds", "gif", "webp",
+            ],
+        );
+    if let Some(parent) = current.parent().filter(|parent| parent.is_dir()) {
+        dialog = dialog.set_directory(parent);
+    }
+    dialog.pick_file()
+}

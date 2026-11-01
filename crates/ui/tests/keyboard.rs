@@ -182,6 +182,7 @@ fn tab_enter_space_and_dirty_new_are_keyboard_usable() {
     let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
     harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
     harness.run();
+    harness.state_mut().use_native_file_dialogs(false);
     press(&mut harness, Key::Tab);
     assert!(
         harness
@@ -443,6 +444,7 @@ fn keyboard_open_and_failed_open_recovery_preserve_then_replace_session() {
     let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
     harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
     harness.run();
+    harness.state_mut().use_native_file_dialogs(false);
     press_command_shift(&mut harness, Key::I);
     let before_document = harness.state().session().document().clone();
     let before = harness.state().session().snapshot().expect("snapshot");

@@ -496,6 +496,7 @@ fn save_as_file_type_lists_every_implemented_format() {
         .click();
     harness.run();
     for label in [
+        "Paint.Rust (*.pdr)",
         "Paint.NET (*.pdn)",
         "PNG (*.png)",
         "JPEG (*.jpg; *.jpeg; *.jpe; *.jfif; *.exif)",
@@ -508,4 +509,48 @@ fn save_as_file_type_lists_every_implemented_format() {
     ] {
         harness.get_by_label_contains(label);
     }
+}
+
+#[test]
+fn save_as_pdr_writes_the_complete_session_container() {
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("session.pdr");
+    let mut harness = app();
+    click(&mut harness, "Add Layer");
+    menu_item(&mut harness, "File", "Save As…");
+    enter_path(&mut harness, &path);
+    click(&mut harness, "Save");
+
+    eprintln!(
+        "status={} path={:?}",
+        harness.state().status(),
+        harness.state().active_document_path()
+    );
+    eprintln!(
+        "files={:?}",
+        fs::read_dir(directory.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect::<Vec<_>>()
+    );
+    let bytes = fs::read(&path).unwrap();
+    assert_eq!(&bytes[..8], b"PAINTRDR");
+    assert!(!harness.state().session().dirty());
+    assert_eq!(harness.state().active_document_path(), Some(path.as_path()));
+}
+
+#[test]
+fn command_s_updates_an_existing_pdr_without_panicking() {
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("session.pdr");
+    let mut harness = app();
+    menu_item(&mut harness, "File", "Save As…");
+    enter_path(&mut harness, &path);
+    click(&mut harness, "Save");
+    click(&mut harness, "Add Layer");
+    assert!(harness.state().session().dirty());
+    press_command(&mut harness, Key::S);
+    assert!(!harness.state().session().dirty());
+    let bytes = fs::read(&path).unwrap();
+    assert_eq!(&bytes[..8], b"PAINTRDR");
 }
