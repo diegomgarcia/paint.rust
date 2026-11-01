@@ -12,9 +12,10 @@ A fast, modular image editor written in Rust, inspired by Paint.NET's direct, to
 Any help is appreciated! Comments, suggestions, issues, PRs! Give us a star to help!
 
 > **Development preview:** Paint.Rust is early. There are no installers or public binaries yet;
-> build it from source. Saving currently writes a flattened PNG, so layered documents are not
-> preserved. Paint.Rust is an original project, not affiliated with or endorsed by Paint.NET,
-> and it does not use Paint.NET code or assets.
+> build it from source. Save As supports layered PDN (experimental interoperability) and flat
+> PNG/JPEG/TIFF/BMP/TGA/DDS/GIF/WebP. Opening is currently limited to PNG. Paint.Rust is an
+> original project, not affiliated with or endorsed by Paint.NET, and it does not use Paint.NET
+> code or assets.
 
 ## Goals
 
@@ -33,7 +34,7 @@ The main goals are:
 
 ## Current status
 
-- **579 workspace tests** passing.
+- **587 workspace tests** passing.
 - Strict `clippy -D warnings`, formatting and `xtask verify` gates passing.
 - Native macOS keyboard, focus, dirty-close and screenshot gate passing.
 - macOS Apple Silicon is the only platform currently covered by the native window/input gate.
@@ -42,8 +43,8 @@ The main goals are:
 
 ## Features
 
-- Multi-document tabs with per-tab paths, dirty markers, close guard, Open, Save/Save As and
-  PNG export.
+- Multi-document tabs with per-tab paths, dirty markers, close guard, PNG Open and
+  format-aware Save/Save As/Export.
 - All 19 Paint.NET-ordered tools: Rectangle/Ellipse/Lasso/Magic Wand selection, Move Selected
   Pixels, Move Selection, Zoom, Pan, Paint Bucket, Gradient, Paintbrush, Eraser, Pencil,
   Color Picker, Clone Stamp, Recolor, Text, Line/Curve and Shapes.
@@ -65,6 +66,23 @@ The main goals are:
 - Compact Paint.NET-style main toolbar and per-tool ToolConfigStrip, icon menus with shortcut
   hints, Colors/Layers/History panels, grid, rulers, units and zoom.
 - Deterministic headless command traces and PNG snapshots for automated verification.
+
+### Save formats
+
+| Format | Status | Notes |
+|---|---|---|
+| PDN | Save | Layered document; Paint.NET interoperability is experimental |
+| PNG | Save | Lossless RGBA, bounded encoder |
+| JPEG | Save | Quality 90, alpha flattened over white |
+| TIFF | Save | RGBA |
+| BMP | Save | RGBA BMP |
+| TGA | Save | RLE-capable RGBA |
+| DDS | Save | Uncompressed BGRA |
+| GIF | Save | Static single-frame GIF |
+| WebP | Save | Lossless VP8L |
+| AVIF, HEIC, JPEG XL, JPEG XR | Not yet | External/native codecs are not bundled |
+
+Opening currently accepts PNG only. PDN files can be saved but not reopened by this preview.
 
 ## How should I use it?
 
@@ -148,7 +166,7 @@ It requires macOS Accessibility and Screen Recording permissions for the termina
 | `crates/core` | Geometry, pixels, surfaces and shared errors |
 | `crates/document` | Layers, selections, revisions and validated document patches |
 | `crates/raster` | Deterministic CPU raster patches and layer composition |
-| `crates/image-io` | Bounded PNG decode/encode and atomic file output |
+| `crates/image-io` | Bounded PNG decode plus multi-format encode and atomic output |
 | `crates/pdn3` | Bounded, versioned PDN3 semantic codec |
 | `crates/app` | Application session, command traces and undo/redo |
 | `crates/ui` | Native `eframe`/`egui` desktop UI |
@@ -162,23 +180,26 @@ See [the implementation plan](docs/IMPLEMENTATION_PLAN.md),
 
 ## Known issues and limitations
 
-1. **Layered saving is not implemented.** Save/Save As writes a flattened PNG.
-2. **No public installer or binary.** The preview builds from source; distribution still needs
+1. **PDN open is not implemented.** Layered PDN save works, but this preview cannot reopen
+   PDN files yet; flat formats intentionally store only composed pixels.
+2. **AVIF, HEIC, JPEG XL and JPEG XR are not available.** They require native/external codecs
+   that are not bundled.
+3. **No public installer or binary.** The preview builds from source; distribution still needs
    signing, notarization, legal clearance and hosted CI.
-3. **Advanced effects are incomplete.** Curves, Exposure, Highlights/Shadows, Invert Alpha,
+4. **Advanced effects are incomplete.** Curves, Exposure, Highlights/Shadows, Invert Alpha,
    Temperature and Tint are intentionally disabled rather than faked.
-4. **Move has no scale/rotation handles.** It supports translation with subpixel resampling.
-5. **Freeform shapes are not implemented.** The 19-tool strip reflects the supported subset.
-6. **Not pixel-identical to Paint.NET.** Layout and behavior are reference-driven, but exact
+5. **Move has no scale/rotation handles.** It supports translation with subpixel resampling.
+6. **Freeform shapes are not implemented.** The 19-tool strip reflects the supported subset.
+7. **Not pixel-identical to Paint.NET.** Layout and behavior are reference-driven, but exact
    rendering parity is not claimed.
-7. **Windows/Linux are not release-gated.** Builds are intended, but macOS is the only platform
+8. **Windows/Linux are not release-gated.** Builds are intended, but macOS is the only platform
    with a native window/input gate today.
-8. **No Paint.NET plugin compatibility.** The isolated plugin lane is a separate, incomplete
+9. **No Paint.NET plugin compatibility.** The isolated plugin lane is a separate, incomplete
    development path; Paint.NET binaries are not loaded.
 
 ## Roadmap
 
-- Layered document save/load and a native project format.
+- PDN open/load and broader interoperability tests against stock Paint.NET.
 - Complete the remaining adjustments and effects with previews and undo.
 - Move scale/rotation handles and Freeform shapes.
 - Windows/Linux native gates and hosted three-OS CI.

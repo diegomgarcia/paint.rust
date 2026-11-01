@@ -61,13 +61,15 @@ Paint.Rust is an original Rust image editor inspired by Paint.NET's tool-first w
 
 This preview includes all 19 tools in Paint.NET order, mask-backed selections, live tool
 previews, inline canvas text editing, layers/blending, clipboard and image operations,
-effects with previews, a compact Paint.NET-style toolbar and icon menu rows.
+effects with previews, a compact Paint.NET-style toolbar and icon menu rows. Save As supports
+layered PDN plus PNG, JPEG, TIFF, BMP, TGA, DDS, GIF and lossless WebP; Open is PNG-only.
 
-Verification: 579 workspace tests, strict Clippy, xtask verify and the native macOS
+Verification: 587 workspace tests, strict Clippy, xtask verify and the native macOS
 keyboard/dirty-close gate pass.
 
 This is a development preview. There are no installers or public binaries yet; build from
-source. Saving writes a flattened PNG, and Paint.Rust is not affiliated with Paint.NET.
+source. PDN is layered; the other raster formats store composed pixels. Paint.Rust is not
+affiliated with Paint.NET.
 ```
 
 ## First push

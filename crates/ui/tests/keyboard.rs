@@ -50,7 +50,7 @@ fn assert_spin_value(harness: &Harness<'_, PaintApp>, label: &str, expected: f64
 }
 
 fn type_path(harness: &mut Harness<'_, PaintApp>, path: &Path) {
-    let field = harness.get_by_label("PNG file path");
+    let field = harness.get_by_label("File path");
     assert!(field.is_focused(), "the path field must receive focus");
     field.type_text(path.to_str().expect("UTF-8 test path"));
     harness.run();
@@ -59,12 +59,12 @@ fn type_path(harness: &mut Harness<'_, PaintApp>, path: &Path) {
 fn replace_path(harness: &mut Harness<'_, PaintApp>, path: &Path) {
     press_command(harness, Key::A);
     let path = path.to_str().expect("UTF-8 test path");
-    let field = harness.get_by_label("PNG file path");
+    let field = harness.get_by_label("File path");
     assert!(field.is_focused());
     field.type_text(path);
     harness.run();
     assert_eq!(
-        harness.get_by_label("PNG file path").value().as_deref(),
+        harness.get_by_label("File path").value().as_deref(),
         Some(path)
     );
 }
@@ -354,7 +354,7 @@ fn keyboard_editing_history_and_text_field_shortcut_isolation() {
         harness.state().session().snapshot().expect("snapshot"),
         before
     );
-    harness.get_by_role_and_label(Role::Button, "Export PNG");
+    harness.get_by_role_and_label(Role::Button, "Export");
     assert!(
         harness
             .query_by_role_and_label(Role::Button, "Discard")
@@ -363,7 +363,7 @@ fn keyboard_editing_history_and_text_field_shortcut_isolation() {
     );
 
     press(&mut harness, Key::Escape);
-    assert!(harness.query_by_label("PNG file path").is_none());
+    assert!(harness.query_by_label("File path").is_none());
     assert_eq!(
         harness.state().session().snapshot().expect("snapshot"),
         before
@@ -455,7 +455,7 @@ fn keyboard_open_and_failed_open_recovery_preserve_then_replace_session() {
         before
     );
     assert!(harness.state().status().contains("Open failed"));
-    assert!(harness.get_by_label("PNG file path").is_focused());
+    assert!(harness.get_by_label("File path").is_focused());
 
     replace_path(&mut harness, &valid);
     press(&mut harness, Key::Enter);
@@ -492,7 +492,7 @@ fn keyboard_export_failure_is_recoverable_without_changing_session() {
     );
     assert!(harness.state().status().contains("Export failed"));
     assert!(!invalid.exists());
-    assert!(harness.get_by_label("PNG file path").is_focused());
+    assert!(harness.get_by_label("File path").is_focused());
 
     replace_path(&mut harness, &valid);
     press(&mut harness, Key::Enter);
@@ -500,7 +500,7 @@ fn keyboard_export_failure_is_recoverable_without_changing_session() {
         harness.state().session().snapshot().expect("snapshot"),
         before
     );
-    assert!(harness.query_by_label("PNG file path").is_none());
+    assert!(harness.query_by_label("File path").is_none());
     assert!(harness.state().session().dirty());
     assert_eq!(harness.state().session().document().layers().len(), 2);
     let exported = paint_image_io::decode_png(&fs::read(valid).expect("read exported PNG"))

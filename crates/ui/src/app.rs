@@ -1010,10 +1010,12 @@ impl PaintApp {
             self.status = "No changes to save".to_owned();
             return false;
         }
-        match self.session.save_png_atomic(&path) {
+        let format = SaveFormatChoice::from_path(&path)
+            .unwrap_or(SaveFormatChoice::Raster(paint_image_io::SaveFormat::Png));
+        match format.save(&mut self.session, &path) {
             Ok(()) => {
                 self.texture_dirty = true;
-                self.status = format!("Saved PNG: {}", path.display());
+                self.status = format!("Saved {}: {}", format.short_label(), path.display());
                 true
             }
             Err(error) => {
@@ -2341,7 +2343,7 @@ impl PaintApp {
                         ui,
                         &self.icons,
                         Icon::ExportFile,
-                        "Export PNG…",
+                        "Export Image…",
                         Some(Shortcut::Export),
                         true,
                     )
@@ -3339,7 +3341,7 @@ impl PaintApp {
             {
                 self.show_rulers = !self.show_rulers;
             }
-            if icon_button(ui, &self.icons, Icon::ExportFile, "Export PNG file", true).clicked() {
+            if icon_button(ui, &self.icons, Icon::ExportFile, "Export image", true).clicked() {
                 self.show_path_dialog(PathDialogKind::Export);
             }
             if self.panels_floating {
@@ -6425,7 +6427,7 @@ impl PaintApp {
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ui.ctx(), |ui| {
                 ui.label(kind.explanation());
-                let label = ui.label("PNG file path");
+                let label = ui.label("File path");
                 let response = ui
                     .text_edit_singleline(&mut dialog.path)
                     .labelled_by(label.id);
@@ -6434,8 +6436,58 @@ impl PaintApp {
                     dialog.focus_path = false;
                 }
                 if response.changed() {
+                    if let Some(format) = SaveFormatChoice::from_path(Path::new(dialog.path.trim()))
+                        && (matches!(kind, PathDialogKind::SaveAs)
+                            || matches!(format, SaveFormatChoice::Raster(_)))
+                    {
+                        dialog.format = format;
+                    }
                     dialog.preview = None;
                     dialog.preview_error = None;
+                }
+                if !matches!(kind, PathDialogKind::Open) {
+                    let choices = if matches!(kind, PathDialogKind::Export) {
+                        &SaveFormatChoice::EXPORT_ALL[..]
+                    } else {
+                        &SaveFormatChoice::ALL[..]
+                    };
+                    ui.horizontal(|ui| {
+                        ui.label("File type");
+                        let before = dialog.format;
+                        let combo = egui::ComboBox::from_id_salt("paint-r-save-format")
+                            .selected_text(dialog.format.label())
+                            .show_ui(ui, |ui| {
+                                for choice in choices {
+                                    ui.selectable_value(
+                                        &mut dialog.format,
+                                        *choice,
+                                        choice.label(),
+                                    );
+                                }
+                            });
+                        combo.response.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::Role::ComboBox,
+                                true,
+                                "File type",
+                            )
+                        });
+                        if dialog.format != before {
+                            apply_extension(&mut dialog.path, dialog.format);
+                            dialog.preview = None;
+                            dialog.preview_error = None;
+                        }
+                    });
+                    if dialog.format == SaveFormatChoice::Pdn
+                        && matches!(kind, PathDialogKind::SaveAs)
+                    {
+                        ui.label("PDN stores layers, opacity and visibility; interoperability is experimental.");
+                    } else {
+                        ui.label("Flat image; layers remain in the session but are not stored in this file.");
+                        ui.label(
+                            "HEIC, AVIF, JPEG XL and JPEG XR codecs are not bundled yet.",
+                        );
+                    }
                 }
                 ui.horizontal(|ui| {
                     if ui
@@ -6459,12 +6511,12 @@ impl PaintApp {
                 });
                 if let Some(preview) = &dialog.preview {
                     ui.separator();
-                    ui.label(format!("PNG preview: {}", preview.label));
+                    ui.label(format!("Image preview: {}", preview.label));
                     ui.add(
                         egui::Image::from_texture(&preview.texture)
                             .maintain_aspect_ratio(true)
                             .fit_to_exact_size(egui::vec2(PREVIEW_WIDTH, PREVIEW_HEIGHT))
-                            .alt_text(format!("PNG preview image: {}", preview.label)),
+                            .alt_text(format!("Preview thumbnail: {}", preview.label)),
                     );
                 }
                 if let Some(error) = &dialog.preview_error {
@@ -6600,13 +6652,17 @@ impl PaintApp {
         match kind {
             PathDialogKind::Open => self.request_open(path),
             PathDialogKind::SaveAs => {
-                let path = PathBuf::from(path);
-                match self.session.save_png_atomic(&path) {
+                let format = dialog.format;
+                let mut path = PathBuf::from(path);
+                if path.extension().is_none() {
+                    path.set_extension(format.extension());
+                }
+                match format.save(&mut self.session, &path) {
                     Ok(()) => {
                         self.document_title = file_title(&path);
                         self.document_path = Some(path.clone());
                         self.texture_dirty = true;
-                        self.status = format!("Saved PNG: {}", path.display());
+                        self.status = format!("Saved {}: {}", format.short_label(), path.display());
                         self.path_dialog = None;
                     }
                     Err(error) => {
@@ -6616,12 +6672,17 @@ impl PaintApp {
                 }
             }
             PathDialogKind::Export => {
-                let path = PathBuf::from(path);
-                match self.session.export_png_atomic(&path) {
+                let format = dialog.format;
+                let mut path = PathBuf::from(path);
+                if path.extension().is_none() {
+                    path.set_extension(format.extension());
+                }
+                match format.export(&self.session, &path) {
                     Ok(()) => {
                         self.path_dialog = None;
                         self.status = format!(
-                            "Exported flattened PNG without changing the layered session: {}",
+                            "Exported flattened {} without changing the layered session: {}",
+                            format.short_label(),
                             path.display()
                         );
                     }
@@ -7299,6 +7360,111 @@ impl CanvasUnit {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SaveFormatChoice {
+    Pdn,
+    Raster(paint_image_io::SaveFormat),
+}
+
+impl SaveFormatChoice {
+    const ALL: [Self; 9] = [
+        Self::Pdn,
+        Self::Raster(paint_image_io::SaveFormat::Png),
+        Self::Raster(paint_image_io::SaveFormat::Jpeg),
+        Self::Raster(paint_image_io::SaveFormat::Tiff),
+        Self::Raster(paint_image_io::SaveFormat::Bmp),
+        Self::Raster(paint_image_io::SaveFormat::Tga),
+        Self::Raster(paint_image_io::SaveFormat::Dds),
+        Self::Raster(paint_image_io::SaveFormat::Gif),
+        Self::Raster(paint_image_io::SaveFormat::WebP),
+    ];
+    const EXPORT_ALL: [Self; 8] = [
+        Self::Raster(paint_image_io::SaveFormat::Png),
+        Self::Raster(paint_image_io::SaveFormat::Jpeg),
+        Self::Raster(paint_image_io::SaveFormat::Tiff),
+        Self::Raster(paint_image_io::SaveFormat::Bmp),
+        Self::Raster(paint_image_io::SaveFormat::Tga),
+        Self::Raster(paint_image_io::SaveFormat::Dds),
+        Self::Raster(paint_image_io::SaveFormat::Gif),
+        Self::Raster(paint_image_io::SaveFormat::WebP),
+    ];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Pdn => "Paint.NET (*.pdn)",
+            Self::Raster(format) => format.label(),
+        }
+    }
+
+    const fn short_label(self) -> &'static str {
+        match self {
+            Self::Pdn => "PDN",
+            Self::Raster(paint_image_io::SaveFormat::Png) => "PNG",
+            Self::Raster(paint_image_io::SaveFormat::Jpeg) => "JPEG",
+            Self::Raster(paint_image_io::SaveFormat::Tiff) => "TIFF",
+            Self::Raster(paint_image_io::SaveFormat::Bmp) => "BMP",
+            Self::Raster(paint_image_io::SaveFormat::Tga) => "TGA",
+            Self::Raster(paint_image_io::SaveFormat::Dds) => "DDS",
+            Self::Raster(paint_image_io::SaveFormat::Gif) => "GIF",
+            Self::Raster(paint_image_io::SaveFormat::WebP) => "WebP",
+        }
+    }
+
+    const fn extension(self) -> &'static str {
+        match self {
+            Self::Pdn => "pdn",
+            Self::Raster(format) => format.extension(),
+        }
+    }
+
+    fn from_path(path: &Path) -> Option<Self> {
+        match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+            "pdn" => Some(Self::Pdn),
+            extension => paint_image_io::SaveFormat::from_extension(extension).map(Self::Raster),
+        }
+    }
+
+    fn save(
+        self,
+        session: &mut paint_app::AppSession,
+        path: &Path,
+    ) -> Result<(), paint_app::SessionError> {
+        match self {
+            Self::Pdn => session.save_pdn_atomic(path),
+            Self::Raster(format) => session.save_image_atomic(path, format),
+        }
+    }
+
+    fn export(
+        self,
+        session: &paint_app::AppSession,
+        path: &Path,
+    ) -> Result<(), paint_app::SessionError> {
+        match self {
+            Self::Pdn => unreachable!("PDN is a layered save, not a flat export"),
+            Self::Raster(format) => session.export_image_atomic(path, format),
+        }
+    }
+}
+
+fn apply_extension(path: &mut String, format: SaveFormatChoice) {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    let mut buffer = PathBuf::from(trimmed);
+    let matches = buffer
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|_| {
+            SaveFormatChoice::from_path(&buffer).is_some_and(|current| current == format)
+        });
+    if !matches {
+        buffer.set_extension(format.extension());
+        *path = buffer.display().to_string();
+    }
+}
+
 #[derive(Clone, Copy)]
 enum PathDialogKind {
     Open,
@@ -7310,8 +7476,8 @@ impl PathDialogKind {
     const fn title(self) -> &'static str {
         match self {
             Self::Open => "Open PNG (flattened)",
-            Self::SaveAs => "Save PNG As",
-            Self::Export => "Export PNG (flattened)",
+            Self::SaveAs => "Save As",
+            Self::Export => "Export Image",
         }
     }
 
@@ -7319,7 +7485,7 @@ impl PathDialogKind {
         match self {
             Self::Open => "Open PNG",
             Self::SaveAs => "Save",
-            Self::Export => "Export PNG",
+            Self::Export => "Export",
         }
     }
 
@@ -7327,7 +7493,7 @@ impl PathDialogKind {
         match self {
             Self::Open => "Opening creates one flattened layer; source layers cannot be recovered.",
             Self::SaveAs => {
-                "Save writes composed pixels to the PNG and marks the document clean; layers remain in this session but are not stored in PNG."
+                "PDN preserves layers. PNG, JPEG, TIFF, BMP, TGA, DDS, GIF and WebP write composed pixels; layers remain in this session but are not stored in those files."
             }
             Self::Export => {
                 "Export writes composed pixels only; the layered session and modified state are preserved."
@@ -7339,6 +7505,7 @@ impl PathDialogKind {
 struct PathDialog {
     kind: PathDialogKind,
     path: String,
+    format: SaveFormatChoice,
     focus_path: bool,
     preview: Option<DialogPreview>,
     preview_error: Option<String>,
@@ -7374,6 +7541,8 @@ impl PathDialog {
         let browser_dir = browser_start_dir(&path);
         Self {
             kind,
+            format: SaveFormatChoice::from_path(Path::new(&path))
+                .unwrap_or(SaveFormatChoice::Raster(paint_image_io::SaveFormat::Png)),
             path,
             focus_path: true,
             preview: None,

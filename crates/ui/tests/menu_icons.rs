@@ -71,7 +71,7 @@ fn file_and_edit_rows_show_shortcuts_and_keep_stable_labels() {
         "Open PNG…",
         "Save",
         "Save As…",
-        "Export PNG…",
+        "Export Image…",
         "Close Window",
         "Quit",
     ] {
@@ -82,7 +82,7 @@ fn file_and_edit_rows_show_shortcuts_and_keep_stable_labels() {
     assert_eq!(description(&harness, "Open PNG…"), shortcut("O"));
     assert_eq!(description(&harness, "Save"), shortcut("S"));
     assert_eq!(description(&harness, "Save As…"), shortcut("Shift+S"));
-    assert_eq!(description(&harness, "Export PNG…"), shortcut("Shift+E"));
+    assert_eq!(description(&harness, "Export Image…"), shortcut("Shift+E"));
     assert_eq!(description(&harness, "Close Window"), shortcut("W"));
     assert_eq!(description(&harness, "Quit"), shortcut("Q"));
     close_menu(&mut harness);

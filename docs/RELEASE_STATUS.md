@@ -11,10 +11,10 @@ This is a status summary, not a release announcement.
 
 | Gate | Status | Evidence or blocker |
 |---|---|---|
-| Workspace format, strict Clippy, tests | **PASS** | 579 tests; `-D warnings`; `xtask verify` |
+| Workspace format, strict Clippy, tests | **PASS** | 587 tests; `-D warnings`; `xtask verify` |
 | Deterministic core and headless traces | **PASS** | Workspace and UI test suites |
 | macOS release build | **PASS** | `cargo build --release -p paint-ui --locked` |
-| Native macOS window/input/dirty-close gate | **PASS** | `artifacts/reference-local/zoom-579` |
+| Native macOS window/input/dirty-close gate | **PASS** | Final save-format gate run |
 | Canvas-only zoom shortcuts | **PASS** | UI regression test and live Cmd+Plus/Cmd+Minus check |
 | Windows native build/window gate | **NOT RUN** | No Windows gate in this checkout |
 | Linux native window/input gate | **NOT RUN** | No native Linux desktop gate in this checkout |

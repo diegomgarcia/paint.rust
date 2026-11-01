@@ -5,8 +5,10 @@ use std::path::Path;
 use paint_core::Surface;
 use paint_document::{Document, Layer, LayerId};
 use paint_image_io::{
-    PngLimits, atomic_write, decode_png_with_limits, encode_png, write_png_atomic,
+    PngLimits, SaveFormat, atomic_write, decode_png_with_limits, encode_png, write_image_atomic,
+    write_png_atomic,
 };
+use paint_pdn3::encode_pdn;
 
 use crate::{AppSession, ResourceLimits, SessionError, TraceOutput};
 
@@ -67,6 +69,53 @@ impl AppSession {
     pub fn save_png_atomic(&mut self, path: impl AsRef<Path>) -> Result<(), SessionError> {
         self.export_png_atomic(path)?;
         self.mark_clean();
+        Ok(())
+    }
+
+    /// Encodes the layered document as a PDN3 container. This is a real layered
+    /// save; Paint.NET acceptance is still experimental and separately tracked.
+    pub fn encode_pdn(&self) -> Result<Vec<u8>, SessionError> {
+        Ok(encode_pdn(self.document())?)
+    }
+
+    /// Atomically saves the layered PDN and moves the clean baseline.
+    pub fn save_pdn_atomic(&mut self, path: impl AsRef<Path>) -> Result<(), SessionError> {
+        let bytes = self.encode_pdn()?;
+        atomic_write(path, &bytes)?;
+        self.mark_clean();
+        Ok(())
+    }
+
+    /// Encodes the composed image in a supported flat raster format.
+    pub fn encode_image(&self, format: SaveFormat) -> Result<Vec<u8>, SessionError> {
+        let composed = self.compose()?;
+        Ok(paint_image_io::encode_image(&composed, format)?)
+    }
+
+    /// Atomically saves a composed raster and moves the clean baseline.
+    ///
+    /// Only PNG and PDN preserve the document faithfully. JPEG/BMP/TGA/TIFF/DDS
+    /// are intentionally flat exports: layers remain in the session but are not
+    /// stored in those files.
+    pub fn save_image_atomic(
+        &mut self,
+        path: impl AsRef<Path>,
+        format: SaveFormat,
+    ) -> Result<(), SessionError> {
+        let composed = self.compose()?;
+        write_image_atomic(path, &composed, format)?;
+        self.mark_clean();
+        Ok(())
+    }
+
+    /// Atomically exports a composed raster without changing the clean baseline.
+    pub fn export_image_atomic(
+        &self,
+        path: impl AsRef<Path>,
+        format: SaveFormat,
+    ) -> Result<(), SessionError> {
+        let composed = self.compose()?;
+        write_image_atomic(path, &composed, format)?;
         Ok(())
     }
 

@@ -1,6 +1,6 @@
 [package]
 name = "paint-image-io"
-description = "Bounded PNG decode/encode and durable atomic file output"
+description = "Bounded PNG decode, multi-format raster encode, and atomic file output"
 publish = false
 version.workspace = true
 edition.workspace = true
@@ -12,6 +12,7 @@ license.workspace = true
 paint-core.workspace = true
 thiserror.workspace = true
 png = "0.18"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "bmp", "tga", "tiff", "gif", "webp"] }
 
 [dev-dependencies]
 proptest.workspace = true

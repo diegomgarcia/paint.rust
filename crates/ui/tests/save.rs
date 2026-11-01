@@ -51,15 +51,15 @@ fn press_command(harness: &mut Harness<'_, PaintApp>, key: Key) {
 }
 
 fn enter_path(harness: &mut Harness<'_, PaintApp>, path: &Path) {
-    let field = harness.get_by_label("PNG file path");
+    let field = harness.get_by_label("File path");
     field.click();
     harness.run();
-    let field = harness.get_by_label("PNG file path");
+    let field = harness.get_by_label("File path");
     assert!(field.is_focused(), "the path field must receive focus");
     harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
     harness.run();
     harness
-        .get_by_label("PNG file path")
+        .get_by_label("File path")
         .type_text(path.to_str().expect("UTF-8 test path"));
     harness.run();
 }
@@ -299,13 +299,13 @@ fn save_shortcuts_prompt_for_a_path_when_the_document_has_none() {
 
     harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::S);
     harness.run();
-    harness.get_by_label("PNG file path");
+    harness.get_by_label("File path");
     click(&mut harness, "Cancel");
     assert!(harness.state().session().dirty());
     assert_eq!(harness.state().active_document_path(), None);
 
     press_command(&mut harness, Key::S);
-    harness.get_by_label("PNG file path");
+    harness.get_by_label("File path");
     click(&mut harness, "Cancel");
     assert!(harness.state().session().dirty());
     assert_eq!(harness.state().active_document_path(), None);
@@ -423,4 +423,87 @@ fn document_paths_accessor_round_trips_through_tab_switches() {
         ]
         .to_vec()
     );
+}
+
+#[test]
+fn save_as_infers_jpeg_from_the_path_and_writes_a_real_jpeg() {
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("photo.jpg");
+    let mut harness = app();
+    menu_item(&mut harness, "File", "Save As…");
+    enter_path(&mut harness, &path);
+    click(&mut harness, "Save");
+
+    let bytes = fs::read(&path).unwrap();
+    assert_eq!(&bytes[..3], &[0xFF, 0xD8, 0xFF], "JPEG SOI marker");
+    assert_eq!(
+        harness.state().status(),
+        format!("Saved JPEG: {}", path.display())
+    );
+    assert_eq!(harness.state().active_document_path(), Some(path.as_path()));
+}
+
+#[test]
+fn save_as_format_picker_updates_the_extension_and_saves_pdn() {
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("layered.png");
+    let mut harness = app();
+    click(&mut harness, "Add Layer");
+    menu_item(&mut harness, "File", "Save As…");
+    enter_path(&mut harness, &path);
+    harness
+        .get_by_role_and_label(Role::ComboBox, "File type")
+        .click();
+    harness.run();
+    harness.get_by_label_contains("Paint.NET (*.pdn)").click();
+    harness.run();
+    assert_eq!(
+        harness.get_by_label("File path").value().as_deref(),
+        Some(directory.path().join("layered.pdn").to_str().unwrap()),
+        "selecting PDN must rewrite the extension"
+    );
+    click(&mut harness, "Save");
+
+    let bytes = fs::read(directory.path().join("layered.pdn")).unwrap();
+    assert_eq!(&bytes[..4], b"PDN3");
+    assert_eq!(harness.state().session().document().layers().len(), 2);
+}
+
+#[test]
+fn export_format_picker_writes_jpeg_without_cleaning_the_document() {
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("export.jpg");
+    let mut harness = app();
+    click(&mut harness, "Add Layer");
+    menu_item(&mut harness, "File", "Export Image…");
+    enter_path(&mut harness, &path);
+    click(&mut harness, "Export");
+
+    let bytes = fs::read(&path).unwrap();
+    assert_eq!(&bytes[..3], &[0xFF, 0xD8, 0xFF]);
+    assert!(harness.state().session().dirty());
+    assert!(harness.state().active_document_path().is_none());
+}
+
+#[test]
+fn save_as_file_type_lists_every_implemented_format() {
+    let mut harness = app();
+    menu_item(&mut harness, "File", "Save As…");
+    harness
+        .get_by_role_and_label(Role::ComboBox, "File type")
+        .click();
+    harness.run();
+    for label in [
+        "Paint.NET (*.pdn)",
+        "PNG (*.png)",
+        "JPEG (*.jpg; *.jpeg; *.jpe; *.jfif; *.exif)",
+        "TIFF (*.tiff; *.tif)",
+        "BMP (*.bmp; *.dib)",
+        "TGA (*.tga)",
+        "DDS (*.dds)",
+        "GIF (*.gif)",
+        "WebP (*.webp)",
+    ] {
+        harness.get_by_label_contains(label);
+    }
 }

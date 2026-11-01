@@ -143,10 +143,10 @@ fn button_is_disabled(harness: &Harness<'_, PaintApp>, label: &str) -> bool {
 }
 
 fn enter_path(harness: &mut Harness<'_, PaintApp>, path: &Path) {
-    let field = harness.get_by_label("PNG file path");
+    let field = harness.get_by_label("File path");
     field.click();
     harness.run();
-    let field = harness.get_by_label("PNG file path");
+    let field = harness.get_by_label("File path");
     assert!(field.is_focused());
     field.type_text(path.to_str().expect("UTF-8 test path"));
     harness.run();
@@ -472,7 +472,7 @@ fn layer_panel_exposes_color_and_layer_previews() {
 
     harness.get_by_role_and_label(Role::Button, "New document");
     harness.get_by_role_and_label(Role::Button, "Open PNG file");
-    harness.get_by_role_and_label(Role::Button, "Export PNG file");
+    harness.get_by_role_and_label(Role::Button, "Export image");
     harness.get_by_role_and_label(Role::Button, "Primary color");
     harness.get_by_label_contains("Layer 0 thumbnail: Background");
 
@@ -493,7 +493,7 @@ fn open_dialog_previews_a_valid_png_without_changing_the_session() {
     click(&mut harness, "Preview");
     harness.run();
 
-    harness.get_by_label_contains("PNG preview: 2×1 PNG");
+    harness.get_by_label_contains("Image preview: 2×1 PNG");
     assert_eq!(harness.state().session().document(), &before);
 
     click(&mut harness, "Cancel");
@@ -780,10 +780,10 @@ fn png_browser_navigates_and_previews_without_mutating_the_session() {
     harness.run();
 
     assert_eq!(
-        harness.get_by_label("PNG file path").value().as_deref(),
+        harness.get_by_label("File path").value().as_deref(),
         image.to_str()
     );
-    harness.get_by_label_contains("PNG preview: 2×1 PNG");
+    harness.get_by_label_contains("Image preview: 2×1 PNG");
     assert_eq!(harness.state().session().document(), &before);
 }
 
@@ -932,9 +932,9 @@ fn png_open_is_flattened_and_export_preserves_the_layered_session() {
     assert!(before.dirty);
     assert!(before.can_undo);
 
-    menu_item(&mut harness, "File", "Export PNG…");
+    menu_item(&mut harness, "File", "Export Image…");
     enter_path(&mut harness, &output);
-    click(&mut harness, "Export PNG");
+    click(&mut harness, "Export");
 
     let session = harness.state().session();
     assert_eq!(session.snapshot().expect("snapshot"), before);
@@ -956,9 +956,9 @@ fn failed_export_reports_an_error_and_preserves_modified_state() {
     let before = harness.state().session().snapshot().expect("snapshot");
     assert!(before.dirty);
 
-    menu_item(&mut harness, "File", "Export PNG…");
+    menu_item(&mut harness, "File", "Export Image…");
     enter_path(&mut harness, &output);
-    click(&mut harness, "Export PNG");
+    click(&mut harness, "Export");
 
     assert_eq!(
         harness.state().session().snapshot().expect("snapshot"),
@@ -995,9 +995,9 @@ fn post_export_close_is_canceled_until_explicit_discard() {
     let output = temporary.path().join("exported.png");
     let mut harness = app();
     menu_item(&mut harness, "Adjustments", "Invert Colors");
-    menu_item(&mut harness, "File", "Export PNG…");
+    menu_item(&mut harness, "File", "Export Image…");
     enter_path(&mut harness, &output);
-    click(&mut harness, "Export PNG");
+    click(&mut harness, "Export");
     assert!(output.exists());
     assert!(harness.state().session().dirty());
     let before = harness.state().session().snapshot().expect("snapshot");
@@ -2113,7 +2113,7 @@ fn document_tab_strip_keeps_the_file_actions_in_a_fixed_tab() {
     for label in [
         "New document",
         "Open PNG file",
-        "Export PNG file",
+        "Export image",
         "Undo",
         "Redo",
         "Document tab preview",
@@ -2161,7 +2161,7 @@ fn toolbar_icons_are_vertically_centered_with_the_document_tab() {
     for label in [
         "New document",
         "Open PNG file",
-        "Export PNG file",
+        "Export image",
         "Undo",
         "Redo",
     ] {
@@ -4698,7 +4698,7 @@ fn icon_menu_actions_keep_their_accessible_labels() {
     let mut harness = floating_app();
 
     click(&mut harness, "File");
-    for label in ["New", "Open PNG…", "Export PNG…"] {
+    for label in ["New", "Open PNG…", "Export Image…"] {
         assert!(
             harness
                 .get_all_by_role_and_label(Role::Button, label)
