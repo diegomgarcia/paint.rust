@@ -1,6 +1,6 @@
 [package]
 name = "paint-ui"
-description = "Paint.R desktop UI and usability-tested development preview"
+description = "Paint.Rust desktop UI and usability-tested development preview"
 publish = false
 version.workspace = true
 edition.workspace = true

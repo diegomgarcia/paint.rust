@@ -2255,7 +2255,7 @@ impl PaintApp {
                 }
                 NativeCommand::About => {
                     self.status =
-                        "Paint.R development preview · MIT first-party license".to_owned();
+                        "Paint.Rust development preview · MIT first-party license".to_owned();
                 }
             }
         }
@@ -3210,7 +3210,7 @@ impl PaintApp {
                 });
                 ui.menu_button("Help", |ui| {
                     compact_menu_spacing(ui);
-                    ui.label("Paint.R development preview · MIT first-party license");
+                    ui.label("Paint.Rust development preview · MIT first-party license");
                     ui.separator();
                     ui.label("Keyboard shortcuts (Cmd/Ctrl):");
                     ui.label("N New | O Open | S Save | Shift+S Save As | Shift+E Export");
@@ -3225,7 +3225,7 @@ impl PaintApp {
                     ui.label("Arrows adjust focused values; Enter confirms a path");
                     ui.label("Escape cancels a dialog");
                 });
-                ui.label("Paint.R development preview");
+                ui.label("Paint.Rust development preview");
             });
         });
     }
@@ -6642,7 +6642,7 @@ impl PaintApp {
     fn discard_confirmation(&mut self, ui: &mut egui::Ui) {
         let explanation = match self.pending_discard.as_ref() {
             Some(DiscardAction::CloseViewport) => {
-                "Closing Paint.R will discard the modified document and its undo history."
+                "Closing Paint.Rust will discard the modified document and its undo history."
             }
             Some(DiscardAction::CloseTab(_)) => {
                 "Closing this document will discard its modified content and undo history."
@@ -8792,7 +8792,7 @@ fn history_label(command: &Command) -> Option<String> {
 
 fn disabled_effect_item(ui: &mut egui::Ui, label: &str) {
     ui.add_enabled(false, egui::Button::new(label))
-        .on_disabled_hover_text("Not implemented in the Paint.R preview");
+        .on_disabled_hover_text("Not implemented in the Paint.Rust preview");
 }
 
 /// Averages straight-alpha BGRA pixels over `rect` using premultiplied alpha, matching

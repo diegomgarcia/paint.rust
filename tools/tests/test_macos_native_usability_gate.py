@@ -1,6 +1,6 @@
 """Cross-platform tests for the macOS native gate's orchestration.
 
-No test launches Paint.R, accesses AppKit, or sends native input. Native transport
+No test launches Paint.Rust, accesses AppKit, or sends native input. Native transport
 is replaced by a deterministic fake; production failures therefore cannot be
 hidden behind a headless/session-only acceptance result.
 """
@@ -25,9 +25,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import macos_native_usability_gate as gate
 
 
-WINDOW_TITLE = "Paint.R Development Preview"
+WINDOW_TITLE = "Paint.Rust Development Preview"
 INVERTED = "Inverted colors on the active layer"
-CLOSE_EXPLANATION = "Closing Paint.R will discard the modified document and its undo history."
+CLOSE_EXPLANATION = "Closing Paint.Rust will discard the modified document and its undo history."
 
 
 def png_bytes(red: int, green: int, blue: int, *, metadata: int = 0) -> bytes:

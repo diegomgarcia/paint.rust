@@ -4,7 +4,7 @@ use crate::PaintApp;
 
 pub fn run() -> eframe::Result<()> {
     eframe::run_native(
-        "Paint.R Development Preview",
+        "Paint.Rust Development Preview",
         native_options(),
         Box::new(|creation_context| Ok(Box::new(PaintApp::new(creation_context)))),
     )

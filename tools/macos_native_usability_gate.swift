@@ -10,7 +10,7 @@ import Foundation
 private let maximumAXNodes = 512
 private let maximumAXDepth = 64
 private let closeTitle = "Discard unsaved changes?"
-private let closeExplanation = "Closing Paint.R will discard the modified document and its undo history."
+private let closeExplanation = "Closing Paint.Rust will discard the modified document and its undo history."
 
 private struct NativeError: Error {
     let code: String

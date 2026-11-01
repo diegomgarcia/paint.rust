@@ -16,7 +16,7 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-authors = ["Paint.R contributors"]
+authors = ["Paint.Rust contributors"]
 license = "MIT"
 
 [workspace.dependencies]

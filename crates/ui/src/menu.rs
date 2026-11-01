@@ -156,11 +156,11 @@ impl NativeMenu {
     pub(crate) fn install(context: egui::Context) -> Option<Self> {
         objc2::MainThreadMarker::new()?;
         let menu = Menu::new();
-        let app = Submenu::new("Paint.R", true);
-        let about = PredefinedMenuItem::about(Some("About Paint.R"), None);
+        let app = Submenu::new("Paint.Rust", true);
+        let about = PredefinedMenuItem::about(Some("About Paint.Rust"), None);
         let quit = MenuItem::with_id(
             "file.quit",
-            "Quit Paint.R",
+            "Quit Paint.Rust",
             true,
             Some(Accelerator::new(Modifiers::META, Code::KeyQ)),
         );
@@ -497,7 +497,7 @@ impl NativeMenu {
             .ok()?;
 
         let help = Submenu::new("Help", true);
-        let about_item = MenuItem::with_id("help.about", "About Paint.R", true, None);
+        let about_item = MenuItem::with_id("help.about", "About Paint.Rust", true, None);
         help.append(&about_item).ok()?;
 
         menu.append_items(&[

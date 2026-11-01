@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded macOS native keyboard/dirty-close evidence gate for Paint.R.
+"""Bounded macOS native keyboard/dirty-close evidence gate for Paint.Rust.
 
 The orchestration is platform-neutral and unit-tested with fakes. Only the real
 CLI backend below compiles/invokes the Swift native transport; no headless UI or
@@ -27,10 +27,10 @@ import zlib
 from pathlib import Path
 from typing import Any, Callable
 
-WINDOW_TITLE = "Paint.R Development Preview"
+WINDOW_TITLE = "Paint.Rust Development Preview"
 INVERTED = "Inverted colors on the active layer"
 CLOSE_TITLE = "Discard unsaved changes?"
-CLOSE_EXPLANATION = "Closing Paint.R will discard the modified document and its undo history."
+CLOSE_EXPLANATION = "Closing Paint.Rust will discard the modified document and its undo history."
 CANVAS_LABEL = "Composed document canvas"
 DUPLICATE_CHROME_BUTTONS = frozenset({"Close window", "Hide"})
 
@@ -338,7 +338,7 @@ def parse_observation(raw: dict[str, Any], pid: int) -> ObservedWindow:
             buttons[title] = node
     windows = raw.get("windows")
     if not isinstance(windows, list) or len(windows) > 1:
-        raise GateError("AMBIGUOUS_NATIVE_WINDOW", "expected at most one matching native Paint.R window")
+        raise GateError("AMBIGUOUS_NATIVE_WINDOW", "expected at most one matching native Paint.Rust window")
     window: dict[str, Any] | None = None
     if windows:
         candidate = windows[0]
@@ -497,7 +497,7 @@ class NativeUsabilityGate:
         self.config.validate()
         self.binary = Path(binary).resolve(strict=True)
         if not self.binary.is_file() or not os.access(self.binary, os.X_OK):
-            raise ValueError(f"not an executable Paint.R binary: {self.binary}")
+            raise ValueError(f"not an executable Paint.Rust binary: {self.binary}")
         self.backend = backend
         self.harness_evidence = harness_identity()
         self.evidence = Evidence(Path(output_dir))
@@ -549,7 +549,7 @@ class NativeUsabilityGate:
             code = self.process.poll()
             if code is not None:
                 self.evidence.assertion(assertion_name, False, exit_code=code)
-                raise GateError("UNEXPECTED_PROCESS_EXIT", f"Paint.R exited unexpectedly with status {code}")
+                raise GateError("UNEXPECTED_PROCESS_EXIT", f"Paint.Rust exited unexpectedly with status {code}")
             try:
                 observed = self._observe()
                 last = f"window={observed.window_id}, texts={sorted(observed.texts)}"
@@ -582,11 +582,11 @@ class NativeUsabilityGate:
             if code is not None:
                 self.evidence.assertion("explicit_discard_exit_zero", code == 0, exit_code=code)
                 if code != 0:
-                    raise GateError("NONZERO_NATIVE_EXIT", f"Paint.R exited with status {code} after Discard")
+                    raise GateError("NONZERO_NATIVE_EXIT", f"Paint.Rust exited with status {code} after Discard")
                 return code
             self._sleep(min(self.config.poll_interval, max(0.0, end - time.monotonic())))
         self.evidence.assertion("explicit_discard_exit_zero", False)
-        raise GateError("NATIVE_EXIT_TIMEOUT", "Paint.R did not exit after explicit Discard")
+        raise GateError("NATIVE_EXIT_TIMEOUT", "Paint.Rust did not exit after explicit Discard")
 
     def _sequence(self) -> int:
         assert self.process is not None
@@ -871,7 +871,7 @@ class MacOSNativeBackend:
 
     def close_window(self, pid: int, title: str) -> dict[str, Any]:
         if title != WINDOW_TITLE:
-            raise NativeCommandError("INPUT_REJECTED", "only the expected Paint.R window may be closed")
+            raise NativeCommandError("INPUT_REJECTED", "only the expected Paint.Rust window may be closed")
         return self._call("close-window", str(pid), title)
 
     def press(self, pid: int, title: str) -> dict[str, Any]:
