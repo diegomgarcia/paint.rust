@@ -17,6 +17,7 @@ paint-image-io.workspace = true
 eframe.workspace = true
 egui.workspace = true
 serde_json.workspace = true
+rfd = "0.15"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 winit.workspace = true

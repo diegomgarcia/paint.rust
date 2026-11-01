@@ -451,6 +451,7 @@ fn save_as_format_picker_updates_the_extension_and_saves_pdn() {
     click(&mut harness, "Add Layer");
     menu_item(&mut harness, "File", "Save As…");
     enter_path(&mut harness, &path);
+    harness.get_by_role_and_label(Role::Button, "Browse…");
     harness
         .get_by_role_and_label(Role::ComboBox, "File type")
         .click();

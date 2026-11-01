@@ -6429,8 +6429,28 @@ impl PaintApp {
                 ui.label(kind.explanation());
                 let label = ui.label("File path");
                 let response = ui
-                    .text_edit_singleline(&mut dialog.path)
-                    .labelled_by(label.id);
+                    .horizontal(|ui| {
+                        let response = ui
+                            .add_sized(
+                                egui::vec2(360.0, 20.0),
+                                egui::TextEdit::singleline(&mut dialog.path),
+                            )
+                            .labelled_by(label.id);
+                        if ui.button("Browse…").clicked()
+                            && let Some(path) = native_path_dialog(
+                                kind,
+                                dialog.format,
+                                Path::new(&dialog.path),
+                            )
+                        {
+                            dialog.path = path.display().to_string();
+                            dialog.preview = None;
+                            dialog.preview_error = None;
+                            preview_requested = true;
+                        }
+                        response
+                    })
+                    .inner;
                 if dialog.focus_path {
                     response.request_focus();
                     dialog.focus_path = false;
@@ -7417,6 +7437,13 @@ impl SaveFormatChoice {
         }
     }
 
+    const fn extensions(self) -> &'static [&'static str] {
+        match self {
+            Self::Pdn => &["pdn"],
+            Self::Raster(format) => format.extensions(),
+        }
+    }
+
     fn from_path(path: &Path) -> Option<Self> {
         match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
             "pdn" => Some(Self::Pdn),
@@ -7530,6 +7557,42 @@ struct BrowserEntry {
 struct DirectoryListing {
     entries: Vec<BrowserEntry>,
     truncated: bool,
+}
+
+fn native_path_dialog(
+    kind: PathDialogKind,
+    format: SaveFormatChoice,
+    current: &Path,
+) -> Option<PathBuf> {
+    let mut dialog = rfd::FileDialog::new();
+    if let Some(parent) = current.parent().filter(|parent| parent.is_dir()) {
+        dialog = dialog.set_directory(parent);
+    }
+    if matches!(kind, PathDialogKind::Open) {
+        dialog = dialog
+            .set_title("Open PNG")
+            .add_filter("PNG image", &["png"]);
+        return dialog.pick_file();
+    }
+    let default_name = current
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("Untitled.{}", format.extension()));
+    let mut path = dialog
+        .set_title(if matches!(kind, PathDialogKind::SaveAs) {
+            "Save As"
+        } else {
+            "Export Image"
+        })
+        .set_file_name(default_name)
+        .add_filter(format.short_label(), format.extensions())
+        .save_file()?;
+    if path.extension().is_none() {
+        path.set_extension(format.extension());
+    }
+    Some(path)
 }
 
 impl PathDialog {

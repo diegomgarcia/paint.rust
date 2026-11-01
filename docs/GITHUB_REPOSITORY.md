@@ -62,7 +62,8 @@ Paint.Rust is an original Rust image editor inspired by Paint.NET's tool-first w
 This preview includes all 19 tools in Paint.NET order, mask-backed selections, live tool
 previews, inline canvas text editing, layers/blending, clipboard and image operations,
 effects with previews, a compact Paint.NET-style toolbar and icon menu rows. Save As supports
-layered PDN plus PNG, JPEG, TIFF, BMP, TGA, DDS, GIF and lossless WebP; Open is PNG-only.
+layered PDN plus PNG, JPEG, TIFF, BMP, TGA, DDS, GIF and lossless WebP, with a native
+file explorer for choosing the destination; Open is PNG-only.
 
 Verification: 587 workspace tests, strict Clippy, xtask verify and the native macOS
 keyboard/dirty-close gate pass.

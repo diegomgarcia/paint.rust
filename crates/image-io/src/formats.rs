@@ -60,6 +60,19 @@ impl SaveFormat {
         }
     }
 
+    pub const fn extensions(self) -> &'static [&'static str] {
+        match self {
+            Self::Png => &["png"],
+            Self::Jpeg => &["jpg", "jpeg", "jpe", "jfif", "exif"],
+            Self::Tiff => &["tiff", "tif"],
+            Self::Bmp => &["bmp", "dib"],
+            Self::Tga => &["tga"],
+            Self::Dds => &["dds"],
+            Self::Gif => &["gif"],
+            Self::WebP => &["webp"],
+        }
+    }
+
     pub fn from_extension(extension: &str) -> Option<Self> {
         match extension.to_ascii_lowercase().as_str() {
             "png" => Some(Self::Png),
