@@ -6721,6 +6721,27 @@ impl PaintApp {
             return;
         }
         let command = egui::Modifiers::COMMAND;
+        let zoom_in = egui::KeyboardShortcut::new(command, egui::Key::Plus);
+        let zoom_in_secondary = egui::KeyboardShortcut::new(command, egui::Key::Equals);
+        let zoom_out = egui::KeyboardShortcut::new(command, egui::Key::Minus);
+        let zoom_reset = egui::KeyboardShortcut::new(command, egui::Key::Num0);
+        if context.input_mut(|input| input.consume_shortcut(&zoom_reset)) {
+            self.zoom = 1.0;
+            self.status = "Zoom set to 100%".to_owned();
+            return;
+        }
+        if context.input_mut(|input| {
+            input.consume_shortcut(&zoom_in) || input.consume_shortcut(&zoom_in_secondary)
+        }) {
+            self.zoom = (self.zoom + 0.25).min(8.0);
+            self.status = format!("Zoomed canvas to {}%", (self.zoom * 100.0).round());
+            return;
+        }
+        if context.input_mut(|input| input.consume_shortcut(&zoom_out)) {
+            self.zoom = (self.zoom - 0.25).max(0.1);
+            self.status = format!("Zoomed canvas to {}%", (self.zoom * 100.0).round());
+            return;
+        }
         let command_shift = command | egui::Modifiers::SHIFT;
         let command_alt = command | egui::Modifiers::ALT;
 

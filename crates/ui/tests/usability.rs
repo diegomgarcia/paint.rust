@@ -4804,3 +4804,37 @@ fn main_toolbar_copy_and_paste_create_a_floating_selection() {
         "toolbar paste must float the copied selection at its original bounds"
     );
 }
+
+#[test]
+fn command_zoom_shortcuts_only_scale_the_document_canvas() {
+    let mut harness = app();
+    let ui_zoom = harness.ctx.zoom_factor();
+    let canvas_zoom = harness.state().zoom();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+    harness.run();
+    assert!(
+        harness.state().zoom() > canvas_zoom,
+        "Cmd+Plus must zoom the canvas"
+    );
+    assert_eq!(
+        harness.ctx.zoom_factor(),
+        ui_zoom,
+        "Cmd+Plus must not zoom the whole egui UI"
+    );
+
+    let zoomed_in = harness.state().zoom();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Equals);
+    harness.run();
+    assert!(harness.state().zoom() > zoomed_in);
+
+    let zoomed_higher = harness.state().zoom();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Minus);
+    harness.run();
+    assert!(harness.state().zoom() < zoomed_higher);
+    assert_eq!(harness.ctx.zoom_factor(), ui_zoom);
+
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num0);
+    harness.run();
+    assert_eq!(harness.state().zoom(), 1.0);
+    assert_eq!(harness.ctx.zoom_factor(), ui_zoom);
+}
