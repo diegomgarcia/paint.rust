@@ -25,9 +25,10 @@ use crate::colors::{
     format_hex_color, hsv_from_color, hsv_gradient_slider, mix_bgra,
 };
 use crate::icons::{
-    Icon, IconTextures, VectorIcon, icon_button, icon_button_at, menu_button, panel_button,
-    tool_button, tool_button_with_tooltip, vector_icon_button, vector_icon_button_sized,
-    vector_icon_button_sized_with_tooltip, vector_toggle_button, visibility_button_at,
+    Icon, IconTextures, MenuIcon, VectorIcon, icon_button, icon_button_at, menu_check_row,
+    menu_row, panel_button, tool_button, tool_button_with_tooltip, vector_icon_button,
+    vector_icon_button_sized, vector_icon_button_sized_with_tooltip, vector_toggle_button,
+    visibility_button_at,
 };
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
 #[cfg(target_os = "macos")]
@@ -2281,57 +2282,126 @@ impl PaintApp {
         egui::Panel::top("paint-r-menu").show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    let new_response = menu_button(ui, &self.icons, Icon::NewDocument, "New", true);
+                    compact_menu(ui);
+                    let new_response = menu_action(
+                        ui,
+                        &self.icons,
+                        Icon::NewDocument,
+                        "New",
+                        Some(Shortcut::New),
+                        true,
+                    );
                     focus_first_menu_item_on_keyboard_open(ui, &new_response);
                     if new_response.clicked() {
                         self.show_new_image_dialog();
                         ui.close();
                     }
-                    if menu_button(ui, &self.icons, Icon::OpenFile, "Open PNG…", true).clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        Icon::OpenFile,
+                        "Open PNG…",
+                        Some(Shortcut::Open),
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.show_path_dialog(PathDialogKind::Open);
                         ui.close();
                     }
                     ui.separator();
-                    if ui
-                        .add_enabled(
-                            self.can_save(),
-                            egui::Button::new("Save"),
-                        )
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Save,
+                        "Save",
+                        Some(Shortcut::Save),
+                        self.can_save(),
+                    )
+                    .clicked()
                     {
                         self.save_active_document();
                         ui.close();
                     }
-                    if ui.button("Save As…").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Save,
+                        "Save As…",
+                        Some(Shortcut::SaveAs),
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.show_save_as_dialog();
                         ui.close();
                     }
                     ui.separator();
-                    if menu_button(ui, &self.icons, Icon::ExportFile, "Export PNG…", true).clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        Icon::ExportFile,
+                        "Export PNG…",
+                        Some(Shortcut::Export),
+                        true,
+                    )
+                    .clicked()
                     {
                         self.show_path_dialog(PathDialogKind::Export);
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Close Window").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        MenuIcon::None,
+                        "Close Window",
+                        Some(Shortcut::Close),
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.request_quit(ui.ctx());
                         ui.close();
                     }
-                    if ui.button("Quit").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        MenuIcon::None,
+                        "Quit",
+                        Some(Shortcut::Quit),
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.request_quit(ui.ctx());
                         ui.close();
                     }
                 });
                 ui.menu_button("Edit", |ui| {
-                    let undo =
-                        menu_button(ui, &self.icons, Icon::Undo, "Undo", self.session.can_undo());
+                    compact_menu(ui);
+                    let undo = menu_action(
+                        ui,
+                        &self.icons,
+                        Icon::Undo,
+                        "Undo",
+                        Some(Shortcut::Undo),
+                        self.session.can_undo(),
+                    );
                     focus_first_menu_item_on_keyboard_open(ui, &undo);
                     if undo.clicked() {
                         self.execute(Command::Undo, "Undid the last edit");
                         ui.close();
                     }
-                    if menu_button(ui, &self.icons, Icon::Redo, "Redo", self.session.can_redo())
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        Icon::Redo,
+                        "Redo",
+                        Some(Shortcut::Redo),
+                        self.session.can_redo(),
+                    )
+                    .clicked()
                     {
                         self.execute(Command::Redo, "Redid the next edit");
                         ui.close();
@@ -2339,81 +2409,103 @@ impl PaintApp {
                     ui.separator();
                     let has_selection = self.has_selection();
                     let has_clipboard = self.clipboard.is_some();
-                    if ui
-                        .add_enabled(
-                            has_selection,
-                            egui::Button::new("Cut"),
-                        )
-                        .on_hover_text("Copy the selected pixels and erase them")
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Cut,
+                        "Cut",
+                        Some(Shortcut::Cut),
+                        has_selection,
+                    )
+                    .on_hover_text("Copy the selected pixels and erase them")
+                    .clicked()
                     {
                         self.cut_to_clipboard(ui.ctx());
                         ui.close();
                     }
-                    if ui
-                        .button("Copy")
-                        .on_hover_text("Copy the selection, or the whole active layer without one")
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Copy,
+                        "Copy",
+                        Some(Shortcut::Copy),
+                        true,
+                    )
+                    .on_hover_text("Copy the selection, or the whole active layer without one")
+                    .clicked()
                     {
                         self.copy_to_clipboard(ui.ctx());
                         ui.close();
                     }
-                    if ui
-                        .add_enabled(
-                            has_clipboard,
-                            egui::Button::new("Paste"),
-                        )
-                        .on_hover_text("Paste clipboard pixels as a floating selection")
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Paste,
+                        "Paste",
+                        Some(Shortcut::Paste),
+                        has_clipboard,
+                    )
+                    .on_hover_text("Paste clipboard pixels as a floating selection")
+                    .clicked()
                     {
                         self.paste_clipboard(ui.ctx());
                         ui.close();
                     }
-                    if ui
-                        .add_enabled(
-                            has_clipboard,
-                            egui::Button::new("Paste Into New Layer"),
-                        )
-                        .on_hover_text(
-                            "Paste clipboard pixels into a new layer of the active document",
-                        )
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Paste,
+                        "Paste Into New Layer",
+                        Some(Shortcut::PasteIntoNewLayer),
+                        has_clipboard,
+                    )
+                    .on_hover_text("Paste clipboard pixels into a new layer of the active document")
+                    .clicked()
                     {
                         self.paste_into_new_layer(ui.ctx());
                         ui.close();
                     }
-                    if ui
-                        .add_enabled(
-                            has_clipboard,
-                            egui::Button::new("Paste Into New Image"),
-                        )
-                        .on_hover_text("Create a new image sized to the clipboard pixels")
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Paste,
+                        "Paste Into New Image",
+                        Some(Shortcut::PasteIntoNewImage),
+                        has_clipboard,
+                    )
+                    .on_hover_text("Create a new image sized to the clipboard pixels")
+                    .clicked()
                     {
                         self.paste_into_new_image(ui.ctx());
                         ui.close();
                     }
                     ui.separator();
-                    if ui
-                        .add_enabled(
-                            has_selection,
-                            egui::Button::new("Erase Selection"),
-                        )
-                        .on_hover_text("Erase the selected pixels and deselect")
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        Icon::Eraser,
+                        "Erase Selection",
+                        Some(Shortcut::EraseSelection),
+                        has_selection,
+                    )
+                    .on_hover_text("Erase the selected pixels and deselect")
+                    .clicked()
                     {
                         self.execute(Command::EraseSelection, "Erased the selected pixels");
                         ui.close();
                     }
-                    if ui
-                        .add_enabled(
-                            has_selection,
-                            egui::Button::new("Fill Selection"),
-                        )
-                        .on_hover_text(
-                            "Fill the selection with the primary color; Shift+Backspace uses the secondary color",
-                        )
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        Icon::Fill,
+                        "Fill Selection",
+                        Some(Shortcut::FillSelection),
+                        has_selection,
+                    )
+                    .on_hover_text(
+                        "Fill the selection with the primary color; Shift+Backspace uses the secondary color",
+                    )
+                    .clicked()
                     {
                         let color = self.fill_color;
                         self.execute(
@@ -2422,73 +2514,155 @@ impl PaintApp {
                         );
                         ui.close();
                     }
-                    if ui
-                        .add_enabled(
-                            has_selection,
-                            egui::Button::new("Invert Selection"),
-                        )
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::InvertSelection,
+                        "Invert Selection",
+                        Some(Shortcut::InvertSelection),
+                        has_selection,
+                    )
+                    .clicked()
                     {
                         self.execute(Command::InvertSelection, "Inverted the selection");
                         ui.close();
                     }
-                    if ui.button("Select All").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::SelectAll,
+                        "Select All",
+                        Some(Shortcut::SelectAll),
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.execute(Command::SelectAll, "Selected the whole canvas");
                         ui.close();
                     }
-                    if ui
-                        .add_enabled(
-                            has_selection,
-                            egui::Button::new("Deselect"),
-                        )
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Deselect,
+                        "Deselect",
+                        Some(Shortcut::Deselect),
+                        has_selection,
+                    )
+                    .clicked()
                     {
                         self.execute(Command::ClearSelection, "Selection cleared");
                         ui.close();
                     }
                 });
                 ui.menu_button("View", |ui| {
-                    let zoom_in = ui.button("Zoom In");
+                    compact_menu(ui);
+                    let zoom_in = menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::ZoomIn,
+                        "Zoom In",
+                        None,
+                        true,
+                    );
                     focus_first_menu_item_on_keyboard_open(ui, &zoom_in);
                     if zoom_in.clicked() {
                         self.zoom = (self.zoom + 0.25).min(8.0);
                         ui.close();
                     }
-                    if ui.button("Zoom Out").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::ZoomOut,
+                        "Zoom Out",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.zoom = (self.zoom - 0.25).max(0.1);
                         ui.close();
                     }
-                    if ui.button("Zoom to Window").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::FitWindow,
+                        "Zoom to Window",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.fit_canvas_requested = true;
                         ui.close();
                     }
-                    if ui
-                        .add_enabled(
-                            self.session.document().selection().is_some(),
-                            egui::Button::new("Zoom to Selection"),
-                        )
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        Icon::SelectRectangle,
+                        "Zoom to Selection",
+                        None,
+                        self.session.document().selection().is_some(),
+                    )
+                    .clicked()
                     {
                         self.zoom_to_selection_requested = true;
                         ui.close();
                     }
-                    if ui.button("Actual Size").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        MenuIcon::None,
+                        "Actual Size",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.zoom = 1.0;
                         ui.close();
                     }
                     ui.separator();
-                    ui.checkbox(&mut self.show_grid, "Grid");
-                    ui.checkbox(&mut self.show_rulers, "Rulers");
+                    if menu_check_row(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Grid,
+                        "Grid",
+                        self.show_grid,
+                        true,
+                    )
+                    .clicked()
+                    {
+                        self.show_grid = !self.show_grid;
+                    }
+                    if menu_check_row(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Rulers,
+                        "Rulers",
+                        self.show_rulers,
+                        true,
+                    )
+                    .clicked()
+                    {
+                        self.show_rulers = !self.show_rulers;
+                    }
                     ui.separator();
                     ui.radio_value(&mut self.unit, CanvasUnit::Pixels, "Pixels");
                     ui.radio_value(&mut self.unit, CanvasUnit::Inches, "Inches");
                     ui.radio_value(&mut self.unit, CanvasUnit::Centimeters, "Centimeters");
                 });
                 ui.menu_button("Image", |ui| {
+                    compact_menu(ui);
                     let has_selection = self.session.document().selection().is_some();
                     let image_layers = self.session.document().layers().len();
-                    let crop =
-                        ui.add_enabled(has_selection, egui::Button::new("Crop to Selection"));
+                    let crop = menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Crop,
+                        "Crop to Selection",
+                        None,
+                        has_selection,
+                    );
                     focus_first_menu_item_on_keyboard_open(ui, &crop);
                     if crop.clicked() {
                         self.execute(
@@ -2497,51 +2671,120 @@ impl PaintApp {
                         );
                         ui.close();
                     }
-                    if ui.button("Resize Image…").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::ResizeImage,
+                        "Resize Image…",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.show_resize_dialog();
                         ui.close();
                     }
-                    if ui.button("Canvas Size…").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::CanvasSize,
+                        "Canvas Size…",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.show_canvas_size_dialog();
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Flip Horizontal").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::FlipHorizontal,
+                        "Flip Horizontal",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.execute(
                             Command::FlipImageHorizontal,
                             "Flipped the image horizontally",
                         );
                         ui.close();
                     }
-                    if ui.button("Flip Vertical").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::FlipVertical,
+                        "Flip Vertical",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.execute(Command::FlipImageVertical, "Flipped the image vertically");
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Rotate 90° Clockwise").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::RotateClockwise,
+                        "Rotate 90° Clockwise",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.execute(
                             Command::Rotate90Clockwise,
                             "Rotated the image 90° clockwise",
                         );
                         ui.close();
                     }
-                    if ui.button("Rotate 90° Counter-Clockwise").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::RotateCounterClockwise,
+                        "Rotate 90° Counter-Clockwise",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.execute(
                             Command::Rotate90CounterClockwise,
                             "Rotated the image 90° counter-clockwise",
                         );
                         ui.close();
                     }
-                    if ui.button("Rotate 180°").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::Rotate180,
+                        "Rotate 180°",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.execute(Command::Rotate180, "Rotated the image 180°");
                         ui.close();
                     }
                     ui.separator();
                     ui.add_enabled(false, egui::Button::new("Color Profile…"));
                     ui.separator();
-                    if ui
-                        .add_enabled(image_layers > 1, egui::Button::new("Flatten Image"))
-                        .clicked()
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        Icon::LayerMerge,
+                        "Flatten Image",
+                        None,
+                        image_layers > 1,
+                    )
+                    .clicked()
                     {
                         self.execute(Command::FlattenImage, "Flattened the image");
                         ui.close();
@@ -2562,17 +2805,28 @@ impl PaintApp {
                     )
                 };
                 ui.menu_button("Layers", |ui| {
-                    let add = menu_button(ui, &self.icons, Icon::AddLayer, "Add New Layer", true);
+                    compact_menu(ui);
+                    let can_move_up = active_layer_index + 1 < layer_count;
+                    let can_move_down = active_layer_index > 0;
+                    let add = menu_action(
+                        ui,
+                        &self.icons,
+                        Icon::AddLayer,
+                        "Add New Layer",
+                        Some(Shortcut::AddLayer),
+                        true,
+                    );
                     focus_first_menu_item_on_keyboard_open(ui, &add);
                     if add.clicked() {
                         self.add_layer();
                         ui.close();
                     }
-                    if menu_button(
+                    if menu_action(
                         ui,
                         &self.icons,
                         Icon::LayerDelete,
                         "Delete Layer",
+                        None,
                         layer_count > 1,
                     )
                     .clicked()
@@ -2585,11 +2839,12 @@ impl PaintApp {
                         );
                         ui.close();
                     }
-                    if menu_button(
+                    if menu_action(
                         ui,
                         &self.icons,
                         Icon::LayerDuplicate,
                         "Duplicate Layer",
+                        None,
                         true,
                     )
                     .clicked()
@@ -2602,12 +2857,13 @@ impl PaintApp {
                         );
                         ui.close();
                     }
-                    if menu_button(
+                    if menu_action(
                         ui,
                         &self.icons,
                         Icon::LayerMerge,
                         "Merge Layer Down",
-                        active_layer_index > 0,
+                        None,
+                        can_move_down,
                     )
                     .clicked()
                     {
@@ -2619,7 +2875,7 @@ impl PaintApp {
                         );
                         ui.close();
                     }
-                    if menu_button(
+                    if menu_action(
                         ui,
                         &self.icons,
                         if active_layer_visible {
@@ -2628,7 +2884,8 @@ impl PaintApp {
                             Icon::EyeOff
                         },
                         "Toggle Layer Visibility",
-                        layer_count > 1,
+                        None,
+                        true,
                     )
                     .clicked()
                     {
@@ -2642,35 +2899,92 @@ impl PaintApp {
                         ui.close();
                     }
                     ui.separator();
-                    ui.add_enabled(false, egui::Button::new("Import From File…"));
+                    menu_action(
+                        ui,
+                        &self.icons,
+                        MenuIcon::None,
+                        "Import From File…",
+                        None,
+                        false,
+                    );
                     ui.separator();
-                    if ui.button("Flip Active Layer Horizontally").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::FlipHorizontal,
+                        "Flip Active Layer Horizontally",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.execute(
                             Command::FlipLayerHorizontal,
                             "Flipped the active layer horizontally",
                         );
                         ui.close();
                     }
-                    if ui.button("Flip Active Layer Vertically").clicked() {
+                    if menu_action(
+                        ui,
+                        &self.icons,
+                        VectorIcon::FlipVertical,
+                        "Flip Active Layer Vertically",
+                        None,
+                        true,
+                    )
+                    .clicked()
+                    {
                         self.execute(
                             Command::FlipLayerVertical,
                             "Flipped the active layer vertically",
                         );
                         ui.close();
                     }
-                    ui.add_enabled(false, egui::Button::new("Rotate 180°"));
-                    ui.add_enabled(false, egui::Button::new("Rotate / Zoom…"));
+                    menu_action(
+                        ui,
+                        &self.icons,
+                        MenuIcon::None,
+                        "Rotate 180°",
+                        None,
+                        false,
+                    );
+                    menu_action(
+                        ui,
+                        &self.icons,
+                        MenuIcon::None,
+                        "Rotate / Zoom…",
+                        None,
+                        false,
+                    );
                     ui.separator();
-                    for (label, target) in [
-                        ("Go to Top Layer", layer_count.saturating_sub(1)),
+                    for (label, target, enabled) in [
+                        (
+                            "Go to Top Layer",
+                            layer_count.saturating_sub(1),
+                            can_move_up,
+                        ),
                         (
                             "Go to Layer Above",
                             (active_layer_index + 1).min(layer_count - 1),
+                            can_move_up,
                         ),
-                        ("Go to Layer Below", active_layer_index.saturating_sub(1)),
-                        ("Go to Bottom Layer", 0),
+                        (
+                            "Go to Layer Below",
+                            active_layer_index.saturating_sub(1),
+                            can_move_down,
+                        ),
+                        ("Go to Bottom Layer", 0, can_move_down),
                     ] {
-                        if ui.button(label).clicked() {
+                        if menu_action(
+                            ui,
+                            &self.icons,
+                            MenuIcon::None,
+                            label,
+                            None,
+                            enabled,
+                        )
+                        .clicked()
+                        {
                             self.execute(
                                 Command::SetActiveLayer { index: target },
                                 "Selected a layer",
@@ -2679,21 +2993,23 @@ impl PaintApp {
                         }
                     }
                     ui.separator();
-                    for (label, icon, offset) in [
+                    for (label, icon, offset, enabled) in [
                         (
                             "Move Layer to Top",
                             Icon::LayerUp,
                             layer_count as i32 - 1 - active_layer_index as i32,
+                            can_move_up,
                         ),
-                        ("Move Layer Up", Icon::LayerUp, 1),
-                        ("Move Layer Down", Icon::LayerDown, -1),
+                        ("Move Layer Up", Icon::LayerUp, 1, can_move_up),
+                        ("Move Layer Down", Icon::LayerDown, -1, can_move_down),
                         (
                             "Move Layer to Bottom",
                             Icon::LayerDown,
                             -(active_layer_index as i32),
+                            can_move_down,
                         ),
                     ] {
-                        if menu_button(ui, &self.icons, icon, label, true).clicked() {
+                        if menu_action(ui, &self.icons, icon, label, None, enabled).clicked() {
                             self.execute(
                                 Command::MoveLayer {
                                     index: active_layer_index,
@@ -2705,11 +3021,12 @@ impl PaintApp {
                         }
                     }
                     ui.separator();
-                    if menu_button(
+                    if menu_action(
                         ui,
                         &self.icons,
                         Icon::LayerSettings,
                         "Layer Properties…",
+                        None,
                         true,
                     )
                     .clicked()
@@ -2719,6 +3036,7 @@ impl PaintApp {
                     }
                 });
                 ui.menu_button("Adjustments", |ui| {
+                    compact_menu_spacing(ui);
                     // Paint.NET orders Adjustment effects alphabetically by display name.
                     let auto_level = ui.button("Auto-Level…");
                     focus_first_menu_item_on_keyboard_open(ui, &auto_level);
@@ -2786,6 +3104,7 @@ impl PaintApp {
                     }
                 });
                 ui.menu_button("Effects", |ui| {
+                    compact_menu_spacing(ui);
                     let invert = ui.button("Invert Colors");
                     focus_first_menu_item_on_keyboard_open(ui, &invert);
                     if invert.clicked() {
@@ -2862,6 +3181,7 @@ impl PaintApp {
                     });
                 });
                 ui.menu_button("Window", |ui| {
+                    compact_menu_spacing(ui);
                     ui.checkbox(&mut self.tools_visible, "Tools window");
                     ui.checkbox(&mut self.tools_floating, "Float Tools");
                     ui.checkbox(&mut self.colors_visible, "Colors window");
@@ -2889,6 +3209,7 @@ impl PaintApp {
                     }
                 });
                 ui.menu_button("Help", |ui| {
+                    compact_menu_spacing(ui);
                     ui.label("Paint.R development preview · MIT first-party license");
                     ui.separator();
                     ui.label("Keyboard shortcuts (Cmd/Ctrl):");
@@ -8580,4 +8901,142 @@ fn selection_input(ui: &mut egui::Ui, label: &'static str, value: &mut i64) {
             .add(egui::DragValue::new(value).speed(1.0))
             .labelled_by(label.id);
     });
+}
+
+/// Paint.NET menu rows are compact: a 16 px icon column, 22 px rows, and tight groups.
+const MENU_MIN_WIDTH: f32 = 284.0;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Shortcut {
+    New,
+    Open,
+    Save,
+    SaveAs,
+    Export,
+    Close,
+    Quit,
+    Undo,
+    Redo,
+    Cut,
+    Copy,
+    Paste,
+    PasteIntoNewLayer,
+    PasteIntoNewImage,
+    EraseSelection,
+    FillSelection,
+    InvertSelection,
+    SelectAll,
+    Deselect,
+    AddLayer,
+}
+
+impl Shortcut {
+    /// The Cmd/Ctrl convention of the host platform for the shortcut the app actually handles.
+    fn text(self) -> &'static str {
+        #[cfg(target_os = "macos")]
+        let text = match self {
+            Self::New => "Cmd+N",
+            Self::Open => "Cmd+O",
+            Self::Save => "Cmd+S",
+            Self::SaveAs => "Cmd+Shift+S",
+            Self::Export => "Cmd+Shift+E",
+            Self::Close => "Cmd+W",
+            Self::Quit => "Cmd+Q",
+            Self::Undo => "Cmd+Z",
+            Self::Redo => "Cmd+Shift+Z",
+            Self::Cut => "Cmd+X",
+            Self::Copy => "Cmd+C",
+            Self::Paste => "Cmd+V",
+            Self::PasteIntoNewLayer => "Cmd+Shift+V",
+            Self::PasteIntoNewImage => "Cmd+Alt+V",
+            Self::EraseSelection => "Delete",
+            Self::FillSelection => "Backspace",
+            Self::InvertSelection => "Cmd+I",
+            Self::SelectAll => "Cmd+A",
+            Self::Deselect => "Cmd+D",
+            Self::AddLayer => "Cmd+Shift+L",
+        };
+        #[cfg(not(target_os = "macos"))]
+        let text = match self {
+            Self::New => "Ctrl+N",
+            Self::Open => "Ctrl+O",
+            Self::Save => "Ctrl+S",
+            Self::SaveAs => "Ctrl+Shift+S",
+            Self::Export => "Ctrl+Shift+E",
+            Self::Close => "Ctrl+W",
+            Self::Quit => "Ctrl+Q",
+            Self::Undo => "Ctrl+Z",
+            Self::Redo => "Ctrl+Shift+Z",
+            Self::Cut => "Ctrl+X",
+            Self::Copy => "Ctrl+C",
+            Self::Paste => "Ctrl+V",
+            Self::PasteIntoNewLayer => "Ctrl+Shift+V",
+            Self::PasteIntoNewImage => "Ctrl+Alt+V",
+            Self::EraseSelection => "Delete",
+            Self::FillSelection => "Backspace",
+            Self::InvertSelection => "Ctrl+I",
+            Self::SelectAll => "Ctrl+A",
+            Self::Deselect => "Ctrl+D",
+            Self::AddLayer => "Ctrl+Shift+L",
+        };
+        text
+    }
+}
+
+fn compact_menu(ui: &mut egui::Ui) {
+    ui.set_min_width(MENU_MIN_WIDTH);
+    compact_menu_spacing(ui);
+    ui.spacing_mut().button_padding = egui::vec2(6.0, 2.0);
+}
+
+fn compact_menu_spacing(ui: &mut egui::Ui) {
+    ui.spacing_mut().item_spacing.y = 2.0;
+}
+
+fn menu_action(
+    ui: &mut egui::Ui,
+    icons: &IconTextures,
+    icon: impl Into<MenuIcon>,
+    text: &str,
+    shortcut: Option<Shortcut>,
+    enabled: bool,
+) -> egui::Response {
+    menu_row(
+        ui,
+        icons,
+        icon.into(),
+        text,
+        shortcut.map(Shortcut::text),
+        enabled,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Shortcut;
+
+    #[test]
+    fn shortcut_hints_follow_the_host_cmd_ctrl_convention() {
+        let command = if cfg!(target_os = "macos") {
+            "Cmd"
+        } else {
+            "Ctrl"
+        };
+        assert_eq!(Shortcut::New.text(), format!("{command}+N"));
+        assert_eq!(Shortcut::Save.text(), format!("{command}+S"));
+        assert_eq!(Shortcut::SaveAs.text(), format!("{command}+Shift+S"));
+        assert_eq!(Shortcut::Export.text(), format!("{command}+Shift+E"));
+        assert_eq!(Shortcut::Redo.text(), format!("{command}+Shift+Z"));
+        assert_eq!(
+            Shortcut::PasteIntoNewLayer.text(),
+            format!("{command}+Shift+V")
+        );
+        assert_eq!(
+            Shortcut::PasteIntoNewImage.text(),
+            format!("{command}+Alt+V")
+        );
+        assert_eq!(Shortcut::AddLayer.text(), format!("{command}+Shift+L"));
+        assert_eq!(Shortcut::EraseSelection.text(), "Delete");
+        assert_eq!(Shortcut::FillSelection.text(), "Backspace");
+    }
 }

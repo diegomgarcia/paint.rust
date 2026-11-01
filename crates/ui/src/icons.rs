@@ -7,7 +7,7 @@ use egui::{
 
 /// Project-owned button chrome with Lucide ISC reference glyphs.
 /// The PNG assets are high-resolution renders of the listed Lucide SVGs.
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum Icon {
     NewDocument,
     OpenFile,
@@ -50,6 +50,30 @@ pub(crate) enum Icon {
     PanelColors,
     PanelLayers,
     PanelHistory,
+}
+
+/// A glyph that can lead an in-window menu row.
+///
+/// Rasterized Lucide assets and first-party vector glyphs share one menu path so
+/// shortcuts, compact row metrics, and accessible labels stay consistent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MenuIcon {
+    /// Reserve the icon column without drawing a glyph.
+    None,
+    Image(Icon),
+    Vector(VectorIcon),
+}
+
+impl From<Icon> for MenuIcon {
+    fn from(icon: Icon) -> Self {
+        Self::Image(icon)
+    }
+}
+
+impl From<VectorIcon> for MenuIcon {
+    fn from(icon: VectorIcon) -> Self {
+        Self::Vector(icon)
+    }
 }
 
 pub(crate) struct IconTextures {
@@ -253,28 +277,110 @@ pub(crate) fn panel_button(
     response.on_hover_text(tooltip)
 }
 
-/// A menu row with the same icon used by the corresponding toolbar or panel action.
-pub(crate) fn menu_button(
+/// A compact Paint.NET-style menu row: icon, label, and an optional right-aligned shortcut.
+///
+/// The accessible name stays exactly `text`; the shortcut is exposed as the accesskit
+/// description so screen readers and tests can verify the hint without renaming the action.
+pub(crate) fn menu_row(
     ui: &mut Ui,
     icons: &IconTextures,
-    icon: Icon,
+    icon: MenuIcon,
     text: &str,
+    shortcut: Option<&str>,
     enabled: bool,
 ) -> Response {
+    let button = menu_row_button(ui, icons, icon, text, shortcut, enabled);
+    let response = ui.add_enabled(enabled, button);
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, text));
+    if let Some(shortcut) = shortcut {
+        response
+            .ctx
+            .accesskit_node_builder(response.id, |builder| builder.set_description(shortcut));
+        response.on_hover_text(shortcut.to_owned())
+    } else {
+        response
+    }
+}
+
+/// A checkable menu row. It keeps Paint.NET's checkmark and the `CheckBox` role while
+/// retaining the exact label existing tests and assistive technology already use.
+pub(crate) fn menu_check_row(
+    ui: &mut Ui,
+    icons: &IconTextures,
+    icon: impl Into<MenuIcon>,
+    text: &str,
+    checked: bool,
+    enabled: bool,
+) -> Response {
+    let icon_atom = menu_icon_atom(ui, icons, icon.into(), enabled);
+    let check_atom = if checked {
+        egui::Atom::paint(vec2(14.0, 14.0), move |ui, args| {
+            paint_menu_check(ui, args.rect, enabled);
+        })
+    } else {
+        egui::Atom::paint(vec2(14.0, 14.0), |_ui, _args| {})
+    };
+    let button = egui::Button::new((
+        icon_atom,
+        egui::RichText::new(text).size(14.0),
+        egui::Atom::grow(),
+        check_atom,
+    ))
+    .gap(8.0)
+    .min_size(vec2(0.0, 22.0));
+    let response = ui.add_enabled(enabled, button);
+    response.widget_info(|| WidgetInfo::selected(Role::CheckBox, enabled, checked, text));
+    response
+}
+
+fn menu_row_button(
+    ui: &Ui,
+    icons: &IconTextures,
+    icon: MenuIcon,
+    text: &str,
+    shortcut: Option<&str>,
+    enabled: bool,
+) -> egui::Button<'static> {
+    let shortcut_atom = shortcut.map_or_else(egui::Atom::default, |shortcut| {
+        egui::Atom::from(egui::RichText::new(shortcut).weak().size(12.0))
+    });
+    egui::Button::new((
+        menu_icon_atom(ui, icons, icon, enabled),
+        egui::RichText::new(text).size(14.0),
+        egui::Atom::grow(),
+        shortcut_atom,
+    ))
+    .gap(8.0)
+    .min_size(vec2(0.0, 22.0))
+}
+
+fn menu_icon_atom(
+    ui: &Ui,
+    icons: &IconTextures,
+    icon: MenuIcon,
+    enabled: bool,
+) -> egui::Atom<'static> {
     let tint = if enabled {
         Color32::from_gray(235)
     } else {
         ui.visuals().weak_text_color()
     };
-    let image = egui::Image::from_texture(icons.get(icon))
-        .fit_to_exact_size(vec2(16.0, 16.0))
-        .tint(tint);
-    ui.add_enabled(enabled, egui::Button::image_and_text(image, text))
+    match icon {
+        MenuIcon::None => egui::Atom::paint(vec2(16.0, 16.0), |_ui, _args| {}),
+        MenuIcon::Image(icon) => egui::Atom::from(
+            egui::Image::from_texture(icons.get(icon))
+                .fit_to_exact_size(vec2(16.0, 16.0))
+                .tint(tint),
+        ),
+        MenuIcon::Vector(icon) => egui::Atom::paint(vec2(16.0, 16.0), move |ui, args| {
+            paint_vector_icon(ui, args.rect, icon, enabled);
+        }),
+    }
 }
 
 /// Small chrome glyphs that have no dedicated Lucide asset. They are drawn as
 /// first-party vector shapes so no proprietary bitmaps enter the repository.
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum VectorIcon {
     ChevronDown,
     ChevronUp,
@@ -289,6 +395,15 @@ pub(crate) enum VectorIcon {
     Paste,
     Crop,
     Deselect,
+    SelectAll,
+    InvertSelection,
+    ResizeImage,
+    CanvasSize,
+    RotateClockwise,
+    RotateCounterClockwise,
+    Rotate180,
+    FlipHorizontal,
+    FlipVertical,
     Grid,
     Rulers,
 }
@@ -500,20 +615,89 @@ fn paint_vector_icon(ui: &Ui, rect: egui::Rect, icon: VectorIcon, enabled: bool)
         }
         VectorIcon::Deselect => {
             let r = egui::Rect::from_center_size(center, vec2(14.0, 12.0));
-            for (a, b) in [
-                (r.left_top(), r.left_top() + vec2(3.0, 0.0)),
-                (r.left_top(), r.left_top() + vec2(0.0, 3.0)),
-                (r.right_top(), r.right_top() + vec2(-3.0, 0.0)),
-                (r.right_top(), r.right_top() + vec2(0.0, 3.0)),
-                (r.left_bottom(), r.left_bottom() + vec2(3.0, 0.0)),
-                (r.left_bottom(), r.left_bottom() + vec2(0.0, -3.0)),
-                (r.right_bottom(), r.right_bottom() + vec2(-3.0, 0.0)),
-                (r.right_bottom(), r.right_bottom() + vec2(0.0, -3.0)),
-            ] {
-                painter.line_segment([a, b], stroke);
-            }
+            paint_selection_corners(painter, r, stroke);
             painter.line_segment([center + vec2(-4.0, -4.0), center + vec2(4.0, 4.0)], stroke);
         }
+        VectorIcon::SelectAll => {
+            let r = egui::Rect::from_center_size(center, vec2(14.0, 12.0));
+            paint_selection_corners(painter, r, stroke);
+            painter.line_segment([center + vec2(-4.0, 0.0), center + vec2(-1.5, 2.5)], stroke);
+            painter.line_segment([center + vec2(-1.5, 2.5), center + vec2(4.0, -3.0)], stroke);
+        }
+        VectorIcon::InvertSelection => {
+            let r = egui::Rect::from_center_size(center, vec2(14.0, 12.0));
+            painter.rect_filled(
+                egui::Rect::from_min_max(egui::pos2(r.center().x, r.top()), r.max),
+                0.0,
+                Color32::from_rgba_unmultiplied(235, 235, 235, 80),
+            );
+            painter.rect_stroke(r, 0.0, stroke, StrokeKind::Inside);
+            painter.line_segment(
+                [
+                    egui::pos2(r.center().x, r.top()),
+                    egui::pos2(r.center().x, r.bottom()),
+                ],
+                stroke,
+            );
+        }
+        VectorIcon::ResizeImage => {
+            let r = egui::Rect::from_center_size(center, vec2(13.0, 10.0));
+            painter.rect_stroke(r, 1.0, stroke, StrokeKind::Inside);
+            let start = r.left_bottom() + vec2(2.0, -2.0);
+            let tip = r.right_top() + vec2(-1.0, 1.0);
+            painter.line_segment([start, tip], stroke);
+            paint_arrow_head(painter, tip, tip - start, stroke);
+        }
+        VectorIcon::CanvasSize => {
+            paint_dashed_rect(
+                painter,
+                egui::Rect::from_center_size(center, vec2(16.0, 13.0)),
+                stroke,
+            );
+            painter.rect_stroke(
+                egui::Rect::from_center_size(center, vec2(8.0, 6.0)),
+                0.0,
+                stroke,
+                StrokeKind::Inside,
+            );
+        }
+        VectorIcon::RotateClockwise => {
+            let (tip, tangent) = paint_arc(
+                painter,
+                center,
+                5.5,
+                0.8 * std::f32::consts::PI,
+                2.2 * std::f32::consts::PI,
+                stroke,
+            );
+            paint_arrow_head(painter, tip, tangent, stroke);
+        }
+        VectorIcon::RotateCounterClockwise => {
+            let (tip, tangent) = paint_arc(
+                painter,
+                center,
+                5.5,
+                2.2 * std::f32::consts::PI,
+                0.8 * std::f32::consts::PI,
+                stroke,
+            );
+            paint_arrow_head(painter, tip, tangent, stroke);
+        }
+        VectorIcon::Rotate180 => {
+            let (tip, tangent) = paint_arc(
+                painter,
+                center,
+                5.5,
+                std::f32::consts::PI,
+                2.0 * std::f32::consts::PI,
+                stroke,
+            );
+            paint_arrow_head(painter, tip, tangent, stroke);
+            let (tip, tangent) = paint_arc(painter, center, 5.5, 0.0, std::f32::consts::PI, stroke);
+            paint_arrow_head(painter, tip, tangent, stroke);
+        }
+        VectorIcon::FlipHorizontal => paint_flip(painter, center, false, stroke),
+        VectorIcon::FlipVertical => paint_flip(painter, center, true, stroke),
         VectorIcon::Grid => {
             let r = egui::Rect::from_center_size(center, vec2(14.0, 14.0));
             painter.rect_stroke(r, 0.0, stroke, StrokeKind::Inside);
@@ -543,6 +727,145 @@ fn paint_vector_icon(ui: &Ui, rect: egui::Rect, icon: VectorIcon, enabled: bool)
                 );
             }
         }
+    }
+}
+
+fn paint_menu_check(ui: &Ui, rect: egui::Rect, enabled: bool) {
+    let color = if enabled {
+        Color32::from_gray(235)
+    } else {
+        ui.visuals().weak_text_color()
+    };
+    let stroke = Stroke::new(1.8, color);
+    let center = rect.center();
+    ui.painter()
+        .line_segment([center + vec2(-4.0, 0.0), center + vec2(-1.0, 3.0)], stroke);
+    ui.painter()
+        .line_segment([center + vec2(-1.0, 3.0), center + vec2(4.5, -3.5)], stroke);
+}
+
+fn paint_selection_corners(painter: &egui::Painter, rect: egui::Rect, stroke: Stroke) {
+    for (a, b) in [
+        (rect.left_top(), rect.left_top() + vec2(3.0, 0.0)),
+        (rect.left_top(), rect.left_top() + vec2(0.0, 3.0)),
+        (rect.right_top(), rect.right_top() + vec2(-3.0, 0.0)),
+        (rect.right_top(), rect.right_top() + vec2(0.0, 3.0)),
+        (rect.left_bottom(), rect.left_bottom() + vec2(3.0, 0.0)),
+        (rect.left_bottom(), rect.left_bottom() + vec2(0.0, -3.0)),
+        (rect.right_bottom(), rect.right_bottom() + vec2(-3.0, 0.0)),
+        (rect.right_bottom(), rect.right_bottom() + vec2(0.0, -3.0)),
+    ] {
+        painter.line_segment([a, b], stroke);
+    }
+}
+
+fn paint_arrow_head(painter: &egui::Painter, tip: egui::Pos2, tangent: egui::Vec2, stroke: Stroke) {
+    let length = tangent.length();
+    if length <= f32::EPSILON {
+        return;
+    }
+    let direction = tangent / length;
+    let normal = vec2(-direction.y, direction.x);
+    painter.line_segment([tip, tip - direction * 4.0 + normal * 2.5], stroke);
+    painter.line_segment([tip, tip - direction * 4.0 - normal * 2.5], stroke);
+}
+
+/// Approximates an arc with short segments and returns its end point and tangent.
+fn paint_arc(
+    painter: &egui::Painter,
+    center: egui::Pos2,
+    radius: f32,
+    start: f32,
+    end: f32,
+    stroke: Stroke,
+) -> (egui::Pos2, egui::Vec2) {
+    const STEPS: usize = 16;
+    let points = (0..=STEPS)
+        .map(|index| {
+            let fraction = index as f32 / STEPS as f32;
+            let angle = start + (end - start) * fraction;
+            center + vec2(angle.cos(), angle.sin()) * radius
+        })
+        .collect::<Vec<_>>();
+    let tip = points[STEPS];
+    let tangent = tip - points[STEPS - 1];
+    painter.add(egui::Shape::line(points, stroke));
+    (tip, tangent)
+}
+
+fn paint_dashed_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, stroke: Stroke) {
+    let delta = to - from;
+    let length = delta.length();
+    if length <= f32::EPSILON {
+        return;
+    }
+    let direction = delta / length;
+    let mut offset = 0.0;
+    while offset < length {
+        let end = (offset + 2.0).min(length);
+        painter.line_segment([from + direction * offset, from + direction * end], stroke);
+        offset += 3.5;
+    }
+}
+
+fn paint_dashed_rect(painter: &egui::Painter, rect: egui::Rect, stroke: Stroke) {
+    for (from, to) in [
+        (rect.left_top(), rect.right_top()),
+        (rect.right_top(), rect.right_bottom()),
+        (rect.right_bottom(), rect.left_bottom()),
+        (rect.left_bottom(), rect.left_top()),
+    ] {
+        paint_dashed_line(painter, from, to, stroke);
+    }
+}
+
+fn paint_flip(painter: &egui::Painter, center: egui::Pos2, vertical: bool, stroke: Stroke) {
+    if vertical {
+        paint_dashed_line(
+            painter,
+            center + vec2(0.0, -7.0),
+            center + vec2(0.0, 7.0),
+            stroke,
+        );
+        painter.add(egui::Shape::closed_line(
+            vec![
+                center + vec2(-6.0, -2.0),
+                center + vec2(6.0, -2.0),
+                center + vec2(0.0, -7.0),
+            ],
+            stroke,
+        ));
+        painter.add(egui::Shape::closed_line(
+            vec![
+                center + vec2(-6.0, 2.0),
+                center + vec2(6.0, 2.0),
+                center + vec2(0.0, 7.0),
+            ],
+            stroke,
+        ));
+    } else {
+        paint_dashed_line(
+            painter,
+            center + vec2(-7.0, 0.0),
+            center + vec2(7.0, 0.0),
+            stroke,
+        );
+        painter.add(egui::Shape::closed_line(
+            vec![
+                center + vec2(-2.0, -6.0),
+                center + vec2(-2.0, 6.0),
+                center + vec2(-7.0, 0.0),
+            ],
+            stroke,
+        ));
+        painter.add(egui::Shape::closed_line(
+            vec![
+                center + vec2(2.0, -6.0),
+                center + vec2(2.0, 6.0),
+                center + vec2(7.0, 0.0),
+            ],
+            stroke,
+        ));
     }
 }
 
@@ -680,5 +1003,66 @@ fn icon_name(icon: Icon) -> &'static str {
         Icon::PanelColors => "panel-colors",
         Icon::PanelLayers => "panel-layers",
         Icon::PanelHistory => "panel-history",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Icon, IconTextures, MenuIcon, VectorIcon, menu_row_button};
+
+    #[test]
+    fn menu_rows_carry_an_icon_atom_label_and_right_aligned_shortcut() {
+        egui::__run_test_ui(|ui| {
+            let icons = IconTextures::load(ui.ctx());
+            let vector = menu_row_button(
+                ui,
+                &icons,
+                MenuIcon::Vector(VectorIcon::Save),
+                "Save",
+                Some("Cmd+S"),
+                true,
+            );
+            assert!(matches!(
+                vector.atoms().iter_kinds().next(),
+                Some(egui::AtomKind::Paint(_))
+            ));
+            let texts = vector
+                .atoms()
+                .iter_texts()
+                .map(|text| text.text().to_owned())
+                .collect::<Vec<_>>();
+            assert_eq!(texts, ["Save", "Cmd+S"]);
+
+            let image = menu_row_button(
+                ui,
+                &icons,
+                MenuIcon::Image(Icon::Undo),
+                "Undo",
+                Some("Cmd+Z"),
+                false,
+            );
+            assert!(matches!(
+                image.atoms().iter_kinds().next(),
+                Some(egui::AtomKind::Image(_))
+            ));
+            let texts = image
+                .atoms()
+                .iter_texts()
+                .map(|text| text.text().to_owned())
+                .collect::<Vec<_>>();
+            assert_eq!(texts, ["Undo", "Cmd+Z"]);
+
+            let spacer = menu_row_button(ui, &icons, MenuIcon::None, "Quit", None, true);
+            assert!(matches!(
+                spacer.atoms().iter_kinds().next(),
+                Some(egui::AtomKind::Paint(_))
+            ));
+            let texts = spacer
+                .atoms()
+                .iter_texts()
+                .map(|text| text.text().to_owned())
+                .collect::<Vec<_>>();
+            assert_eq!(texts, ["Quit"]);
+        });
     }
 }
