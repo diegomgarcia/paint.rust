@@ -41,6 +41,8 @@ pub enum SessionError {
     #[error(transparent)]
     Png(#[from] paint_image_io::PngError),
     #[error(transparent)]
+    Decode(#[from] paint_image_io::DecodeError),
+    #[error(transparent)]
     Format(#[from] paint_image_io::FormatError),
     #[error(transparent)]
     Pdn(#[from] paint_pdn3::PdnError),

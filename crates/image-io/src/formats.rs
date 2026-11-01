@@ -8,10 +8,11 @@ use thiserror::Error;
 
 use crate::{AtomicWriteError, PngError, atomic_write, encode_png};
 
-/// Save formats exposed by the file dialog. PDN is intentionally handled by the
-/// layered PDN codec in `paint-pdn3`, not by this flat-raster module.
+/// Flat raster formats Paint.Rust can both encode and decode. PDN is
+/// intentionally handled by the layered PDN codec in `paint-pdn3`, not by this
+/// flat-raster module.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SaveFormat {
+pub enum RasterFormat {
     Png,
     Jpeg,
     Tiff,
@@ -22,7 +23,10 @@ pub enum SaveFormat {
     WebP,
 }
 
-impl SaveFormat {
+/// Backwards-compatible name for the save-side view of [`RasterFormat`].
+pub type SaveFormat = RasterFormat;
+
+impl RasterFormat {
     pub const ALL: [Self; 8] = [
         Self::Png,
         Self::Jpeg,
@@ -44,6 +48,20 @@ impl SaveFormat {
             Self::Dds => "DDS (*.dds)",
             Self::Gif => "GIF (*.gif)",
             Self::WebP => "WebP (*.webp)",
+        }
+    }
+
+    /// Short display name without a file-dialog wildcard.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Png => "PNG",
+            Self::Jpeg => "JPEG",
+            Self::Tiff => "TIFF",
+            Self::Bmp => "BMP",
+            Self::Tga => "TGA",
+            Self::Dds => "DDS",
+            Self::Gif => "GIF",
+            Self::WebP => "WebP",
         }
     }
 
@@ -90,6 +108,19 @@ impl SaveFormat {
     pub fn from_path(path: &std::path::Path) -> Option<Self> {
         Self::from_extension(path.extension()?.to_str()?)
     }
+
+    pub(crate) const fn image_format(self) -> image::ImageFormat {
+        match self {
+            Self::Png => image::ImageFormat::Png,
+            Self::Jpeg => image::ImageFormat::Jpeg,
+            Self::Tiff => image::ImageFormat::Tiff,
+            Self::Bmp => image::ImageFormat::Bmp,
+            Self::Tga => image::ImageFormat::Tga,
+            Self::Dds => image::ImageFormat::Dds,
+            Self::Gif => image::ImageFormat::Gif,
+            Self::WebP => image::ImageFormat::WebP,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -111,8 +142,8 @@ pub enum FormatError {
 }
 
 /// Encode the composed surface in one of the supported flat raster formats.
-pub fn encode_image(surface: &Surface, format: SaveFormat) -> Result<Vec<u8>, FormatError> {
-    if format == SaveFormat::Png {
+pub fn encode_image(surface: &Surface, format: RasterFormat) -> Result<Vec<u8>, FormatError> {
+    if format == RasterFormat::Png {
         return Ok(encode_png(surface)?);
     }
 
@@ -120,9 +151,9 @@ pub fn encode_image(surface: &Surface, format: SaveFormat) -> Result<Vec<u8>, Fo
     let width = surface.width();
     let height = surface.height();
     match format {
-        SaveFormat::Png => unreachable!("handled above"),
-        SaveFormat::Jpeg => encode_jpeg(&rgba, width, height),
-        SaveFormat::Tiff => {
+        RasterFormat::Png => unreachable!("handled above"),
+        RasterFormat::Jpeg => encode_jpeg(&rgba, width, height),
+        RasterFormat::Tiff => {
             let mut output = Vec::new();
             image::codecs::tiff::TiffEncoder::new(Cursor::new(&mut output))
                 .write_image(&rgba, width, height, ExtendedColorType::Rgba8)
@@ -132,7 +163,7 @@ pub fn encode_image(surface: &Surface, format: SaveFormat) -> Result<Vec<u8>, Fo
                 })?;
             Ok(output)
         }
-        SaveFormat::Bmp => {
+        RasterFormat::Bmp => {
             let mut output = Vec::new();
             image::codecs::bmp::BmpEncoder::new(&mut output)
                 .write_image(&rgba, width, height, ExtendedColorType::Rgba8)
@@ -142,7 +173,7 @@ pub fn encode_image(surface: &Surface, format: SaveFormat) -> Result<Vec<u8>, Fo
                 })?;
             Ok(output)
         }
-        SaveFormat::Tga => {
+        RasterFormat::Tga => {
             let mut output = Vec::new();
             image::codecs::tga::TgaEncoder::new(&mut output)
                 .write_image(&rgba, width, height, ExtendedColorType::Rgba8)
@@ -152,8 +183,8 @@ pub fn encode_image(surface: &Surface, format: SaveFormat) -> Result<Vec<u8>, Fo
                 })?;
             Ok(output)
         }
-        SaveFormat::Dds => encode_dds_bgra(&surface.to_bgra_bytes()?, width, height),
-        SaveFormat::Gif => {
+        RasterFormat::Dds => encode_dds_bgra(&surface.to_bgra_bytes()?, width, height),
+        RasterFormat::Gif => {
             let mut output = Vec::new();
             image::codecs::gif::GifEncoder::new(&mut output)
                 .encode(&rgba, width, height, ExtendedColorType::Rgba8)
@@ -163,7 +194,7 @@ pub fn encode_image(surface: &Surface, format: SaveFormat) -> Result<Vec<u8>, Fo
                 })?;
             Ok(output)
         }
-        SaveFormat::WebP => {
+        RasterFormat::WebP => {
             let mut output = Vec::new();
             image::codecs::webp::WebPEncoder::new_lossless(&mut output)
                 .encode(&rgba, width, height, ExtendedColorType::Rgba8)
@@ -180,7 +211,7 @@ pub fn encode_image(surface: &Surface, format: SaveFormat) -> Result<Vec<u8>, Fo
 pub fn write_image_atomic(
     path: impl AsRef<std::path::Path>,
     surface: &Surface,
-    format: SaveFormat,
+    format: RasterFormat,
 ) -> Result<(), FormatError> {
     let bytes = encode_image(surface, format)?;
     atomic_write(path, &bytes)?;

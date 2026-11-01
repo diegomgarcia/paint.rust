@@ -5,8 +5,8 @@ use std::path::Path;
 use paint_core::Surface;
 use paint_document::{Document, Layer, LayerId};
 use paint_image_io::{
-    PngLimits, SaveFormat, atomic_write, decode_png_with_limits, encode_png, write_image_atomic,
-    write_png_atomic,
+    DecodeError, PngLimits, RasterFormat, RasterLimits, atomic_write, decode_image_with_limits,
+    decode_png_with_limits, encode_png, write_image_atomic, write_png_atomic,
 };
 use paint_pdn3::encode_pdn;
 
@@ -42,6 +42,45 @@ impl AppSession {
         let bytes = read_bounded(path, png_limits.max_input_bytes)?;
         let surface = decode_png_with_limits(&bytes, &png_limits)?;
         Self::from_decoded_png(surface, limits)
+    }
+
+    /// Decodes any supported flat raster as one clean background layer.
+    ///
+    /// The layer is named after the format because no file name is available.
+    pub fn from_image_bytes(bytes: &[u8], format: RasterFormat) -> Result<Self, SessionError> {
+        Self::from_image_bytes_with_limits(bytes, format, ResourceLimits::default())
+    }
+
+    /// Decodes with flat-raster codec bounds and this session's resource bounds.
+    pub fn from_image_bytes_with_limits(
+        bytes: &[u8],
+        format: RasterFormat,
+        limits: ResourceLimits,
+    ) -> Result<Self, SessionError> {
+        let surface = decode_image_with_limits(bytes, format, &raster_limits_for(&limits))?;
+        Self::from_decoded_surface(surface, format.name().to_owned(), limits)
+    }
+
+    /// Opens any supported flat raster file as one clean background layer.
+    ///
+    /// The layer is named after the file stem, or the format when the stem is
+    /// empty. The format comes from the file extension.
+    pub fn open_image(path: impl AsRef<Path>) -> Result<Self, SessionError> {
+        Self::open_image_with_limits(path, ResourceLimits::default())
+    }
+
+    /// Opens a flat raster from disk with bounded input and decode resources.
+    pub fn open_image_with_limits(
+        path: impl AsRef<Path>,
+        limits: ResourceLimits,
+    ) -> Result<Self, SessionError> {
+        let path = path.as_ref();
+        let format = RasterFormat::from_path(path).ok_or_else(|| DecodeError::UnknownFormat {
+            path: path.to_path_buf(),
+        })?;
+        let surface = paint_image_io::open_image_with_limits(path, &raster_limits_for(&limits))?;
+        let name = layer_name_for_path(path, format, &limits);
+        Self::from_decoded_surface(surface, name, limits)
     }
 
     /// Encodes the current composite as a flat PNG export.
@@ -87,7 +126,7 @@ impl AppSession {
     }
 
     /// Encodes the composed image in a supported flat raster format.
-    pub fn encode_image(&self, format: SaveFormat) -> Result<Vec<u8>, SessionError> {
+    pub fn encode_image(&self, format: RasterFormat) -> Result<Vec<u8>, SessionError> {
         let composed = self.compose()?;
         Ok(paint_image_io::encode_image(&composed, format)?)
     }
@@ -100,7 +139,7 @@ impl AppSession {
     pub fn save_image_atomic(
         &mut self,
         path: impl AsRef<Path>,
-        format: SaveFormat,
+        format: RasterFormat,
     ) -> Result<(), SessionError> {
         let composed = self.compose()?;
         write_image_atomic(path, &composed, format)?;
@@ -112,7 +151,7 @@ impl AppSession {
     pub fn export_image_atomic(
         &self,
         path: impl AsRef<Path>,
-        format: SaveFormat,
+        format: RasterFormat,
     ) -> Result<(), SessionError> {
         let composed = self.compose()?;
         write_image_atomic(path, &composed, format)?;
@@ -120,8 +159,16 @@ impl AppSession {
     }
 
     fn from_decoded_png(surface: Surface, limits: ResourceLimits) -> Result<Self, SessionError> {
+        Self::from_decoded_surface(surface, "Background".to_owned(), limits)
+    }
+
+    fn from_decoded_surface(
+        surface: Surface,
+        name: String,
+        limits: ResourceLimits,
+    ) -> Result<Self, SessionError> {
         let size = surface.size();
-        let background = Layer::new(LayerId::new(1), "Background", surface).with_background(true);
+        let background = Layer::new(LayerId::new(1), name, surface).with_background(true);
         let document = Document::from_layers(size, vec![background])?;
         Self::with_limits(document, limits)
     }
@@ -156,6 +203,48 @@ fn png_limits_for(limits: &ResourceLimits) -> PngLimits {
     let decoded_bytes = png.max_pixels.saturating_mul(4);
     png.max_decoded_bytes = png.max_decoded_bytes.min(decoded_bytes);
     png
+}
+
+fn raster_limits_for(limits: &ResourceLimits) -> RasterLimits {
+    let mut raster = RasterLimits::default();
+    raster.max_width = raster.max_width.min(limits.max_width);
+    raster.max_height = raster.max_height.min(limits.max_height);
+    raster.max_pixels = raster
+        .max_pixels
+        .min(usize::try_from(limits.max_pixels).unwrap_or(usize::MAX));
+    let decoded_bytes = raster.max_pixels.saturating_mul(4);
+    raster.max_decoded_bytes = raster.max_decoded_bytes.min(decoded_bytes);
+    // Image decoders may need an intermediate buffer in addition to the
+    // decoded output, so the codec budget is at least twice the pixel budget
+    // while still bounded by the default allocation ceiling.
+    raster.max_alloc_bytes = raster
+        .max_alloc_bytes
+        .min((decoded_bytes as u64).saturating_mul(2));
+    raster
+}
+
+fn layer_name_for_path(path: &Path, format: RasterFormat, limits: &ResourceLimits) -> String {
+    let name = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or(format.name());
+    truncate_layer_name(name, format, limits.max_layer_name_bytes)
+}
+
+fn truncate_layer_name(name: &str, format: RasterFormat, maximum: usize) -> String {
+    if name.len() <= maximum {
+        return name.to_owned();
+    }
+    let mut end = maximum.min(name.len());
+    while end > 0 && !name.is_char_boundary(end) {
+        end -= 1;
+    }
+    if end == 0 {
+        format.name().to_owned()
+    } else {
+        name[..end].to_owned()
+    }
 }
 
 fn read_bounded(path: &Path, maximum: usize) -> Result<Vec<u8>, SessionError> {

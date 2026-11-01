@@ -14,6 +14,7 @@ pub use command::{CanvasAnchor, Command};
 pub use effect::{Effect, EffectCategory};
 pub use error::{ExpectationError, ExpectationField, ResourceLimitError, SessionError, TraceError};
 pub use paint_document::SelectionCombineMode;
+pub use paint_image_io::{DecodeError, RasterFormat, RasterLimits};
 pub use paint_raster::{MagicWandSampling, ResampleMode};
 pub use session::{AppSession, FloatingSelection, ResourceLimits};
 pub use snapshot::{

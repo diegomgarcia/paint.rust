@@ -1,5 +1,7 @@
-use paint_app::{AppSession, Command, ResourceLimits, SemanticSnapshot, execute_trace};
-use paint_core::{Bgra, Size, Surface};
+use paint_app::{
+    AppSession, Command, RasterFormat, ResourceLimits, SemanticSnapshot, execute_trace,
+};
+use paint_core::{Bgra, Point, Size, Surface};
 
 #[test]
 fn png_bytes_open_as_one_clean_layer_and_export_exact_rgba() {
@@ -73,6 +75,96 @@ fn png_path_open_is_clean_and_reports_io_and_decode_failures() {
 
     assert!(AppSession::open_png(directory.path().join("missing.png")).is_err());
     assert!(AppSession::from_png_bytes(b"not a PNG").is_err());
+}
+
+#[test]
+fn jpeg_and_webp_open_as_one_clean_layer_named_after_the_file() {
+    let size = Size::new(5, 4).unwrap();
+    let surface = Surface::filled(size, Bgra::new(20, 40, 80, 255)).unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    for (format, stem, extension) in [
+        (RasterFormat::Jpeg, "photo", "jpg"),
+        (RasterFormat::WebP, "icon", "webp"),
+    ] {
+        let bytes = paint_image_io::encode_image(&surface, format).unwrap();
+        let path = directory.path().join(format!("{stem}.{extension}"));
+        std::fs::write(&path, &bytes).unwrap();
+
+        let session = AppSession::open_image(&path).unwrap();
+        assert_eq!(session.document().layers().len(), 1);
+        assert_eq!(session.document().size(), size);
+        assert!(!session.dirty());
+        assert!(!session.can_undo());
+        assert!(!session.can_redo());
+        let layer = &session.document().layers()[0];
+        assert_eq!(layer.name(), stem);
+        assert!(layer.is_background());
+        let pixel = layer.surface().pixel(Point::new(2, 2)).unwrap();
+        assert_eq!(pixel.a, 255);
+        for (actual, expected) in [(pixel.r, 80), (pixel.g, 40), (pixel.b, 20)] {
+            assert!(
+                actual.abs_diff(expected) <= 30,
+                "{} channel {actual} vs {expected}",
+                format.name()
+            );
+        }
+
+        let from_bytes = AppSession::from_image_bytes(&bytes, format).unwrap();
+        assert_eq!(
+            from_bytes.document().layers()[0].name(),
+            format.name(),
+            "byte-open layer name"
+        );
+        assert_eq!(from_bytes.document().layers().len(), 1);
+        assert!(!from_bytes.dirty());
+        assert!(!from_bytes.can_undo());
+
+        assert!(
+            AppSession::open_image_with_limits(
+                &path,
+                ResourceLimits {
+                    max_pixels: 19,
+                    ..ResourceLimits::default()
+                }
+            )
+            .is_err(),
+            "session limits must be applied while opening {}",
+            format.name()
+        );
+    }
+}
+
+#[test]
+fn every_flat_format_opens_as_one_clean_background_layer() {
+    let size = Size::new(3, 2).unwrap();
+    let surface = Surface::filled(size, Bgra::new(30, 60, 90, 255)).unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    for format in RasterFormat::ALL {
+        let bytes = paint_image_io::encode_image(&surface, format).unwrap();
+        let path = directory.path().join(format!(
+            "{}.{}",
+            format.name().to_ascii_lowercase(),
+            format.extension()
+        ));
+        std::fs::write(&path, &bytes).unwrap();
+
+        let session = AppSession::open_image(&path).unwrap();
+        assert_eq!(session.document().size(), size, "{} size", format.name());
+        assert_eq!(
+            session.document().layers().len(),
+            1,
+            "{} layer count",
+            format.name()
+        );
+        assert!(
+            session.document().layers()[0].is_background(),
+            "{} background",
+            format.name()
+        );
+        assert!(!session.dirty(), "{} clean", format.name());
+        assert!(!session.can_undo(), "{} history", format.name());
+        assert!(!session.can_redo(), "{} redo", format.name());
+    }
 }
 
 #[test]
