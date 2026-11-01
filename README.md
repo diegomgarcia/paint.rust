@@ -5,6 +5,7 @@ A fast, modular image editor written in Rust, inspired by Paint.NET's direct, to
 ![Paint.Rust editor preview](docs/images/paint-rust-preview.png)
 
 ![Rust](https://img.shields.io/badge/Rust-1.95-orange?logo=rust)
+![Version](https://img.shields.io/badge/version-0.1.1-blue)
 ![Status](https://img.shields.io/badge/status-development%20preview-yellow)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -40,12 +41,13 @@ The main goals are:
 - Native macOS keyboard, focus, dirty-close and screenshot gate passing.
 - macOS Apple Silicon is the only platform currently covered by the native window/input gate.
   Windows and Linux build paths are intended, but are not yet release-gated.
-- No hosted CI, installer, notarized binary or public release yet.
+- No hosted CI, installer, notarized binary or packaged distribution yet.
 
 ## Features
 
 - Multi-document tabs with per-tab paths, dirty markers, close guard, native Open and
   format-aware Save/Save As/Export.
+- First-party PDR session files preserving layers, selection and undo/redo history.
 - All 19 Paint.NET-ordered tools: Rectangle/Ellipse/Lasso/Magic Wand selection, Move Selected
   Pixels, Move Selection, Zoom, Pan, Paint Bucket, Gradient, Paintbrush, Eraser, Pencil,
   Color Picker, Clone Stamp, Recolor, Text, Line/Curve and Shapes.
@@ -100,8 +102,8 @@ Paint.Rust is built from source during the preview phase.
 ### Build and run
 
 ```sh
-git clone https://github.com/diegomgarcia/paint-rust.git
-cd paint-rust
+git clone https://github.com/diegomgarcia/paint.rust.git
+cd paint.rust
 
 # Uses the pinned Rust toolchain and locked dependencies.
 ./tools/cargo-pinned.sh run --release -p paint-ui --locked

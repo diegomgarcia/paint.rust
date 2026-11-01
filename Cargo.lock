@@ -2879,7 +2879,7 @@ dependencies = [
 
 [[package]]
 name = "paint-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "hex",
  "paint-core",
@@ -2898,7 +2898,7 @@ dependencies = [
 
 [[package]]
 name = "paint-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proptest",
  "serde",
@@ -2907,7 +2907,7 @@ dependencies = [
 
 [[package]]
 name = "paint-document"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "paint-core",
  "proptest",
@@ -2917,7 +2917,7 @@ dependencies = [
 
 [[package]]
 name = "paint-image-io"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "image",
  "paint-core",
@@ -2929,7 +2929,7 @@ dependencies = [
 
 [[package]]
 name = "paint-pdn3"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "flate2",
  "paint-core",
@@ -2944,7 +2944,7 @@ dependencies = [
 
 [[package]]
 name = "paint-plugin-bridge"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "paint-core",
  "serde",
@@ -2955,7 +2955,7 @@ dependencies = [
 
 [[package]]
 name = "paint-raster"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ab_glyph",
  "paint-core",
@@ -2966,7 +2966,7 @@ dependencies = [
 
 [[package]]
 name = "paint-ui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "eframe",
  "egui",
@@ -5259,7 +5259,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "yeslogic-fontconfig-sys"
