@@ -8,6 +8,10 @@ pub enum SelectionError {
     Geometry(#[from] GeometryError),
     #[error("selection mask flag length mismatch: expected {expected}, got {actual}")]
     FlagLength { expected: usize, actual: usize },
+    #[error("selection mask packed-word length mismatch: expected {expected}, got {actual}")]
+    PackedLength { expected: usize, actual: usize },
+    #[error("selection mask packed bits outside the mask width at row {row}, word {word}")]
+    PackedPadding { row: usize, word: usize },
     #[error("selection mask coordinate ({x}, {y}) is outside mask bounds {bounds:?}")]
     OutOfBounds { x: i64, y: i64, bounds: Rect },
     #[error("selection mask dimensions {width}x{height} exceed the addressable range")]
@@ -272,6 +276,50 @@ impl SelectionMask {
 
     pub fn is_all_selected(&self) -> bool {
         self.pixel_count() == self.selected
+    }
+
+    /// Returns the canonical row-major packed bits backing this mask.
+    ///
+    /// Each row occupies [`Self::words_per_row`] 64-bit words. Bits at or beyond the row width
+    /// in the final word are always zero.
+    pub fn packed_words(&self) -> &[u64] {
+        &self.words
+    }
+
+    /// Number of 64-bit words stored for each mask row.
+    pub const fn words_per_row(&self) -> usize {
+        self.row_words
+    }
+
+    /// Rebuilds a mask from packed row-major bits, validating length and padding.
+    ///
+    /// The selected-pixel count is derived from the bits rather than trusted from the caller.
+    pub fn from_packed_words(bounds: Rect, words: Vec<u64>) -> Result<Self, SelectionError> {
+        let (row_words, word_count) = layout(bounds)?;
+        if words.len() != word_count {
+            return Err(SelectionError::PackedLength {
+                expected: word_count,
+                actual: words.len(),
+            });
+        }
+        let width = bounds.width();
+        let height = copy_to_usize(bounds.height(), bounds)?;
+        let mut selected = 0usize;
+        for row in 0..height {
+            for word in 0..row_words {
+                let bits = words[row * row_words + word];
+                if bits != trim_row_word(bits, word, row_words, width) {
+                    return Err(SelectionError::PackedPadding { row, word });
+                }
+                selected += bits.count_ones() as usize;
+            }
+        }
+        Ok(Self {
+            bounds,
+            row_words,
+            words,
+            selected,
+        })
     }
 
     /// Returns the union of both masks, or `None` when neither selects a pixel.

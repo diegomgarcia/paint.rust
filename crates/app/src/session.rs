@@ -52,8 +52,8 @@ impl Default for ResourceLimits {
 #[derive(Debug)]
 pub struct AppSession {
     document: Document,
-    undo: Vec<Mutation>,
-    redo: Vec<Mutation>,
+    undo: Vec<HistoryEntry>,
+    redo: Vec<HistoryEntry>,
     limits: ResourceLimits,
     clean_fingerprint: [u8; 32],
     content_fingerprint: [u8; 32],
@@ -554,12 +554,7 @@ impl AppSession {
         if before == self.document {
             return Ok(false);
         }
-        let after = self.document.clone();
-        let inverse = Mutation::DocumentSnapshot {
-            before: Box::new(after),
-            after: Box::new(before),
-        };
-        self.undo.push(inverse);
+        self.undo.push(HistoryEntry::Snapshot(before));
         self.redo.clear();
         self.refresh_content_fingerprint();
         Ok(true)
@@ -1080,7 +1075,6 @@ impl AppSession {
     }
 
     pub fn flip_image(&mut self, horizontal: bool) -> Result<bool, SessionError> {
-        let before = self.document.clone();
         let mut candidate = self.document.clone();
         let ids: Vec<LayerId> = candidate.layers().iter().map(Layer::id).collect();
         for id in ids {
@@ -1093,14 +1087,7 @@ impl AppSession {
                 candidate.apply_patch(&patch)?;
             }
         }
-        let mutation = Mutation::DocumentSnapshot {
-            before: Box::new(before),
-            after: Box::new(candidate.clone()),
-        };
-        let Some(inverse) = mutation.apply(&mut candidate)? else {
-            return Ok(false);
-        };
-        self.commit_new(candidate, inverse);
+        self.commit_snapshot(candidate);
         Ok(true)
     }
 
@@ -1191,21 +1178,25 @@ impl AppSession {
         self.apply_document_candidate(candidate)
     }
 
-    /// Applies a fully built candidate document as one snapshot-based history mutation.
+    /// Applies a fully built candidate document as one snapshot-based history entry.
     fn apply_document_candidate(&mut self, candidate: Document) -> Result<bool, SessionError> {
         if candidate == self.document {
             return Ok(false);
         }
-        let mutation = Mutation::DocumentSnapshot {
-            before: Box::new(self.document.clone()),
-            after: Box::new(candidate),
-        };
-        let mut applied = self.document.clone();
-        let Some(inverse) = mutation.apply(&mut applied)? else {
-            return Ok(false);
-        };
-        self.commit_new(applied, inverse);
+        self.commit_snapshot(candidate);
         Ok(true)
+    }
+
+    /// Commits a candidate snapshot even when it equals the current document.
+    ///
+    /// Whole-image flips and flatten historically create one history entry for every invocation,
+    /// matching the visible Edit history even when the pixels happen to be symmetric.
+    fn commit_snapshot(&mut self, candidate: Document) {
+        let before = self.document.clone();
+        self.document = candidate;
+        self.undo.push(HistoryEntry::Snapshot(before));
+        self.redo.clear();
+        self.refresh_content_fingerprint();
     }
 
     fn validate_requested_size(&self, size: Size) -> Result<(), SessionError> {
@@ -1232,7 +1223,6 @@ impl AppSession {
     }
 
     pub fn flatten_image(&mut self) -> Result<bool, SessionError> {
-        let before = self.document.clone();
         let composed = paint_raster::compose(&self.document)?;
         let mut candidate = Document::new(self.document.size())?;
         let layer_id = candidate.active_layer_id();
@@ -1247,14 +1237,7 @@ impl AppSession {
         )
         .map_err(DocumentError::from)?;
         candidate.apply_patch(&patch)?;
-        let mutation = Mutation::DocumentSnapshot {
-            before: Box::new(before),
-            after: Box::new(candidate.clone()),
-        };
-        let Some(inverse) = mutation.apply(&mut candidate)? else {
-            return Ok(false);
-        };
-        self.commit_new(candidate, inverse);
+        self.commit_snapshot(candidate);
         Ok(true)
     }
 
@@ -1429,15 +1412,11 @@ impl AppSession {
     }
 
     pub fn undo(&mut self) -> Result<bool, SessionError> {
-        let Some(mutation) = self.undo.last() else {
+        let Some(entry) = self.undo.last() else {
             return Ok(false);
         };
         let mut candidate = self.document.clone();
-        let forward = mutation
-            .apply(&mut candidate)?
-            .ok_or(SessionError::HistoryInvariant(
-                "an undo mutation unexpectedly became a no-op",
-            ))?;
+        let forward = apply_history_entry(entry, &mut candidate)?;
 
         self.document = candidate;
         let _applied = self.undo.pop();
@@ -1447,21 +1426,89 @@ impl AppSession {
     }
 
     pub fn redo(&mut self) -> Result<bool, SessionError> {
-        let Some(mutation) = self.redo.last() else {
+        let Some(entry) = self.redo.last() else {
             return Ok(false);
         };
         let mut candidate = self.document.clone();
-        let inverse = mutation
-            .apply(&mut candidate)?
-            .ok_or(SessionError::HistoryInvariant(
-                "a redo mutation unexpectedly became a no-op",
-            ))?;
+        let inverse = apply_history_entry(entry, &mut candidate)?;
 
         self.document = candidate;
         let _applied = self.redo.pop();
         self.undo.push(inverse);
         self.refresh_content_fingerprint();
         Ok(true)
+    }
+
+    /// Derives the document snapshot produced by every undo and redo entry.
+    ///
+    /// History is probed on cloned documents and cloned entries, so the live session, its
+    /// document, and both stacks are never changed. Both returned vectors are in stack order
+    /// (bottom to top): undoing pops the last undo snapshot first, and redoing pops the last redo
+    /// snapshot first.
+    pub(crate) fn history_snapshots(&self) -> Result<(Vec<Document>, Vec<Document>), SessionError> {
+        let mut undo_probe = self.document.clone();
+        let mut undo_top_first = Vec::new();
+        undo_top_first
+            .try_reserve_exact(self.undo.len())
+            .map_err(|_| SessionError::HistoryInvariant("could not allocate undo snapshots"))?;
+        for entry in self.undo.iter().rev() {
+            apply_history_entry(entry, &mut undo_probe)?;
+            undo_top_first.push(undo_probe.clone());
+        }
+        undo_top_first.reverse();
+
+        let mut redo_probe = self.document.clone();
+        let mut redo_top_first = Vec::new();
+        redo_top_first
+            .try_reserve_exact(self.redo.len())
+            .map_err(|_| SessionError::HistoryInvariant("could not allocate redo snapshots"))?;
+        for entry in self.redo.iter().rev() {
+            apply_history_entry(entry, &mut redo_probe)?;
+            redo_top_first.push(redo_probe.clone());
+        }
+        redo_top_first.reverse();
+        Ok((undo_top_first, redo_top_first))
+    }
+
+    /// Number of undo and redo entries, used to validate optional history labels.
+    pub(crate) fn history_lengths(&self) -> (usize, usize) {
+        (self.undo.len(), self.redo.len())
+    }
+
+    /// Builds a clean session from decoded document and history snapshots.
+    ///
+    /// Loaded history entries are snapshot entries because a file stores exact prior states, not
+    /// live mutation payloads. Later edits still push inverse mutations and mix with these entries.
+    pub(crate) fn from_loaded_history(
+        document: Document,
+        undo: Vec<Document>,
+        redo: Vec<Document>,
+        limits: ResourceLimits,
+    ) -> Result<Self, SessionError> {
+        validate_document_resources(&document, &limits)?;
+        for snapshot in undo.iter().chain(&redo) {
+            validate_document_resources(snapshot, &limits)?;
+        }
+        let fingerprint = content_fingerprint(&document);
+        let mut undo_entries = Vec::new();
+        undo_entries
+            .try_reserve_exact(undo.len())
+            .map_err(|_| SessionError::HistoryInvariant("could not allocate undo history"))?;
+        undo_entries.extend(undo.into_iter().map(HistoryEntry::Snapshot));
+        let mut redo_entries = Vec::new();
+        redo_entries
+            .try_reserve_exact(redo.len())
+            .map_err(|_| SessionError::HistoryInvariant("could not allocate redo history"))?;
+        redo_entries.extend(redo.into_iter().map(HistoryEntry::Snapshot));
+        Ok(Self {
+            document,
+            undo: undo_entries,
+            redo: redo_entries,
+            limits,
+            clean_fingerprint: fingerprint,
+            content_fingerprint: fingerprint,
+            preview: None,
+        })
     }
 
     pub fn compose(&self) -> Result<Surface, SessionError> {
@@ -1511,7 +1558,7 @@ impl AppSession {
 
     fn commit_new(&mut self, candidate: Document, inverse: Mutation) {
         self.document = candidate;
-        self.undo.push(inverse);
+        self.undo.push(HistoryEntry::Mutation(inverse));
         self.redo.clear();
         self.refresh_content_fingerprint();
     }
@@ -1521,7 +1568,35 @@ impl AppSession {
     }
 }
 
-#[derive(Debug)]
+/// One reversible history step: an inverse mutation or an exact document snapshot.
+#[derive(Clone, Debug)]
+enum HistoryEntry {
+    Mutation(Mutation),
+    Snapshot(Document),
+}
+
+/// Applies one history entry and returns the entry that reverses it.
+fn apply_history_entry(
+    entry: &HistoryEntry,
+    document: &mut Document,
+) -> Result<HistoryEntry, SessionError> {
+    match entry {
+        HistoryEntry::Mutation(mutation) => {
+            let inverse = mutation
+                .apply(document)?
+                .ok_or(SessionError::HistoryInvariant(
+                    "a history mutation unexpectedly became a no-op",
+                ))?;
+            Ok(HistoryEntry::Mutation(inverse))
+        }
+        HistoryEntry::Snapshot(snapshot) => Ok(HistoryEntry::Snapshot(std::mem::replace(
+            document,
+            snapshot.clone(),
+        ))),
+    }
+}
+
+#[derive(Clone, Debug)]
 enum Mutation {
     Pixels(PixelPatch),
     PixelsWithSelection {
@@ -1570,10 +1645,6 @@ enum Mutation {
         upper: Layer,
         upper_index: usize,
         restore_active: LayerId,
-    },
-    DocumentSnapshot {
-        before: Box<Document>,
-        after: Box<Document>,
     },
 }
 
@@ -1701,14 +1772,6 @@ impl Mutation {
                     restore_active: *restore_active,
                 }))
             }
-            Self::DocumentSnapshot { before, after } => {
-                let inverse = Self::DocumentSnapshot {
-                    before: after.clone(),
-                    after: before.clone(),
-                };
-                *document = (**after).clone();
-                Ok(Some(inverse))
-            }
             Self::SetVisibility { layer_id, value } => {
                 let layer = document
                     .layer(*layer_id)
@@ -1834,8 +1897,17 @@ fn validate_document_resources(
     document: &Document,
     limits: &ResourceLimits,
 ) -> Result<(), ResourceLimitError> {
-    let width = document.size().width();
-    let height = document.size().height();
+    validate_document_shape(document.size(), document.layers().len(), limits)
+}
+
+/// Checks dimensions, total pixels, and layer count without constructing a document.
+pub(crate) fn validate_document_shape(
+    size: Size,
+    layer_count: usize,
+    limits: &ResourceLimits,
+) -> Result<(), ResourceLimitError> {
+    let width = size.width();
+    let height = size.height();
     if width > limits.max_width || height > limits.max_height {
         return Err(ResourceLimitError::Dimensions {
             width,
@@ -1851,9 +1923,9 @@ fn validate_document_resources(
             max: limits.max_pixels,
         });
     }
-    if document.layers().len() > limits.max_layers {
+    if layer_count > limits.max_layers {
         return Err(ResourceLimitError::Layers {
-            actual: document.layers().len(),
+            actual: layer_count,
             max: limits.max_layers,
         });
     }

@@ -114,6 +114,19 @@ impl Layer {
         self
     }
 
+    pub fn with_blend_mode(mut self, blend_mode: BlendMode) -> Self {
+        self.blend_mode = blend_mode;
+        self
+    }
+
+    /// Restores a persisted revision during validated document reconstruction.
+    ///
+    /// Live layer revisions are advanced only by [`crate::Document`] mutations.
+    pub fn with_revision(mut self, revision: Revision) -> Self {
+        self.revision = revision;
+        self
+    }
+
     pub const fn id(&self) -> LayerId {
         self.id
     }

@@ -1,6 +1,7 @@
 use paint_core::{Bgra, Rect, Size, Surface, SurfaceError};
 use paint_document::{
     BlendMode, Document, DocumentError, Layer, LayerId, PatchError, PixelPatch, Revision,
+    Selection, SelectionMask,
 };
 
 fn size(width: u32, height: u32) -> Size {
@@ -488,4 +489,63 @@ fn select_all_and_invert_selection_use_canvas_mask_algebra() {
             .expect("invert without selection")
     );
     assert!(document.selection().is_none());
+}
+
+#[test]
+fn restore_preserves_revisions_selection_active_layer_and_next_id() {
+    let document_size = size(3, 2);
+    let surface = Surface::filled(document_size, Bgra::BLACK).expect("surface");
+    let layer = Layer::new(LayerId::new(7), "Restored", surface)
+        .with_visibility(false)
+        .with_opacity(123)
+        .with_background(true)
+        .with_blend_mode(BlendMode::Overlay)
+        .with_revision(Revision::new(9));
+    let mask = SelectionMask::ellipse(Rect::new(0, 0, 3, 2).expect("ellipse")).expect("mask");
+    let selection = Selection::from_mask(mask);
+
+    let restored = Document::restore(
+        document_size,
+        vec![layer.clone()],
+        LayerId::new(7),
+        Some(selection.clone()),
+        Revision::new(42),
+        LayerId::new(10),
+    )
+    .expect("restore document");
+
+    assert_eq!(restored.size(), document_size);
+    assert_eq!(restored.layers(), &[layer]);
+    assert_eq!(restored.active_layer_id(), LayerId::new(7));
+    assert_eq!(restored.selection_model(), Some(&selection));
+    assert_eq!(restored.revision(), Revision::new(42));
+    assert_eq!(restored.next_layer_id(), LayerId::new(10));
+
+    assert_eq!(
+        Document::restore(
+            document_size,
+            restored.layers().to_vec(),
+            LayerId::new(99),
+            None,
+            Revision::ZERO,
+            LayerId::new(10),
+        ),
+        Err(DocumentError::LayerNotFound {
+            layer_id: LayerId::new(99),
+        })
+    );
+    assert_eq!(
+        Document::restore(
+            document_size,
+            restored.layers().to_vec(),
+            LayerId::new(7),
+            None,
+            Revision::ZERO,
+            LayerId::new(7),
+        ),
+        Err(DocumentError::InvalidNextLayerId {
+            next_layer_id: LayerId::new(7),
+            greatest_id: LayerId::new(7),
+        })
+    );
 }

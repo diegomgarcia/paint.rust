@@ -1,5 +1,5 @@
 use paint_core::{Point, Rect, Size};
-use paint_document::{Document, Selection, SelectionCombineMode, SelectionMask};
+use paint_document::{Document, Selection, SelectionCombineMode, SelectionError, SelectionMask};
 
 fn rect(left: i64, top: i64, right: i64, bottom: i64) -> Rect {
     Rect::new(left, top, right, bottom).expect("valid test rectangle")
@@ -531,4 +531,40 @@ fn selection_row_runs_match_the_packed_mask_across_word_boundaries() {
             assert!(mask.contains_xy(x, 3));
         }
     }
+}
+
+#[test]
+fn packed_mask_words_reconstruct_exactly_and_reject_invalid_storage() {
+    let bounds = rect(-3, -2, 70, 3);
+    let mut mask = SelectionMask::empty(bounds).expect("empty mask");
+    for (x, y) in [(-3, -2), (0, 0), (63, 1), (64, 1), (69, 2)] {
+        mask.set_xy(x, y, true).expect("selected pixel");
+    }
+
+    let rebuilt =
+        SelectionMask::from_packed_words(bounds, mask.packed_words().to_vec()).expect("rebuild");
+    assert_eq!(rebuilt, mask);
+    assert_eq!(rebuilt.selected_count(), 5);
+    assert_eq!(rebuilt.words_per_row(), 2);
+
+    let last_word = mask.words_per_row() - 1;
+    let mut padded = mask.packed_words().to_vec();
+    padded[last_word] |= 1 << (bounds.width() % 64);
+    assert_eq!(
+        SelectionMask::from_packed_words(bounds, padded),
+        Err(SelectionError::PackedPadding {
+            row: 0,
+            word: last_word,
+        })
+    );
+
+    let mut short = mask.packed_words().to_vec();
+    short.pop();
+    assert_eq!(
+        SelectionMask::from_packed_words(bounds, short),
+        Err(SelectionError::PackedLength {
+            expected: mask.packed_words().len(),
+            actual: mask.packed_words().len() - 1,
+        })
+    );
 }

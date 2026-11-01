@@ -1,9 +1,10 @@
-#![doc = "Single-writer application sessions, traces, snapshots, and inverse-based history."]
+#![doc = "Single-writer application sessions, traces, snapshots, session history, and the PDR container."]
 
 mod clipboard;
 mod command;
 mod effect;
 mod error;
+mod pdr;
 mod persistence;
 mod session;
 mod snapshot;
@@ -16,6 +17,7 @@ pub use error::{ExpectationError, ExpectationField, ResourceLimitError, SessionE
 pub use paint_document::SelectionCombineMode;
 pub use paint_image_io::{DecodeError, RasterFormat, RasterLimits};
 pub use paint_raster::{MagicWandSampling, ResampleMode};
+pub use pdr::{PDR_MAGIC, PDR_VERSION, PdrError, PdrHistoryLabels, PdrLimits};
 pub use session::{AppSession, FloatingSelection, ResourceLimits};
 pub use snapshot::{
     LayerSnapshot, SNAPSHOT_FORMAT, SNAPSHOT_VERSION, SelectionSnapshot, SemanticSnapshot,

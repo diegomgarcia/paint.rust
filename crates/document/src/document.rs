@@ -40,6 +40,13 @@ pub enum DocumentError {
     DocumentRevisionOverflow,
     #[error("layer ID space exhausted after {layer_id:?}")]
     LayerIdExhausted { layer_id: LayerId },
+    #[error(
+        "next layer ID {next_layer_id:?} must be greater than the greatest layer ID {greatest_id:?}"
+    )]
+    InvalidNextLayerId {
+        next_layer_id: LayerId,
+        greatest_id: LayerId,
+    },
     #[error("failed to reserve space for a new layer")]
     LayerAllocationFailed,
     #[error(
@@ -123,6 +130,68 @@ impl Document {
         })
     }
 
+    /// Reconstructs a document from fully validated persisted parts.
+    ///
+    /// Unlike [`Self::from_layers`], this preserves the document revision, every layer revision,
+    /// the active layer, the exact selection shape, and the next layer ID. It validates the same
+    /// structural invariants before constructing the document, so live mutations still go through
+    /// [`Self::add_layer`], patch application, and the other checked setters.
+    pub fn restore(
+        size: Size,
+        layers: Vec<Layer>,
+        active_layer: LayerId,
+        selection: Option<Selection>,
+        revision: Revision,
+        next_layer_id: LayerId,
+    ) -> Result<Self, DocumentError> {
+        if layers.is_empty() {
+            return Err(DocumentError::EmptyDocument);
+        }
+        for (index, layer) in layers.iter().enumerate() {
+            if layer.surface().size() != size {
+                return Err(DocumentError::LayerSizeMismatch {
+                    layer_id: layer.id(),
+                    expected: size,
+                    actual: layer.surface().size(),
+                });
+            }
+            if layers[..index].iter().any(|other| other.id() == layer.id()) {
+                return Err(DocumentError::DuplicateLayerId {
+                    layer_id: layer.id(),
+                });
+            }
+        }
+        if !layers.iter().any(|layer| layer.id() == active_layer) {
+            return Err(DocumentError::LayerNotFound {
+                layer_id: active_layer,
+            });
+        }
+        let greatest_id = layers
+            .iter()
+            .map(|layer| layer.id())
+            .max()
+            .ok_or(DocumentError::EmptyDocument)?;
+        let minimum_next = greatest_id
+            .checked_next()
+            .ok_or(DocumentError::LayerIdExhausted {
+                layer_id: greatest_id,
+            })?;
+        if next_layer_id < minimum_next {
+            return Err(DocumentError::InvalidNextLayerId {
+                next_layer_id,
+                greatest_id,
+            });
+        }
+        Ok(Self {
+            size,
+            layers,
+            active_layer,
+            selection,
+            revision,
+            next_layer_id,
+        })
+    }
+
     pub const fn size(&self) -> Size {
         self.size
     }
@@ -145,6 +214,11 @@ impl Document {
 
     pub const fn active_layer_id(&self) -> LayerId {
         self.active_layer
+    }
+
+    /// The ID that the next inserted layer will receive.
+    pub const fn next_layer_id(&self) -> LayerId {
+        self.next_layer_id
     }
 
     pub fn active_layer(&self) -> &Layer {

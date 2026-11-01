@@ -47,6 +47,8 @@ pub enum SessionError {
     #[error(transparent)]
     Pdn(#[from] paint_pdn3::PdnError),
     #[error(transparent)]
+    Pdr(#[from] crate::pdr::PdrError),
+    #[error(transparent)]
     AtomicWrite(#[from] paint_image_io::AtomicWriteError),
     #[error("failed to {action} {path}: {source}")]
     Io {
