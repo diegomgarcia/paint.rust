@@ -113,3 +113,17 @@ Gradient blend/transparency-only; Text alignment/blend; Clone spacing; Recolor s
 Picker 11/31/51; Levels/Posterize/Black and White/Threshold; panel geometry, Layers footer,
 icon-only History/Colors actions and grouped status bar. Remaining gaps are listed above and
 in the release notes.
+
+
+## Post-0.1.0 UI polish
+
+- Main toolbar now follows CommonActionsStrip order with compact vector actions:
+  New/Open/Save, Cut/Copy/Paste/Crop/Deselect, Undo/Redo, Grid/Rulers, Export.
+- ToolConfigStrip is a single compact row for all tools with accessible combos,
+  24 px numeric fields, 16 px swatches, icon actions and separators; instructional copy
+  and large text buttons were removed.
+- Text tool supports click-to-type inline editing with caret, Shift+Enter newline,
+  Enter commit and Escape cancel; the toolbar content field stays synchronized for
+  accessibility.
+- In-window File/Edit/View/Image/Layers menus use compact icon rows and actual shortcut
+  hints; the native macOS menu keeps its native accelerators without icons.

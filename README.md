@@ -8,10 +8,11 @@ An original, cross-platform Rust image editor being developed against a pinned P
 
 - Native `eframe`/`egui` editor with multi-document tabs, dirty markers, per-tab paths,
   close guard, Save/Save As (PNG), Open, and atomic Export.
-- Paint.NET-oriented workspace: native macOS menus plus in-window File/Edit/View/Image/
-  Layers/Adjustments/Effects/Window/Help menus; compact icon toolbar; two-column Tools
-  strip; Tool Options; floating/docked Colors, Layers and History panels; canvas; status
-  bar with units and zoom.
+- Paint.NET-oriented workspace: native macOS menus plus icon rows and shortcut hints in
+  the in-window File/Edit/View/Image/Layers/Adjustments menus; compact main toolbar with
+  New/Open/Save/Cut/Copy/Paste/Crop/Deselect/Undo/Redo/Grid/Rulers; two-column Tools strip;
+  a single-row contextual ToolConfigStrip; floating/docked Colors, Layers and History
+  panels; canvas; status bar with units and zoom.
 - All 19 Paint.NET tools are present in the reference order: Rectangle/Ellipse/Lasso/Magic
   Wand selection, Move Selected Pixels, Move Selection, Zoom, Pan, Paint Bucket, Gradient,
   Paintbrush, Eraser, Pencil, Color Picker, Clone Stamp, Recolor, Text, Line/Curve and
@@ -20,8 +21,9 @@ An original, cross-platform Rust image editor being developed against a pinned P
   modifiers, magic-wand Active Layer/Image sampling, blue tint and marching ants along
   the actual mask boundary.
 - Raster tools with live previews: brush hardness/spacing, soft eraser, gradient
-  types/repeat, shape Outline/Fill/Both, text rasterization, clone stamp, line caps/dash,
-  recolor, flood fill, color picker sampling, and whole-layer/floating moves.
+  types/repeat, shape Outline/Fill/Both, inline canvas text editing with caret and live
+  preview, clone stamp, line caps/dash, recolor, flood fill, color picker sampling, and
+  whole-layer/floating moves.
 - Image operations: Crop to Selection, Resize, Canvas Size, Rotate 90/180, Flips and
   Flatten. Layer operations: add/delete/duplicate/merge/reorder, rename/properties,
   visibility, opacity, and real Normal/Multiply/Screen/Overlay blending.
