@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use paint_app::{
     AppSession, CanvasAnchor, ClipboardContent, Command, Effect, MagicWandSampling, ResourceLimits,
@@ -54,6 +55,22 @@ const MAX_PREVIEW_DECODED_BYTES: usize = 64 * 1024 * 1024;
 const PREVIEW_WIDTH: f32 = 180.0;
 const PREVIEW_HEIGHT: f32 = 140.0;
 const MAX_BROWSER_ENTRIES: usize = 200;
+/// Accessible name of the canvas inline text editor.
+const INLINE_TEXT_EDITOR_LABEL: &str = "Inline text editor";
+/// Named egui families that match the embedded Roboto faces used by the rasterizer,
+/// so the caret and selection line up with the previewed glyphs.
+const TEXT_FONT_SANS: &str = "paint-r-text-sans";
+const TEXT_FONT_SANS_ITALIC: &str = "paint-r-text-sans-italic";
+const TEXT_FONT_MONO: &str = "paint-r-text-mono";
+const TEXT_FONT_MONO_ITALIC: &str = "paint-r-text-mono-italic";
+
+fn inline_text_editor_id() -> egui::Id {
+    egui::Id::unique("paint-r-inline-text-editor")
+}
+
+fn text_content_field_id() -> egui::Id {
+    egui::Id::unique("paint-r-text-content-field")
+}
 
 /// Paint.NET LayersStrip metrics: 50 px thumbnail + 3 × 4 px padding = 62 px rows.
 pub const LAYER_ITEM_HEIGHT: f32 = 62.0;
@@ -191,6 +208,8 @@ pub struct PaintApp {
     text_blend: BlendMode,
     text_origin: Option<Point>,
     text_applied_key: Option<TextPreviewKey>,
+    text_editor_focus_requested: bool,
+    text_editor_focus_release: bool,
     recolor_tolerance: u8,
     recolor_sampling: MagicWandSampling,
     fill_tolerance: u8,
@@ -335,6 +354,8 @@ impl PaintApp {
             text_blend: BlendMode::Normal,
             text_origin: None,
             text_applied_key: None,
+            text_editor_focus_requested: false,
+            text_editor_focus_release: false,
             recolor_tolerance: 50,
             recolor_sampling: MagicWandSampling::ActiveLayer,
             fill_tolerance: 50,
@@ -495,6 +516,18 @@ impl PaintApp {
     #[doc(hidden)]
     pub const fn text_alignment(&self) -> TextAlignment {
         self.text_alignment
+    }
+
+    /// Current shared text buffer, kept in sync between the canvas editor and Tool Options.
+    #[doc(hidden)]
+    pub fn text_content(&self) -> &str {
+        &self.text_content
+    }
+
+    /// Canvas origin of the in-progress text placement, or `None` when no editor is open.
+    #[doc(hidden)]
+    pub const fn text_origin(&self) -> Option<Point> {
+        self.text_origin
     }
 
     #[doc(hidden)]
@@ -1210,6 +1243,8 @@ impl PaintApp {
         }
         let had_preview = self.session.has_preview();
         self.text_applied_key = None;
+        self.text_editor_focus_requested = false;
+        self.text_editor_focus_release = true;
         if !had_preview {
             self.text_origin = None;
             return false;
@@ -1239,9 +1274,135 @@ impl PaintApp {
         self.session.cancel_preview();
         self.text_origin = None;
         self.text_applied_key = None;
+        self.text_editor_focus_requested = false;
+        self.text_editor_focus_release = true;
         self.paint_points.clear();
         self.texture_dirty = true;
         self.status = "Canceled the text preview".to_owned();
+    }
+
+    /// Consumes Enter/Escape while the canvas editor or the compact Text content field has
+    /// focus. Enter commits the placement; Shift+Enter reaches the editor as a newline and
+    /// Escape restores the preview snapshot. Everything else stays inside the text widget so
+    /// Cmd+C/Cmd+V, Select All, and Backspace never reach the image commands.
+    fn handle_inline_text_keys(&mut self, context: &egui::Context) {
+        if self.active_tool != Tool::Text || self.text_origin.is_none() {
+            return;
+        }
+        let focused = context.memory(|memory| {
+            memory.has_focus(inline_text_editor_id()) || memory.has_focus(text_content_field_id())
+        });
+        if !focused {
+            return;
+        }
+        let shift_enter = context.input(|input| {
+            input.events.iter().any(|event| {
+                matches!(
+                    event,
+                    egui::Event::Key {
+                        key: egui::Key::Enter,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if modifiers.shift
+                )
+            })
+        });
+        if !shift_enter
+            && context.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Enter))
+        {
+            self.commit_text_preview();
+            return;
+        }
+        if context.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            self.cancel_text_preview();
+        }
+    }
+
+    /// Family matching the rasterizer's embedded Roboto face for caret and selection metrics.
+    fn inline_text_font_family(&self) -> egui::FontFamily {
+        let name = match (self.text_font_family, self.text_italic) {
+            (TextFontFamily::Sans, false) => TEXT_FONT_SANS,
+            (TextFontFamily::Sans, true) => TEXT_FONT_SANS_ITALIC,
+            (TextFontFamily::Mono, false) => TEXT_FONT_MONO,
+            (TextFontFamily::Mono, true) => TEXT_FONT_MONO_ITALIC,
+        };
+        egui::FontFamily::Name(name.into())
+    }
+
+    /// Draws the transparent, canvas-anchored editor that owns typing, the caret, and text
+    /// selection. The visible glyphs come from the existing raster preview underneath it.
+    fn inline_text_editor(&mut self, ui: &mut egui::Ui, canvas: egui::Rect, zoom: f32) {
+        if self.active_tool != Tool::Text {
+            return;
+        }
+        let Some(origin) = self.text_origin else {
+            return;
+        };
+        let origin = egui::pos2(
+            canvas.min.x + origin.x as f32 * zoom,
+            canvas.min.y + origin.y as f32 * zoom,
+        );
+        let font_size = (self.text_size as f32 * zoom).clamp(4.0, 2048.0);
+        let font_id = egui::FontId::new(font_size, self.inline_text_font_family());
+        let line_height =
+            ui.fonts_mut(|fonts| fonts.row_height(&font_id)) + ui.spacing().extra_text_line_spacing;
+        let mut content_width = 0.0_f32;
+        let mut line_count = 1usize;
+        for (index, line) in self.text_content.split('\n').enumerate() {
+            if index > 0 {
+                line_count += 1;
+            }
+            let width = ui.fonts_mut(|fonts| {
+                fonts
+                    .layout_no_wrap(line.to_owned(), font_id.clone(), egui::Color32::WHITE)
+                    .size()
+                    .x
+            });
+            content_width = content_width.max(width);
+        }
+        let padding = 8.0_f32;
+        let width = (content_width + padding).max(font_size * 0.6);
+        let height = (line_height * line_count as f32 + 2.0).max(line_height);
+        let (left, align) = match self.text_alignment {
+            TextAlignment::Left => (origin.x, egui::Align2::LEFT_TOP),
+            TextAlignment::Center => (origin.x - width / 2.0, egui::Align2::CENTER_TOP),
+            TextAlignment::Right => (origin.x - width, egui::Align2::RIGHT_TOP),
+        };
+        let desired = egui::Rect::from_min_size(
+            egui::pos2(left, origin.y),
+            egui::vec2(width.max(24.0), height),
+        );
+        // Keep the editor on-screen while scrolling, but never let it cover panes outside
+        // the canvas viewport.
+        let editor_rect = desired.intersect(canvas.intersect(ui.clip_rect()));
+        if editor_rect.width() < 4.0 || editor_rect.height() < 4.0 {
+            return;
+        }
+        let editor = egui::TextEdit::multiline(&mut self.text_content)
+            .id(inline_text_editor_id())
+            .font(font_id)
+            .text_color(egui::Color32::TRANSPARENT)
+            .background_color(egui::Color32::TRANSPARENT)
+            .frame(egui::Frame::NONE)
+            .margin(egui::Margin::ZERO)
+            .desired_width(editor_rect.width())
+            .desired_rows(1)
+            .align(align)
+            .lock_focus(true);
+        let response = ui.put(editor_rect, editor);
+        if self.text_editor_focus_requested {
+            response.request_focus();
+            self.text_editor_focus_requested = false;
+        }
+        ui.ctx()
+            .accesskit_node_builder(inline_text_editor_id(), |node| {
+                node.set_label(INLINE_TEXT_EDITOR_LABEL);
+            });
+        if response.changed() {
+            self.sync_text_preview();
+            self.texture_dirty = true;
+        }
     }
 
     fn text_tool_options(&mut self, ui: &mut egui::Ui) {
@@ -1293,11 +1454,13 @@ impl PaintApp {
             let content_label = ui.label("Text content");
             ui.add(
                 egui::TextEdit::multiline(&mut self.text_content)
-                    .desired_rows(2)
-                    .desired_width(220.0)
-                    .hint_text("Type text"),
+                    .id(text_content_field_id())
+                    .desired_rows(1)
+                    .desired_width(200.0)
+                    .hint_text("Click the canvas and type"),
             )
             .labelled_by(content_label.id);
+            ui.label("Enter places · Shift+Enter adds a line · Esc cancels");
             if ui
                 .add_enabled(self.session.has_preview(), egui::Button::new("Place text"))
                 .clicked()
@@ -1455,6 +1618,8 @@ impl PaintApp {
     fn reset_transient_tool_state(&mut self) {
         self.text_origin = None;
         self.text_applied_key = None;
+        self.text_editor_focus_requested = false;
+        self.text_editor_focus_release = true;
         self.clone_source = None;
         self.clone_offset = None;
         self.clone_alt_down = false;
@@ -5325,8 +5490,11 @@ impl PaintApp {
                             {
                                 self.text_origin = Some(point);
                                 self.text_applied_key = None;
+                                self.text_editor_focus_requested = true;
+                                self.text_editor_focus_release = false;
                                 self.status = format!(
-                                    "Text origin set at ({}, {}); type text in Tool Options",
+                                    "Text at ({}, {}): type to edit, Enter places, Shift+Enter adds \
+                                     a line, Escape cancels",
                                     point.x, point.y
                                 );
                             }
@@ -5787,6 +5955,7 @@ impl PaintApp {
                                 };
                             }
                         }
+                        self.inline_text_editor(ui, rect, zoom);
                     } else {
                         ui.label("Canvas texture is unavailable; see the status message.");
                     }
@@ -6393,11 +6562,19 @@ impl eframe::App for PaintApp {
         // `logic` also runs for hidden windows, where `ui` would not see the close request.
         #[cfg(target_os = "macos")]
         self.poll_native_menu(context);
+        self.handle_inline_text_keys(context);
         self.handle_keyboard_shortcuts(context);
         self.handle_close_request(context);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if self.text_editor_focus_release {
+            ui.ctx().memory_mut(|memory| {
+                memory.surrender_focus(inline_text_editor_id());
+                memory.surrender_focus(text_content_field_id());
+            });
+            self.text_editor_focus_release = false;
+        }
         self.refresh_texture(ui.ctx());
         self.refresh_layer_thumbnails(ui.ctx());
         if self.shows_in_window_menu() {
@@ -7527,7 +7704,40 @@ fn floating_window_frame(
     frame
 }
 
+fn install_inline_text_fonts(context: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    for (family, bytes) in [
+        (
+            TEXT_FONT_SANS,
+            &include_bytes!("../../raster/assets/fonts/Roboto-Variable.ttf")[..],
+        ),
+        (
+            TEXT_FONT_SANS_ITALIC,
+            &include_bytes!("../../raster/assets/fonts/Roboto-Italic-Variable.ttf")[..],
+        ),
+        (
+            TEXT_FONT_MONO,
+            &include_bytes!("../../raster/assets/fonts/RobotoMono-Variable.ttf")[..],
+        ),
+        (
+            TEXT_FONT_MONO_ITALIC,
+            &include_bytes!("../../raster/assets/fonts/RobotoMono-Italic-Variable.ttf")[..],
+        ),
+    ] {
+        fonts.font_data.insert(
+            family.to_owned(),
+            Arc::new(egui::FontData::from_static(bytes)),
+        );
+        fonts.families.insert(
+            egui::FontFamily::Name(family.into()),
+            vec![family.to_owned()],
+        );
+    }
+    context.set_fonts(fonts);
+}
+
 fn configure_style(context: &egui::Context) {
+    install_inline_text_fonts(context);
     context.set_theme(egui::ThemePreference::Dark);
     context.all_styles_mut(|style| {
         style.visuals = egui::Visuals::dark();
