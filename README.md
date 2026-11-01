@@ -120,9 +120,10 @@ The binary is written to `target/release/paint-ui`.
    `M` cycles move tools, `B` brush, `E` eraser, `T` text, and so on).
 3. Configure the active tool in the compact strip below the main toolbar.
 4. Manage colors, layers and history in the floating panels.
-5. Use `Cmd/Ctrl+S` to save. In Save As, choose the File type and click **Browse…** to
-   pick a folder and filename in the native file explorer. `Cmd/Ctrl+C/V` handle clipboard
-   actions; `Cmd/Ctrl+Plus`, `Cmd/Ctrl+Minus` and `Cmd/Ctrl+0` zoom only the canvas.
+5. Use `Cmd/Ctrl+S` to save. Save As opens the native file panel directly, with the
+   **File type** popup inside it; choose the format, folder and filename there.
+   `Cmd/Ctrl+C/V` handle clipboard actions; `Cmd/Ctrl+Plus`, `Cmd/Ctrl+Minus` and
+   `Cmd/Ctrl+0` zoom only the canvas.
 
 ### Keyboard shortcuts
 

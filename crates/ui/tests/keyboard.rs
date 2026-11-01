@@ -14,6 +14,7 @@ fn app() -> Harness<'static, PaintApp> {
     let mut harness = Harness::new_eframe(|cc| PaintApp::new(cc));
     harness.set_size(egui::Vec2::new(1_400.0, 1_000.0));
     harness.run();
+    harness.state_mut().use_native_file_dialogs(false);
     harness
 }
 

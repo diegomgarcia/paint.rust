@@ -23,6 +23,8 @@ rfd = "0.15"
 winit.workspace = true
 muda = "0.21.2"
 objc2 = "0.6.1"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSSavePanel", "NSPopUpButton", "NSTextField", "NSView"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSArray", "NSURL"] }
 
 [dev-dependencies]
 egui_kittest = { workspace = true, features = ["eframe"] }

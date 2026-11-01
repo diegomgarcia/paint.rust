@@ -11,6 +11,7 @@ mod layers;
 #[cfg(target_os = "macos")]
 mod menu;
 pub mod native;
+mod native_file_dialog;
 mod rulers;
 mod selection;
 

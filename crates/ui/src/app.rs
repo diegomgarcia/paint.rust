@@ -290,6 +290,7 @@ pub struct PaintApp {
     resize_dialog: Option<ResizeImageDialogState>,
     canvas_size_dialog: Option<CanvasSizeDialogState>,
     path_dialog: Option<PathDialog>,
+    native_file_dialogs: bool,
     pending_discard: Option<DiscardAction>,
     focus_discard_buttons: bool,
     close_approved: bool,
@@ -437,6 +438,7 @@ impl PaintApp {
             resize_dialog: None,
             canvas_size_dialog: None,
             path_dialog: None,
+            native_file_dialogs: true,
             pending_discard: None,
             focus_discard_buttons: false,
             close_approved: false,
@@ -988,7 +990,8 @@ impl PaintApp {
         self.path_dialog = Some(PathDialog::new(kind));
     }
 
-    fn show_save_as_dialog(&mut self) {
+    /// Test/fallback path dialog. Production Save As opens the native panel directly.
+    fn show_fallback_save_dialog(&mut self) {
         self.finish_active_preview();
         self.finalize_floating_selection();
         let path = self
@@ -997,6 +1000,90 @@ impl PaintApp {
             .map(|path| path.display().to_string())
             .unwrap_or_default();
         self.path_dialog = Some(PathDialog::with_path(PathDialogKind::SaveAs, path));
+    }
+
+    #[doc(hidden)]
+    pub fn use_native_file_dialogs(&mut self, enabled: bool) {
+        self.native_file_dialogs = enabled;
+    }
+
+    fn show_save_as_dialog(&mut self) {
+        if !self.native_file_dialogs {
+            self.show_fallback_save_dialog();
+            return;
+        }
+        self.finish_active_preview();
+        self.finalize_floating_selection();
+        let Some((path, format)) = self.choose_native_save(PathDialogKind::SaveAs) else {
+            return;
+        };
+        self.finish_save(&path, format);
+    }
+
+    fn show_export_dialog(&mut self) {
+        if !self.native_file_dialogs {
+            self.show_path_dialog(PathDialogKind::Export);
+            return;
+        }
+        self.finish_active_preview();
+        self.finalize_floating_selection();
+        let Some((path, format)) = self.choose_native_save(PathDialogKind::Export) else {
+            return;
+        };
+        match format.export(&self.session, &path) {
+            Ok(()) => {
+                self.status = format!(
+                    "Exported flattened {} without changing the layered session: {}",
+                    format.short_label(),
+                    path.display()
+                );
+            }
+            Err(error) => {
+                self.status = format!("Export failed: {error}");
+            }
+        }
+    }
+
+    fn finish_save(&mut self, path: &Path, format: SaveFormatChoice) {
+        match format.save(&mut self.session, path) {
+            Ok(()) => {
+                self.document_title = file_title(path);
+                self.document_path = Some(path.to_path_buf());
+                self.texture_dirty = true;
+                self.status = format!("Saved {}: {}", format.short_label(), path.display());
+            }
+            Err(error) => {
+                self.status = format!("Save failed: {error}");
+            }
+        }
+    }
+
+    fn choose_native_save(&self, kind: PathDialogKind) -> Option<(PathBuf, SaveFormatChoice)> {
+        let choices = if matches!(kind, PathDialogKind::Export) {
+            &SaveFormatChoice::EXPORT_ALL[..]
+        } else {
+            &SaveFormatChoice::ALL[..]
+        };
+        let options: Vec<crate::native_file_dialog::FormatOption> = choices
+            .iter()
+            .map(|choice| crate::native_file_dialog::FormatOption {
+                label: choice.label().to_owned(),
+                extensions: choice
+                    .extensions()
+                    .iter()
+                    .map(|extension| (*extension).to_owned())
+                    .collect(),
+                extension: choice.extension().to_owned(),
+            })
+            .collect();
+        let current = self.document_path.clone().unwrap_or_default();
+        let title = if matches!(kind, PathDialogKind::SaveAs) {
+            "Save As"
+        } else {
+            "Export Image"
+        };
+        let (path, index) = crate::native_file_dialog::save_panel(title, &current, &options)?;
+        Some((path, choices[index]))
     }
 
     /// Saves the active document to its known path. Returns whether the file was written.
@@ -2090,7 +2177,7 @@ impl PaintApp {
                     }
                 }
                 NativeCommand::SaveAs => self.show_save_as_dialog(),
-                NativeCommand::Export => self.show_path_dialog(PathDialogKind::Export),
+                NativeCommand::Export => self.show_export_dialog(),
                 NativeCommand::Close => self.request_quit(context),
                 NativeCommand::Quit => self.request_quit(context),
                 NativeCommand::Undo => {
@@ -2349,7 +2436,7 @@ impl PaintApp {
                     )
                     .clicked()
                     {
-                        self.show_path_dialog(PathDialogKind::Export);
+                        self.show_export_dialog();
                         ui.close();
                     }
                     ui.separator();
@@ -3342,7 +3429,7 @@ impl PaintApp {
                 self.show_rulers = !self.show_rulers;
             }
             if icon_button(ui, &self.icons, Icon::ExportFile, "Export image", true).clicked() {
-                self.show_path_dialog(PathDialogKind::Export);
+                self.show_export_dialog();
             }
             if self.panels_floating {
                 let mut pending_close = None;
@@ -6905,7 +6992,7 @@ impl PaintApp {
             return;
         }
         if shortcut_pressed(context, command_shift, egui::Key::E) {
-            self.show_path_dialog(PathDialogKind::Export);
+            self.show_export_dialog();
             return;
         }
         if shortcut_pressed(context, command_shift, egui::Key::L) {
