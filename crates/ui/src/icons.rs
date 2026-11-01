@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use egui::{
-    Color32, Context, Response, Role, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui,
-    WidgetInfo, vec2,
+    Color32, Context, Mesh, Response, Role, Sense, Stroke, StrokeKind, TextureHandle,
+    TextureOptions, Ui, WidgetInfo, pos2, vec2,
 };
 
 /// Project-owned button chrome with Lucide ISC reference glyphs.
@@ -899,19 +899,109 @@ fn paint_button(
     if stroke != Stroke::NONE {
         painter.rect_stroke(rect, 4, stroke, StrokeKind::Inside);
     }
+    let icon_size = (rect.width().min(rect.height()) - icon_inset * 2.0).max(1.0);
+    let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(icon_size, icon_size));
+    if matches!(icon, Icon::Move | Icon::MoveSelection | Icon::Gradient) {
+        paint_reference_tool_icon(ui, icon_rect, icon, enabled);
+        return;
+    }
     let color = if enabled {
         Color32::from_gray(235)
     } else {
         ui.visuals().weak_text_color()
     };
-    let icon_size = (rect.width().min(rect.height()) - icon_inset * 2.0).max(1.0);
-    let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(icon_size, icon_size));
     painter.image(
         icons.get(icon).id(),
         icon_rect,
         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
         color,
     );
+}
+
+/// Paint.NET-compatible tool silhouettes drawn as first-party vector art rather than
+/// copied bitmaps: a cursor paired with a four-way move marker, and a framed gradient.
+fn paint_reference_tool_icon(ui: &Ui, rect: egui::Rect, icon: Icon, enabled: bool) {
+    let size = rect.width().min(rect.height());
+    let at = |x: f32, y: f32| rect.min + vec2(size * x, size * y);
+    let blue = if enabled {
+        Color32::from_rgb(75, 126, 174)
+    } else {
+        ui.visuals().weak_text_color()
+    };
+    let grey = if enabled {
+        Color32::from_rgb(190, 190, 190)
+    } else {
+        ui.visuals().weak_text_color()
+    };
+    let painter = ui.painter();
+    match icon {
+        Icon::Move | Icon::MoveSelection => {
+            let arrow = [
+                at(0.06, 0.04),
+                at(0.64, 0.60),
+                at(0.40, 0.60),
+                at(0.06, 0.92),
+            ];
+            if icon == Icon::Move {
+                // Two convex triangles make the filled cursor without relying on
+                // concave-path tessellation.
+                painter.add(egui::Shape::convex_polygon(
+                    vec![arrow[0], arrow[1], arrow[2]],
+                    blue,
+                    Stroke::NONE,
+                ));
+                painter.add(egui::Shape::convex_polygon(
+                    vec![arrow[0], arrow[2], arrow[3]],
+                    blue,
+                    Stroke::NONE,
+                ));
+            } else {
+                painter.add(egui::Shape::closed_line(
+                    arrow.to_vec(),
+                    Stroke::new((size * 0.095).max(1.4), blue),
+                ));
+            }
+
+            let center = at(0.73, 0.73);
+            let diamond = size * 0.21;
+            let points = vec![
+                center + vec2(0.0, -diamond),
+                center + vec2(diamond, 0.0),
+                center + vec2(0.0, diamond),
+                center + vec2(-diamond, 0.0),
+            ];
+            painter.add(egui::Shape::convex_polygon(points, grey, Stroke::NONE));
+            let square = size * 0.075;
+            for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+                let square_center = center + vec2(dx * diamond * 0.34, dy * diamond * 0.34);
+                painter.rect_filled(
+                    egui::Rect::from_center_size(square_center, vec2(square, square)),
+                    0.5,
+                    Color32::WHITE,
+                );
+            }
+        }
+        Icon::Gradient => {
+            let frame = Color32::from_gray(if enabled { 78 } else { 55 });
+            let inner = rect.shrink(size * 0.14);
+            painter.rect_filled(rect, size * 0.12, frame);
+            painter.rect_filled(inner, size * 0.015, Color32::from_gray(238));
+            let gradient = inner.shrink(size * 0.07);
+            let mut mesh = Mesh::default();
+            let start = mesh.vertices.len() as u32;
+            let top = Color32::from_rgb(50, 122, 198);
+            let middle = Color32::from_rgb(92, 105, 188);
+            let bottom = Color32::from_rgb(139, 75, 176);
+            mesh.colored_vertex(pos2(gradient.left(), gradient.top()), top);
+            mesh.colored_vertex(pos2(gradient.right(), gradient.top()), middle);
+            mesh.colored_vertex(pos2(gradient.left(), gradient.bottom()), middle);
+            mesh.colored_vertex(pos2(gradient.right(), gradient.bottom()), bottom);
+            mesh.add_triangle(start, start + 1, start + 2);
+            mesh.add_triangle(start + 1, start + 2, start + 3);
+            painter.add(egui::Shape::mesh(mesh));
+        }
+        _ => unreachable!("only special tool icons are passed here"),
+    }
 }
 
 fn icon_png(icon: Icon) -> &'static [u8] {
