@@ -4726,3 +4726,51 @@ fn default_panel_layout_parks_forms_in_paintnet_corners() {
     let docked = paint_ui::default_panel_layout(screen, false, false);
     assert!(docked.history.right() <= 1_400.0 - paint_ui::COLORS_PANEL_MORE_SIZE[0]);
 }
+
+#[test]
+fn main_toolbar_exposes_actions_and_real_toggles() {
+    let mut harness = app();
+    for label in [
+        "Save document",
+        "Cut to clipboard",
+        "Copy to clipboard",
+        "Paste from clipboard",
+        "Crop to selection",
+        "Deselect all",
+        "Toggle grid",
+        "Toggle rulers",
+    ] {
+        harness.get_by_role_and_label(Role::Button, label);
+    }
+    assert!(!harness.state().grid_enabled());
+    click(&mut harness, "Toggle grid");
+    assert!(harness.state().grid_enabled());
+    click(&mut harness, "Toggle rulers");
+    assert!(harness.state().rulers_enabled());
+
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(4.0, 4.0), egui::vec2(20.0, 20.0));
+    assert!(harness.state().session().document().selection().is_some());
+    click(&mut harness, "Deselect all");
+    assert!(harness.state().session().document().selection().is_none());
+}
+
+#[test]
+fn main_toolbar_copy_and_paste_create_a_floating_selection() {
+    let mut harness = app();
+    click(&mut harness, "Rectangle Select");
+    drag_canvas(&mut harness, egui::vec2(6.0, 6.0), egui::vec2(20.0, 20.0));
+    let bounds = harness
+        .state()
+        .session()
+        .document()
+        .selection()
+        .expect("selection");
+    click(&mut harness, "Copy to clipboard");
+    click(&mut harness, "Paste from clipboard");
+    assert_eq!(
+        harness.state().floating_selection_bounds(),
+        Some(bounds),
+        "toolbar paste must float the copied selection at its original bounds"
+    );
+}

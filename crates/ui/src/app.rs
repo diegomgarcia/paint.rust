@@ -25,7 +25,8 @@ use crate::colors::{
 };
 use crate::icons::{
     Icon, IconTextures, VectorIcon, icon_button, icon_button_at, menu_button, panel_button,
-    tool_button, tool_button_with_tooltip, vector_icon_button, visibility_button_at,
+    tool_button, tool_button_with_tooltip, vector_icon_button, vector_icon_button_sized,
+    vector_toggle_button, visibility_button_at,
 };
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
 #[cfg(target_os = "macos")]
@@ -2723,23 +2724,114 @@ impl PaintApp {
     fn compact_toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
+            let icon_size = egui::vec2(30.0, 28.0);
             if icon_button(ui, &self.icons, Icon::NewDocument, "New document", true).clicked() {
                 self.request_new();
             }
             if icon_button(ui, &self.icons, Icon::OpenFile, "Open PNG file", true).clicked() {
                 self.show_path_dialog(PathDialogKind::Open);
             }
-            if icon_button(ui, &self.icons, Icon::ExportFile, "Export PNG file", true).clicked() {
-                self.show_path_dialog(PathDialogKind::Export);
+            if vector_icon_button_sized(ui, VectorIcon::Save, "Save document", true, icon_size)
+                .clicked()
+            {
+                if self.document_path.is_some() {
+                    self.save_active_document();
+                } else {
+                    self.show_save_as_dialog();
+                }
             }
-            ui.add_space(5.0);
+            ui.add_space(4.0);
             ui.separator();
-            ui.add_space(5.0);
+            ui.add_space(4.0);
+            let has_selection = self.has_selection();
+            let has_clipboard = self.clipboard.is_some();
+            if vector_icon_button_sized(
+                ui,
+                VectorIcon::Cut,
+                "Cut to clipboard",
+                has_selection,
+                icon_size,
+            )
+            .clicked()
+            {
+                self.cut_to_clipboard(ui.ctx());
+            }
+            if vector_icon_button_sized(ui, VectorIcon::Copy, "Copy to clipboard", true, icon_size)
+                .clicked()
+            {
+                self.copy_to_clipboard(ui.ctx());
+            }
+            if vector_icon_button_sized(
+                ui,
+                VectorIcon::Paste,
+                "Paste from clipboard",
+                has_clipboard,
+                icon_size,
+            )
+            .clicked()
+            {
+                self.paste_clipboard(ui.ctx());
+            }
+            if vector_icon_button_sized(
+                ui,
+                VectorIcon::Crop,
+                "Crop to selection",
+                has_selection,
+                icon_size,
+            )
+            .clicked()
+            {
+                self.execute(Command::CropToSelection, "Cropped to the selection");
+            }
+            if vector_icon_button_sized(
+                ui,
+                VectorIcon::Deselect,
+                "Deselect all",
+                has_selection,
+                icon_size,
+            )
+            .clicked()
+            {
+                self.execute(Command::ClearSelection, "Selection cleared");
+            }
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
             if icon_button(ui, &self.icons, Icon::Undo, "Undo", self.session.can_undo()).clicked() {
                 self.execute(Command::Undo, "Undid the last edit");
             }
             if icon_button(ui, &self.icons, Icon::Redo, "Redo", self.session.can_redo()).clicked() {
                 self.execute(Command::Redo, "Redid the next edit");
+            }
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+            if vector_toggle_button(
+                ui,
+                VectorIcon::Grid,
+                "Toggle grid",
+                true,
+                self.show_grid,
+                icon_size,
+            )
+            .clicked()
+            {
+                self.show_grid = !self.show_grid;
+            }
+            if vector_toggle_button(
+                ui,
+                VectorIcon::Rulers,
+                "Toggle rulers",
+                true,
+                self.show_rulers,
+                icon_size,
+            )
+            .clicked()
+            {
+                self.show_rulers = !self.show_rulers;
+            }
+            if icon_button(ui, &self.icons, Icon::ExportFile, "Export PNG file", true).clicked() {
+                self.show_path_dialog(PathDialogKind::Export);
             }
             if self.panels_floating {
                 let mut pending_close = None;

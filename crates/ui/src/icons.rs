@@ -281,6 +281,14 @@ pub(crate) enum VectorIcon {
     FitWindow,
     ZoomIn,
     ZoomOut,
+    Save,
+    Cut,
+    Copy,
+    Paste,
+    Crop,
+    Deselect,
+    Grid,
+    Rulers,
 }
 
 pub(crate) fn vector_icon_button(
@@ -289,9 +297,53 @@ pub(crate) fn vector_icon_button(
     label: &'static str,
     enabled: bool,
 ) -> Response {
+    vector_icon_button_sized(ui, icon, label, enabled, vec2(22.0, 20.0))
+}
+
+pub(crate) fn vector_toggle_button(
+    ui: &mut Ui,
+    icon: VectorIcon,
+    label: &'static str,
+    enabled: bool,
+    selected: bool,
+    size: egui::Vec2,
+) -> Response {
     let response = ui
         .add_enabled_ui(enabled, |ui| {
-            let (rect, response) = ui.allocate_exact_size(vec2(22.0, 20.0), Sense::click());
+            let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+            response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, label));
+            if ui.is_rect_visible(rect) {
+                let widgets = &ui.style().visuals.widgets;
+                let fill = if !enabled {
+                    Color32::TRANSPARENT
+                } else if selected {
+                    ui.style().visuals.selection.bg_fill
+                } else if response.is_pointer_button_down_on() {
+                    widgets.active.bg_fill
+                } else if response.hovered() {
+                    widgets.hovered.bg_fill
+                } else {
+                    Color32::TRANSPARENT
+                };
+                ui.painter().rect_filled(rect, 4, fill);
+                paint_vector_icon(ui, rect, icon, enabled);
+            }
+            response
+        })
+        .inner;
+    response.on_hover_text(label)
+}
+
+pub(crate) fn vector_icon_button_sized(
+    ui: &mut Ui,
+    icon: VectorIcon,
+    label: &'static str,
+    enabled: bool,
+    size: egui::Vec2,
+) -> Response {
+    let response = ui
+        .add_enabled_ui(enabled, |ui| {
+            let (rect, response) = ui.allocate_exact_size(size, Sense::click());
             response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
             if ui.is_rect_visible(rect) {
                 let widgets = &ui.style().visuals.widgets;
@@ -362,6 +414,109 @@ fn paint_vector_icon(ui: &Ui, rect: egui::Rect, icon: VectorIcon, enabled: bool)
             if icon == VectorIcon::ZoomIn {
                 painter.line_segment(
                     [lens_center + vec2(0.0, -2.0), lens_center + vec2(0.0, 2.0)],
+                    stroke,
+                );
+            }
+        }
+        VectorIcon::Save => {
+            let body = egui::Rect::from_center_size(center, vec2(13.0, 13.0));
+            painter.rect_stroke(body, 2.0, stroke, StrokeKind::Inside);
+            painter.rect_stroke(
+                egui::Rect::from_min_size(body.min + vec2(3.0, 2.0), vec2(7.0, 4.0)),
+                0.0,
+                stroke,
+                StrokeKind::Inside,
+            );
+            painter.rect_filled(
+                egui::Rect::from_min_size(body.min + vec2(4.0, 8.0), vec2(5.0, 3.0)),
+                0.0,
+                color,
+            );
+        }
+        VectorIcon::Cut => {
+            let radius = 2.0;
+            painter.circle_stroke(center + vec2(-3.5, 4.5), radius, stroke);
+            painter.circle_stroke(center + vec2(3.5, 4.5), radius, stroke);
+            painter.line_segment([center + vec2(-2.5, 3.0), center + vec2(3.0, -5.0)], stroke);
+            painter.line_segment([center + vec2(2.5, 3.0), center + vec2(-3.0, -5.0)], stroke);
+        }
+        VectorIcon::Copy => {
+            painter.rect_stroke(
+                egui::Rect::from_min_size(center + vec2(-6.0, -6.0), vec2(9.0, 10.0)),
+                1.0,
+                stroke,
+                StrokeKind::Inside,
+            );
+            painter.rect_stroke(
+                egui::Rect::from_min_size(center + vec2(-2.0, -2.0), vec2(9.0, 10.0)),
+                1.0,
+                stroke,
+                StrokeKind::Inside,
+            );
+        }
+        VectorIcon::Paste => {
+            let body = egui::Rect::from_center_size(center, vec2(12.0, 14.0));
+            painter.rect_stroke(body, 2.0, stroke, StrokeKind::Inside);
+            painter.rect_stroke(
+                egui::Rect::from_min_size(center + vec2(-3.5, -8.5), vec2(7.0, 3.5)),
+                1.0,
+                stroke,
+                StrokeKind::Inside,
+            );
+        }
+        VectorIcon::Crop => {
+            painter.line_segment(
+                [center + vec2(-6.0, -8.0), center + vec2(-6.0, 6.0)],
+                stroke,
+            );
+            painter.line_segment([center + vec2(-6.0, 6.0), center + vec2(8.0, 6.0)], stroke);
+            painter.line_segment(
+                [center + vec2(-2.0, -6.0), center + vec2(6.0, -6.0)],
+                stroke,
+            );
+            painter.line_segment([center + vec2(6.0, -6.0), center + vec2(6.0, 8.0)], stroke);
+        }
+        VectorIcon::Deselect => {
+            let r = egui::Rect::from_center_size(center, vec2(14.0, 12.0));
+            for (a, b) in [
+                (r.left_top(), r.left_top() + vec2(3.0, 0.0)),
+                (r.left_top(), r.left_top() + vec2(0.0, 3.0)),
+                (r.right_top(), r.right_top() + vec2(-3.0, 0.0)),
+                (r.right_top(), r.right_top() + vec2(0.0, 3.0)),
+                (r.left_bottom(), r.left_bottom() + vec2(3.0, 0.0)),
+                (r.left_bottom(), r.left_bottom() + vec2(0.0, -3.0)),
+                (r.right_bottom(), r.right_bottom() + vec2(-3.0, 0.0)),
+                (r.right_bottom(), r.right_bottom() + vec2(0.0, -3.0)),
+            ] {
+                painter.line_segment([a, b], stroke);
+            }
+            painter.line_segment([center + vec2(-4.0, -4.0), center + vec2(4.0, 4.0)], stroke);
+        }
+        VectorIcon::Grid => {
+            let r = egui::Rect::from_center_size(center, vec2(14.0, 14.0));
+            painter.rect_stroke(r, 0.0, stroke, StrokeKind::Inside);
+            painter.line_segment(
+                [
+                    egui::pos2(r.center().x, r.top()),
+                    egui::pos2(r.center().x, r.bottom()),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(r.left(), r.center().y),
+                    egui::pos2(r.right(), r.center().y),
+                ],
+                stroke,
+            );
+        }
+        VectorIcon::Rulers => {
+            let r = egui::Rect::from_center_size(center, vec2(16.0, 9.0));
+            painter.rect_stroke(r, 1.0, stroke, StrokeKind::Inside);
+            for i in 1..4 {
+                let x = r.left() + r.width() * i as f32 / 4.0;
+                painter.line_segment(
+                    [egui::pos2(x, r.top()), egui::pos2(x, r.top() + 3.0)],
                     stroke,
                 );
             }
