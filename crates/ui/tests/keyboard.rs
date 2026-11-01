@@ -299,24 +299,24 @@ fn keyboard_editing_history_and_text_field_shortcut_isolation() {
         .get_by_role_and_label(Role::Button, "Selection fields")
         .click();
     harness.run();
-    focus(&mut harness, Role::SpinButton, "Selection left");
+    focus(&mut harness, Role::SpinButton, "Left");
     press(&mut harness, Key::ArrowDown);
     press(&mut harness, Key::ArrowDown);
-    assert_spin_value(&harness, "Selection left", -2.0);
-    focus(&mut harness, Role::SpinButton, "Selection top");
+    assert_spin_value(&harness, "Left", -2.0);
+    focus(&mut harness, Role::SpinButton, "Top");
     press(&mut harness, Key::ArrowDown);
-    assert_spin_value(&harness, "Selection top", -1.0);
-    focus(&mut harness, Role::SpinButton, "Selection right");
+    assert_spin_value(&harness, "Top", -1.0);
+    focus(&mut harness, Role::SpinButton, "Right");
     press(&mut harness, Key::ArrowUp);
     press(&mut harness, Key::ArrowUp);
-    assert_spin_value(&harness, "Selection right", 3.0);
-    focus(&mut harness, Role::SpinButton, "Selection bottom");
+    assert_spin_value(&harness, "Right", 3.0);
+    focus(&mut harness, Role::SpinButton, "Bottom");
     press(&mut harness, Key::ArrowUp);
-    assert_spin_value(&harness, "Selection bottom", 2.0);
+    assert_spin_value(&harness, "Bottom", 2.0);
     press(&mut harness, Key::Enter);
     assert!(
         !harness
-            .get_by_role_and_label(Role::SpinButton, "Selection bottom")
+            .get_by_role_and_label(Role::SpinButton, "Bottom")
             .is_focused()
     );
 

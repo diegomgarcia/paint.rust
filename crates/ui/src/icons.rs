@@ -278,6 +278,8 @@ pub(crate) fn menu_button(
 pub(crate) enum VectorIcon {
     ChevronDown,
     ChevronUp,
+    Check,
+    Close,
     FitWindow,
     ZoomIn,
     ZoomOut,
@@ -341,6 +343,18 @@ pub(crate) fn vector_icon_button_sized(
     enabled: bool,
     size: egui::Vec2,
 ) -> Response {
+    vector_icon_button_sized_with_tooltip(ui, icon, label, label, enabled, size)
+}
+
+/// A sized vector action whose hover tooltip can be richer than its accessible name.
+pub(crate) fn vector_icon_button_sized_with_tooltip(
+    ui: &mut Ui,
+    icon: VectorIcon,
+    label: &'static str,
+    tooltip: &'static str,
+    enabled: bool,
+    size: egui::Vec2,
+) -> Response {
     let response = ui
         .add_enabled_ui(enabled, |ui| {
             let (rect, response) = ui.allocate_exact_size(size, Sense::click());
@@ -362,7 +376,7 @@ pub(crate) fn vector_icon_button_sized(
             response
         })
         .inner;
-    response.on_hover_text(label)
+    response.on_hover_text(tooltip)
 }
 
 fn paint_vector_icon(ui: &Ui, rect: egui::Rect, icon: VectorIcon, enabled: bool) {
@@ -382,6 +396,14 @@ fn paint_vector_icon(ui: &Ui, rect: egui::Rect, icon: VectorIcon, enabled: bool)
         VectorIcon::ChevronUp => {
             painter.line_segment([center + vec2(-4.0, 2.0), center + vec2(0.0, -2.5)], stroke);
             painter.line_segment([center + vec2(0.0, -2.5), center + vec2(4.0, 2.0)], stroke);
+        }
+        VectorIcon::Check => {
+            painter.line_segment([center + vec2(-5.0, 0.0), center + vec2(-1.5, 4.0)], stroke);
+            painter.line_segment([center + vec2(-1.5, 4.0), center + vec2(5.5, -4.5)], stroke);
+        }
+        VectorIcon::Close => {
+            painter.line_segment([center + vec2(-4.5, -4.5), center + vec2(4.5, 4.5)], stroke);
+            painter.line_segment([center + vec2(4.5, -4.5), center + vec2(-4.5, 4.5)], stroke);
         }
         VectorIcon::FitWindow => {
             let r = egui::Rect::from_center_size(center, vec2(12.0, 10.0));

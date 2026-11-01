@@ -27,7 +27,7 @@ use crate::colors::{
 use crate::icons::{
     Icon, IconTextures, VectorIcon, icon_button, icon_button_at, menu_button, panel_button,
     tool_button, tool_button_with_tooltip, vector_icon_button, vector_icon_button_sized,
-    vector_toggle_button, visibility_button_at,
+    vector_icon_button_sized_with_tooltip, vector_toggle_button, visibility_button_at,
 };
 use crate::layers::{LayerThumbnail, layer_thumbnail_texture, surface_thumbnail_texture};
 #[cfg(target_os = "macos")]
@@ -96,6 +96,8 @@ pub const COLORS_PANEL_MORE_SIZE: [f32; 2] = [386.0, 306.0];
 const PANEL_SCREEN_MARGIN: f32 = 12.0;
 const PANEL_TOP_OFFSET: f32 = 200.0;
 const STATUS_BAR_HEIGHT: f32 = 24.0;
+/// Paint.NET's ToolConfigStrip uses compact 24 px items on one row.
+const TOOL_STRIP_HEIGHT: f32 = 24.0;
 
 /// Screen geometry of one layer row, captured for usability and geometry tests.
 #[derive(Clone, Debug)]
@@ -260,6 +262,7 @@ pub struct PaintApp {
     floating_selection: Option<FloatingSelectionState>,
     floating_generation: u64,
     clipboard: Option<ClipboardContent>,
+    tool_options_bounds: Option<egui::Rect>,
     layer_list_geometry: Option<LayerListGeometry>,
     layer_drag: Option<LayerDragState>,
     layer_drop_pointer_y: Option<f32>,
@@ -406,6 +409,7 @@ impl PaintApp {
             floating_selection: None,
             floating_generation: 0,
             clipboard: None,
+            tool_options_bounds: None,
             layer_list_geometry: None,
             layer_drag: None,
             layer_drop_pointer_y: None,
@@ -760,6 +764,12 @@ impl PaintApp {
     /// Display label of the active Move sampling mode.
     pub fn move_resample_mode_label(&self) -> &'static str {
         resample_label(self.resample_mode)
+    }
+
+    /// Screen bounds of the contextual ToolConfigStrip row, for compact-layout tests.
+    #[doc(hidden)]
+    pub const fn tool_options_bounds(&self) -> Option<egui::Rect> {
+        self.tool_options_bounds
     }
 
     #[doc(hidden)]
@@ -1406,71 +1416,95 @@ impl PaintApp {
     }
 
     fn text_tool_options(&mut self, ui: &mut egui::Ui) {
-        tool_option_row(ui, |ui| {
-            egui::ComboBox::from_label("Font family")
-                .selected_text(self.text_font_family.label())
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.text_font_family, TextFontFamily::Sans, "Sans");
-                    ui.selectable_value(&mut self.text_font_family, TextFontFamily::Mono, "Mono");
-                });
-            let size_label = ui.label("Font size");
-            ui.add(
-                egui::DragValue::new(&mut self.text_size)
-                    .range(1..=paint_raster::MAX_TEXT_SIZE)
-                    .suffix(" px"),
-            )
-            .labelled_by(size_label.id);
-            ui.toggle_value(&mut self.text_bold, "Bold");
-            ui.toggle_value(&mut self.text_italic, "Italic");
-            ui.checkbox(&mut self.text_antialias, "Antialiasing");
-        });
-        tool_option_row(ui, |ui| {
-            ui.label("Alignment");
-            for (text, alignment, accessible) in [
-                ("Left", TextAlignment::Left, "Align left"),
-                ("Center", TextAlignment::Center, "Align center"),
-                ("Right", TextAlignment::Right, "Align right"),
-            ] {
-                if option_selectable(ui, self.text_alignment == alignment, text, accessible) {
-                    self.text_alignment = alignment;
-                }
+        let family = self.text_font_family.label();
+        strip_combo(
+            ui,
+            "text-font-family",
+            "Font family",
+            family,
+            &mut self.text_font_family,
+            &[
+                StripComboItem::new(TextFontFamily::Sans, "Sans", "Font family: Sans", true),
+                StripComboItem::new(TextFontFamily::Mono, "Mono", "Font family: Mono", true),
+            ],
+        );
+        strip_drag(
+            ui,
+            "Size",
+            &mut self.text_size,
+            1..=paint_raster::MAX_TEXT_SIZE,
+            "px",
+        );
+        if strip_toggle(ui, "Bold", "B", self.text_bold, "Bold") {
+            self.text_bold = !self.text_bold;
+        }
+        if strip_toggle(ui, "Italic", "I", self.text_italic, "Italic") {
+            self.text_italic = !self.text_italic;
+        }
+        for (text, alignment, accessible) in [
+            ("L", TextAlignment::Left, "Align left"),
+            ("C", TextAlignment::Center, "Align center"),
+            ("R", TextAlignment::Right, "Align right"),
+        ] {
+            if strip_toggle(
+                ui,
+                accessible,
+                text,
+                self.text_alignment == alignment,
+                accessible,
+            ) {
+                self.text_alignment = alignment;
             }
-            ui.separator();
-            ui.label("Blend Mode");
-            for mode in blend_modes() {
-                if tool_blend_mode_option(ui, self.text_blend, mode) {
-                    self.text_blend = mode;
-                }
-            }
-        });
-        tool_option_row(ui, |ui| {
-            let color = self.fill_color;
-            ui.colored_label(
-                egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
-                "Primary color",
-            );
-        });
-        tool_option_row(ui, |ui| {
-            let content_label = ui.label("Text content");
-            ui.add(
-                egui::TextEdit::multiline(&mut self.text_content)
-                    .id(text_content_field_id())
-                    .desired_rows(1)
-                    .desired_width(200.0)
-                    .hint_text("Click the canvas and type"),
-            )
-            .labelled_by(content_label.id);
-            ui.label("Enter places · Shift+Enter adds a line · Esc cancels");
-            if ui
-                .add_enabled(self.session.has_preview(), egui::Button::new("Place text"))
-                .clicked()
-            {
-                self.commit_text_preview();
-            }
-            if ui.button("Cancel text").clicked() {
-                self.cancel_text_preview();
-            }
-        });
+        }
+        if strip_toggle(
+            ui,
+            "Antialiasing",
+            "AA",
+            self.text_antialias,
+            "Antialiasing",
+        ) {
+            self.text_antialias = !self.text_antialias;
+        }
+        let blend = blend_mode_label(self.text_blend);
+        strip_combo(
+            ui,
+            "text-blend",
+            "Blend mode",
+            blend,
+            &mut self.text_blend,
+            &BLEND_MENU_ITEMS,
+        );
+        strip_separator(ui);
+        strip_swatch(ui, "Text color", self.fill_color);
+        strip_separator(ui);
+        let content_label = ui.label(egui::RichText::new("Content").size(12.0));
+        let content_label = content_label.on_hover_text("Text content");
+        ui.add(
+            egui::TextEdit::multiline(&mut self.text_content)
+                .id(text_content_field_id())
+                .desired_rows(1)
+                .desired_width(160.0)
+                .hint_text("Click canvas and type"),
+        )
+        .labelled_by(content_label.id);
+        if strip_icon_action(
+            ui,
+            VectorIcon::Check,
+            "Place text",
+            "Place the previewed text",
+            self.session.has_preview(),
+        ) {
+            self.commit_text_preview();
+        }
+        if strip_icon_action(
+            ui,
+            VectorIcon::Close,
+            "Cancel text",
+            "Cancel the text preview (Esc)",
+            true,
+        ) {
+            self.cancel_text_preview();
+        }
         self.sync_text_preview();
     }
 
@@ -1489,45 +1523,34 @@ impl PaintApp {
     }
 
     fn clone_tool_options(&mut self, ui: &mut egui::Ui) {
-        tool_option_row(ui, |ui| {
-            let width_label = ui.label("Width");
-            ui.add(
-                egui::DragValue::new(&mut self.brush_size)
-                    .range(1..=64)
-                    .suffix(" px"),
+        strip_drag(ui, "Size", &mut self.brush_size, 1..=64, "px");
+        strip_drag(ui, "Hardness", &mut self.clone_hardness, 0..=100, "%");
+        strip_drag(ui, "Spacing", &mut self.clone_spacing, 1..=100, "%");
+        strip_separator(ui);
+        if let Some(source) = self.clone_source {
+            ui.label(
+                egui::RichText::new(format!("Source: ({}, {})", source.x, source.y)).size(12.0),
             )
-            .labelled_by(width_label.id);
-            let hardness_label = ui.label("Hardness");
-            ui.add(
-                egui::DragValue::new(&mut self.clone_hardness)
-                    .range(0..=100)
-                    .suffix("%"),
-            )
-            .labelled_by(hardness_label.id);
-            let spacing_label = ui.label("Spacing");
-            ui.add(
-                egui::DragValue::new(&mut self.clone_spacing)
-                    .range(1..=100)
-                    .suffix("%"),
-            )
-            .labelled_by(spacing_label.id);
-        });
-        tool_option_row(ui, |ui| {
-            if let Some(source) = self.clone_source {
-                ui.label(format!("Source: ({}, {})", source.x, source.y));
-                if let Some((offset_x, offset_y)) = self.clone_offset {
-                    ui.label(format!("Offset: ({offset_x}, {offset_y})"));
-                }
-            } else {
-                ui.label("Alt-click to set source");
+            .on_hover_text("Clone source pixel");
+            if let Some((offset_x, offset_y)) = self.clone_offset {
+                ui.label(
+                    egui::RichText::new(format!("Offset: ({offset_x}, {offset_y})")).size(12.0),
+                );
             }
-            ui.add_enabled_ui(self.clone_source.is_some(), |ui| {
-                if ui.button("Clear clone source").clicked() {
-                    self.clone_source = None;
-                    self.clone_offset = None;
-                }
-            });
-        });
+        } else {
+            ui.label(egui::RichText::new("No source").size(12.0))
+                .on_hover_text("Alt-click the canvas to set a clone source");
+        }
+        if strip_icon_action(
+            ui,
+            VectorIcon::Close,
+            "Clear clone source",
+            "Clear the clone source",
+            self.clone_source.is_some(),
+        ) {
+            self.clone_source = None;
+            self.clone_offset = None;
+        }
     }
 
     fn preview_live_translate(&mut self) {
@@ -3206,11 +3229,17 @@ impl PaintApp {
             self.selection_fields_open = !self.selection_fields_open;
         }
         if self.selection_fields_open {
-            selection_input(ui, "Selection left", &mut self.selection_input.left);
-            selection_input(ui, "Selection top", &mut self.selection_input.top);
-            selection_input(ui, "Selection right", &mut self.selection_input.right);
-            selection_input(ui, "Selection bottom", &mut self.selection_input.bottom);
-            if ui.button("Apply selection").clicked() {
+            selection_input(ui, "Left", &mut self.selection_input.left);
+            selection_input(ui, "Top", &mut self.selection_input.top);
+            selection_input(ui, "Right", &mut self.selection_input.right);
+            selection_input(ui, "Bottom", &mut self.selection_input.bottom);
+            if strip_action_button(
+                ui,
+                "Apply",
+                "Apply selection",
+                "Apply the entered selection bounds",
+                true,
+            ) {
                 self.select_rectangle();
             }
         }
@@ -3229,137 +3258,33 @@ impl PaintApp {
     }
 
     fn tool_options_panel(&mut self, ui: &mut egui::Ui) {
-        egui::Panel::top("paint-r-tool-options").show(ui, |ui| {
-            ui.add_space(2.0);
-            if matches!(
-                self.active_tool,
-                Tool::Move
-                    | Tool::MoveSelection
-                    | Tool::Picker
-                    | Tool::Line
-                    | Tool::Fill
-                    | Tool::Gradient
-                    | Tool::Text
-                    | Tool::CloneStamp
-                    | Tool::Recolor
-            ) {
-                self.grouped_tool_options(ui);
-                ui.add_space(2.0);
-                return;
-            }
-            ui.horizontal_wrapped(|ui| match self.active_tool {
-                Tool::Select => {
-                    self.selection_combine_options(ui);
-                }
-                Tool::Lasso => {
-                    self.selection_combine_options(ui);
-                }
-                Tool::EllipseSelect => {
-                    self.selection_combine_options(ui);
-                }
-                Tool::MagicWand => {
-                    self.selection_combine_options(ui);
-                    ui.separator();
-                    let tolerance_label = ui.label("Tolerance");
-                    ui.add(
-                        egui::DragValue::new(&mut self.fill_tolerance)
-                            .range(0..=100)
-                            .suffix("%"),
-                    )
-                    .labelled_by(tolerance_label.id);
-                    ui.label("Flood Mode");
-                    ui.selectable_value(&mut self.fill_global, false, "Contiguous");
-                    ui.selectable_value(&mut self.fill_global, true, "Global");
-                    ui.label("Sampling");
-                    for sampling in MagicWandSampling::ALL {
-                        ui.selectable_value(
-                            &mut self.magic_wand_sampling,
-                            sampling,
-                            sampling.label(),
-                        );
-                    }
-                }
-                Tool::Zoom => {
-                    ui.label("Zoom");
-                    ui.label(format!("{}%", (self.zoom * 100.0).round() as u32));
-                    for (label, zoom) in [("50%", 0.5), ("100%", 1.0), ("200%", 2.0), ("400%", 4.0)]
-                    {
-                        if labeled_button(ui, label, label).clicked() {
-                            self.zoom = zoom;
-                        }
-                    }
-                    if labeled_button(ui, "Fit", "Fit canvas").clicked() {
-                        self.fit_canvas_requested = true;
-                    }
-                }
-                Tool::Pencil | Tool::Brush | Tool::Eraser => {
-                    if self.active_tool == Tool::Pencil {
-                        ui.label("1 px");
-                    } else {
-                        let width_label = ui.label("Width");
-                        ui.add(
-                            egui::DragValue::new(&mut self.brush_size)
-                                .range(1..=64)
-                                .suffix(" px"),
-                        )
-                        .labelled_by(width_label.id);
-                    }
-                    if matches!(self.active_tool, Tool::Brush | Tool::Eraser) {
-                        ui.separator();
-                        let hardness_label = ui.label("Hardness");
-                        ui.add(
-                            egui::DragValue::new(&mut self.brush_hardness)
-                                .range(0..=100)
-                                .suffix("%"),
-                        )
-                        .labelled_by(hardness_label.id);
-                        let spacing_label = ui.label("Spacing");
-                        ui.add(
-                            egui::DragValue::new(&mut self.brush_spacing)
-                                .range(1..=100)
-                                .suffix("%"),
-                        )
-                        .labelled_by(spacing_label.id);
-                    }
-                    if self.active_tool != Tool::Eraser {
-                        let color = self.fill_color;
-                        ui.colored_label(
-                            egui::Color32::from_rgba_unmultiplied(
-                                color.r, color.g, color.b, color.a,
-                            ),
-                            "Primary color",
-                        );
-                    }
-                }
-                Tool::Shapes => {
-                    ui.label("Shape type");
-                    ui.selectable_value(&mut self.shape_mode, ShapeMode::Rectangle, "Rectangle");
-                    ui.selectable_value(&mut self.shape_mode, ShapeMode::Ellipse, "Ellipse");
-                    ui.separator();
-                    ui.label("Fill style");
-                    ui.selectable_value(&mut self.shape_style, ShapeStyle::Outline, "Outline");
-                    ui.selectable_value(&mut self.shape_style, ShapeStyle::Fill, "Fill");
-                    ui.selectable_value(&mut self.shape_style, ShapeStyle::Both, "Both");
-                    ui.separator();
-                    let border_label = ui.label("Border width");
-                    ui.add(
-                        egui::DragValue::new(&mut self.shape_border_width)
-                            .range(1..=64)
-                            .suffix(" px"),
-                    )
-                    .labelled_by(border_label.id);
-                }
-                Tool::Text | Tool::CloneStamp | Tool::Fill | Tool::Gradient | Tool::Recolor => {}
-                Tool::Pan => {}
-                Tool::Move | Tool::MoveSelection | Tool::Picker | Tool::Line => {}
+        egui::Panel::top("paint-r-tool-options")
+            .frame(
+                egui::Frame::new()
+                    .fill(ui.visuals().panel_fill)
+                    .inner_margin(egui::Margin::symmetric(6, 3)),
+            )
+            .show_separator_line(false)
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(4.0, 2.0);
+                ui.spacing_mut().interact_size.y = TOOL_STRIP_HEIGHT;
+                ui.spacing_mut().button_padding = egui::vec2(5.0, 2.0);
+                let row = ui.horizontal(|ui| self.tool_config_strip(ui)).response.rect;
+                self.tool_options_bounds = Some(row);
             });
-            ui.add_space(2.0);
-        });
     }
 
-    /// Tool Options for tools whose controls need separate rows instead of one wrapped row.
-    fn grouped_tool_options(&mut self, ui: &mut egui::Ui) {
+    /// One compact ToolConfigStrip row, in Paint.NET group order for every tool.
+    fn tool_config_strip(&mut self, ui: &mut egui::Ui) {
         match self.active_tool {
+            Tool::Select | Tool::Lasso | Tool::EllipseSelect => {
+                self.selection_combine_options(ui);
+            }
+            Tool::MagicWand => {
+                self.selection_combine_options(ui);
+                strip_separator(ui);
+                self.magic_wand_tool_options(ui);
+            }
             Tool::Move => self.move_tool_options(ui),
             Tool::MoveSelection => self.move_selection_tool_options(ui),
             Tool::Picker => self.picker_tool_options(ui),
@@ -3369,31 +3294,72 @@ impl PaintApp {
             Tool::Text => self.text_tool_options(ui),
             Tool::CloneStamp => self.clone_tool_options(ui),
             Tool::Recolor => self.recolor_tool_options(ui),
-            _ => {}
+            Tool::Brush | Tool::Eraser | Tool::Pencil => self.brush_tool_options(ui),
+            Tool::Shapes => self.shape_tool_options(ui),
+            Tool::Zoom => self.zoom_tool_options(ui),
+            Tool::Pan => {
+                ui.allocate_space(egui::vec2(24.0, TOOL_STRIP_HEIGHT));
+            }
         }
     }
 
+    fn magic_wand_tool_options(&mut self, ui: &mut egui::Ui) {
+        let flood = if self.fill_global {
+            "Global"
+        } else {
+            "Contiguous"
+        };
+        strip_combo(
+            ui,
+            "wand-flood",
+            "Flood mode",
+            flood,
+            &mut self.fill_global,
+            &[
+                StripComboItem::new(false, "Contiguous", "Flood mode: Contiguous", true),
+                StripComboItem::new(true, "Global", "Flood mode: Global", true),
+            ],
+        );
+        strip_drag(ui, "Tolerance", &mut self.fill_tolerance, 0..=100, "%");
+        strip_separator(ui);
+        let sampling = sampling_short_label(self.magic_wand_sampling);
+        strip_combo(
+            ui,
+            "wand-sampling",
+            "Sampling",
+            sampling,
+            &mut self.magic_wand_sampling,
+            &[
+                StripComboItem::new(
+                    MagicWandSampling::ActiveLayer,
+                    "Layer",
+                    "Sampling: Active Layer",
+                    true,
+                ),
+                StripComboItem::new(MagicWandSampling::Image, "Image", "Sampling: Image", true),
+            ],
+        );
+    }
+
     fn move_tool_options(&mut self, ui: &mut egui::Ui) {
-        let floating = self.floating_selection.is_some();
-        let previewing_layer = self.session.has_preview();
-        let finishable = floating || previewing_layer;
-        // Keep this row present even when nothing is floating: adding/removing it mid-drag
-        // changes the tool strip height and shifts the canvas under the pointer.
-        // Reference ToolConfigStrip order: resampling section first, Commit/Finish last.
-        tool_option_row(ui, |ui| {
-            ui.label("Sampling:");
+        let finishable = self.floating_selection.is_some() || self.session.has_preview();
+        let selected = resample_short_label(self.resample_mode);
+        let response = strip_combo_button(ui, "move-sampling", "Sampling", selected);
+        let mut chosen = None;
+        egui::Popup::menu(&response).show(|ui| {
+            ui.set_min_width(response.rect.width().max(120.0));
             for mode in RESAMPLE_MODES {
                 if mode == ResampleMode::Anisotropic {
-                    ui.add_enabled(false, egui::Button::new(resample_label(mode)))
+                    ui.add_enabled(false, egui::Button::new("Anisotropic"))
                         .on_disabled_hover_text(
-                            "Anisotropic sampling only differs under non-uniform scaling, which \
-                             Move does not perform. It is disabled rather than approximated.",
+                            "Anisotropic sampling only differs under non-uniform scaling, \
+                             which Move does not perform. It is disabled rather than approximated.",
                         );
                     continue;
                 }
                 let selected = self.resample_mode == mode;
-                let response = ui.selectable_label(selected, resample_label(mode));
-                response.widget_info(|| {
+                let option = ui.selectable_label(selected, resample_short_label(mode));
+                option.widget_info(|| {
                     egui::WidgetInfo::selected(
                         egui::Role::Button,
                         true,
@@ -3401,19 +3367,25 @@ impl PaintApp {
                         resample_label(mode),
                     )
                 });
-                if response.on_hover_text(resample_hint(mode)).clicked() {
-                    self.set_resample_mode(mode);
+                if option.on_hover_text(resample_hint(mode)).clicked() {
+                    chosen = Some(mode);
+                    ui.close();
                 }
             }
-            ui.separator();
-            if ui
-                .add_enabled(finishable, egui::Button::new("Finish"))
-                .on_hover_text("Place the moved pixels\nShortcut key: Enter")
-                .clicked()
-            {
-                self.finish_move();
-            }
         });
+        if let Some(mode) = chosen {
+            self.set_resample_mode(mode);
+        }
+        strip_separator(ui);
+        if strip_action_button(
+            ui,
+            "Finish",
+            "Finish",
+            "Place the moved pixels\nShortcut key: Enter",
+            finishable,
+        ) {
+            self.finish_move();
+        }
     }
 
     /// Applies a sampling mode and refreshes an already-lifted whole-layer preview.
@@ -3455,304 +3427,372 @@ impl PaintApp {
     }
 
     fn move_selection_tool_options(&mut self, ui: &mut egui::Ui) {
-        tool_option_row(ui, |ui| {
-            let x_label = ui.label("Offset X");
-            ui.add(
-                egui::DragValue::new(&mut self.move_selection_dx)
-                    .range(-16_384..=16_384)
-                    .speed(1.0),
-            )
-            .labelled_by(x_label.id);
-            let y_label = ui.label("Offset Y");
-            ui.add(
-                egui::DragValue::new(&mut self.move_selection_dy)
-                    .range(-16_384..=16_384)
-                    .speed(1.0),
-            )
-            .labelled_by(y_label.id);
-            let has_selection = self.session.document().selection().is_some();
-            if ui
-                .add_enabled(has_selection, egui::Button::new("Apply offset"))
-                .clicked()
-            {
-                let (dx, dy) = (self.move_selection_dx, self.move_selection_dy);
-                if dx == 0 && dy == 0 {
-                    self.status = "Selection offset is zero; nothing to apply".to_owned();
-                } else {
-                    self.execute(
-                        Command::TranslateSelection { dx, dy },
-                        "Moved the selection",
-                    );
-                }
-                self.move_selection_dx = 0;
-                self.move_selection_dy = 0;
+        strip_drag(
+            ui,
+            "Offset X",
+            &mut self.move_selection_dx,
+            -16_384..=16_384,
+            "",
+        );
+        strip_drag(
+            ui,
+            "Offset Y",
+            &mut self.move_selection_dy,
+            -16_384..=16_384,
+            "",
+        );
+        strip_separator(ui);
+        let has_selection = self.session.document().selection().is_some();
+        if strip_action_button(
+            ui,
+            "Apply",
+            "Apply offset",
+            "Move the selection by the entered offset",
+            has_selection,
+        ) {
+            let (dx, dy) = (self.move_selection_dx, self.move_selection_dy);
+            if dx == 0 && dy == 0 {
+                self.status = "Selection offset is zero; nothing to apply".to_owned();
+            } else {
+                self.execute(
+                    Command::TranslateSelection { dx, dy },
+                    "Moved the selection",
+                );
             }
-            let pending = self.move_selection_dx != 0 || self.move_selection_dy != 0;
-            if ui
-                .add_enabled(pending, egui::Button::new("Cancel offset"))
-                .clicked()
-            {
-                self.move_selection_dx = 0;
-                self.move_selection_dy = 0;
-                self.status = "Canceled the pending selection offset".to_owned();
-            }
-        });
+            self.move_selection_dx = 0;
+            self.move_selection_dy = 0;
+        }
+        let pending = self.move_selection_dx != 0 || self.move_selection_dy != 0;
+        if strip_action_button(
+            ui,
+            "Cancel",
+            "Cancel offset",
+            "Discard the pending selection offset",
+            pending,
+        ) {
+            self.move_selection_dx = 0;
+            self.move_selection_dy = 0;
+            self.status = "Canceled the pending selection offset".to_owned();
+        }
     }
 
     fn picker_tool_options(&mut self, ui: &mut egui::Ui) {
-        tool_option_row(ui, |ui| {
-            ui.label("Sampling");
-            ui.selectable_value(
-                &mut self.picker_sample_source,
-                PickerSampleSource::Layer,
-                "Layer",
-            );
-            ui.selectable_value(
-                &mut self.picker_sample_source,
-                PickerSampleSource::Image,
-                "Composed image",
-            );
-        });
-        tool_option_row(ui, |ui| {
-            ui.label("Sample size");
-            for size in [
-                PickerSampleSize::Point,
-                PickerSampleSize::Average3x3,
-                PickerSampleSize::Average5x5,
-                PickerSampleSize::Average11x11,
-                PickerSampleSize::Average31x31,
-                PickerSampleSize::Average51x51,
-            ] {
-                ui.selectable_value(&mut self.picker_sample_size, size, size.label());
-            }
-        });
-        tool_option_row(ui, |ui| {
-            ui.label("Click behavior");
-            ui.selectable_value(
-                &mut self.picker_click_behavior,
-                PickerClickBehavior::NoToolSwitch,
-                "Do not switch",
-            );
-            ui.selectable_value(
-                &mut self.picker_click_behavior,
-                PickerClickBehavior::SwitchToPreviousTool,
-                "Switch to previous tool",
-            );
-        });
+        let source = match self.picker_sample_source {
+            PickerSampleSource::Layer => "Layer",
+            PickerSampleSource::Image => "Image",
+        };
+        strip_combo(
+            ui,
+            "picker-source",
+            "Sampling",
+            source,
+            &mut self.picker_sample_source,
+            &[
+                StripComboItem::new(PickerSampleSource::Layer, "Layer", "Sampling: Layer", true),
+                StripComboItem::new(
+                    PickerSampleSource::Image,
+                    "Image",
+                    "Sampling: Composed image",
+                    true,
+                ),
+            ],
+        );
+        strip_separator(ui);
+        let size = picker_size_short_label(self.picker_sample_size);
+        strip_combo(
+            ui,
+            "picker-size",
+            "Sample size",
+            size,
+            &mut self.picker_sample_size,
+            &[
+                StripComboItem::new(PickerSampleSize::Point, "1 px", "Sample size: 1 px", true),
+                StripComboItem::new(
+                    PickerSampleSize::Average3x3,
+                    "3×3",
+                    "Sample size: 3×3 average",
+                    true,
+                ),
+                StripComboItem::new(
+                    PickerSampleSize::Average5x5,
+                    "5×5",
+                    "Sample size: 5×5 average",
+                    true,
+                ),
+                StripComboItem::new(
+                    PickerSampleSize::Average11x11,
+                    "11×11",
+                    "Sample size: 11×11 average",
+                    true,
+                ),
+                StripComboItem::new(
+                    PickerSampleSize::Average31x31,
+                    "31×31",
+                    "Sample size: 31×31 average",
+                    true,
+                ),
+                StripComboItem::new(
+                    PickerSampleSize::Average51x51,
+                    "51×51",
+                    "Sample size: 51×51 average",
+                    true,
+                ),
+            ],
+        );
+        strip_separator(ui);
+        let behavior = match self.picker_click_behavior {
+            PickerClickBehavior::NoToolSwitch => "Stay",
+            PickerClickBehavior::SwitchToPreviousTool => "Previous tool",
+        };
+        strip_combo(
+            ui,
+            "picker-behavior",
+            "Click behavior",
+            behavior,
+            &mut self.picker_click_behavior,
+            &[
+                StripComboItem::new(
+                    PickerClickBehavior::NoToolSwitch,
+                    "Stay",
+                    "Click behavior: Do not switch",
+                    true,
+                ),
+                StripComboItem::new(
+                    PickerClickBehavior::SwitchToPreviousTool,
+                    "Previous tool",
+                    "Click behavior: Switch to previous tool",
+                    true,
+                ),
+            ],
+        );
     }
 
     fn line_tool_options(&mut self, ui: &mut egui::Ui) {
-        tool_option_row(ui, |ui| {
-            let width_label = ui.label("Width");
-            ui.add(
-                egui::DragValue::new(&mut self.brush_size)
-                    .range(1..=64)
-                    .suffix(" px"),
-            )
-            .labelled_by(width_label.id);
-            let color = self.fill_color;
-            ui.colored_label(
-                egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
-                "Primary color",
-            );
-        });
-        tool_option_row(ui, |ui| {
-            ui.label("Start cap");
-            for (text, cap, accessible) in [
-                ("None", LineCap::Flat, "Start cap: None"),
-                ("Rounded", LineCap::Rounded, "Start cap: Rounded"),
-                ("Arrow", LineCap::Arrow, "Start cap: Arrow"),
-            ] {
-                if option_selectable(ui, self.line_start_cap == cap, text, accessible) {
-                    self.line_start_cap = cap;
-                }
-            }
-        });
-        tool_option_row(ui, |ui| {
-            ui.label("Dash style");
-            for (text, dash, accessible) in [
-                ("Solid", LineDash::Solid, "Dash style: Solid"),
-                ("Dash", LineDash::Dash, "Dash style: Dash"),
-                ("Dot", LineDash::Dot, "Dash style: Dot"),
-            ] {
-                if option_selectable(ui, self.line_dash == dash, text, accessible) {
-                    self.line_dash = dash;
-                }
-            }
-        });
-        tool_option_row(ui, |ui| {
-            ui.label("End cap");
-            for (text, cap, accessible) in [
-                ("None", LineCap::Flat, "End cap: None"),
-                ("Rounded", LineCap::Rounded, "End cap: Rounded"),
-                ("Arrow", LineCap::Arrow, "End cap: Arrow"),
-            ] {
-                if option_selectable(ui, self.line_end_cap == cap, text, accessible) {
-                    self.line_end_cap = cap;
-                }
-            }
-        });
+        strip_drag(ui, "Width", &mut self.brush_size, 1..=64, "px");
+        strip_combo(
+            ui,
+            "line-start-cap",
+            "Start cap",
+            line_cap_label(self.line_start_cap),
+            &mut self.line_start_cap,
+            &line_cap_items(),
+        );
+        strip_combo(
+            ui,
+            "line-dash",
+            "Dash style",
+            line_dash_label(self.line_dash),
+            &mut self.line_dash,
+            &[
+                StripComboItem::new(LineDash::Solid, "Solid", "Dash style: Solid", true),
+                StripComboItem::new(LineDash::Dash, "Dash", "Dash style: Dash", true),
+                StripComboItem::new(LineDash::Dot, "Dot", "Dash style: Dot", true),
+            ],
+        );
+        strip_combo(
+            ui,
+            "line-end-cap",
+            "End cap",
+            line_cap_label(self.line_end_cap),
+            &mut self.line_end_cap,
+            &end_cap_items(),
+        );
+        strip_separator(ui);
+        strip_swatch(ui, "Line color", self.fill_color);
     }
 
     fn fill_tool_options(&mut self, ui: &mut egui::Ui) {
-        tool_option_row(ui, |ui| {
-            ui.label("Flood Mode");
-            if option_selectable(ui, !self.fill_global, "Contiguous", "Contiguous") {
-                self.fill_global = false;
-            }
-            if option_selectable(ui, self.fill_global, "Global", "Global") {
-                self.fill_global = true;
-            }
-            ui.separator();
-            ui.label("Fill");
-            ui.label("Solid Color");
-            let color = self.fill_color;
-            ui.colored_label(
-                egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
-                "Primary color",
-            );
-        });
-        tool_option_row(ui, |ui| {
-            ui.label("Sampling");
-            for sampling in MagicWandSampling::ALL {
-                let (text, accessible) = match sampling {
-                    MagicWandSampling::ActiveLayer => ("Layer", "Sampling: Layer"),
-                    MagicWandSampling::Image => ("Image", "Sampling: Image"),
-                };
-                if option_selectable(ui, self.fill_sampling == sampling, text, accessible) {
-                    self.fill_sampling = sampling;
-                }
-            }
-            ui.separator();
-            let tolerance_label = ui.label("Tolerance");
-            ui.add(
-                egui::DragValue::new(&mut self.fill_tolerance)
-                    .range(0..=100)
-                    .suffix("%"),
-            )
-            .labelled_by(tolerance_label.id);
-        });
-        tool_option_row(ui, |ui| {
-            tool_blend_mode_row(ui, &mut self.fill_blend);
-        });
+        let flood = if self.fill_global {
+            "Global"
+        } else {
+            "Contiguous"
+        };
+        strip_combo(
+            ui,
+            "fill-flood",
+            "Flood mode",
+            flood,
+            &mut self.fill_global,
+            &[
+                StripComboItem::new(false, "Contiguous", "Flood mode: Contiguous", true),
+                StripComboItem::new(true, "Global", "Flood mode: Global", true),
+            ],
+        );
+        strip_drag(ui, "Tolerance", &mut self.fill_tolerance, 0..=100, "%");
+        strip_separator(ui);
+        let sampling = sampling_short_label(self.fill_sampling);
+        strip_combo(
+            ui,
+            "fill-sampling",
+            "Sampling",
+            sampling,
+            &mut self.fill_sampling,
+            &sampling_items(),
+        );
+        strip_separator(ui);
+        let blend = blend_mode_label(self.fill_blend);
+        strip_combo(
+            ui,
+            "fill-blend",
+            "Blend mode",
+            blend,
+            &mut self.fill_blend,
+            &BLEND_MENU_ITEMS,
+        );
+        strip_separator(ui);
+        strip_swatch(ui, "Fill color", self.fill_color);
     }
 
     fn gradient_tool_options(&mut self, ui: &mut egui::Ui) {
-        tool_option_row(ui, |ui| {
-            ui.label("Gradient type");
-            for (text, kind) in [
-                ("Linear", GradientType::Linear),
-                ("Reflected", GradientType::Reflected),
-                ("Diamond", GradientType::Diamond),
-                ("Radial", GradientType::Radial),
-                ("Conical", GradientType::Conical),
-            ] {
-                if option_selectable(ui, self.gradient_type == kind, text, text) {
-                    self.gradient_type = kind;
-                }
-            }
-        });
-        tool_option_row(ui, |ui| {
-            ui.checkbox(&mut self.gradient_alpha_only, "Transparency only")
-                .on_hover_text(
-                    "Replace the layer alpha with the gradient alpha; RGB colors stay unchanged",
-                );
-            ui.separator();
-            ui.label("Repeat mode");
-            if option_selectable(
-                ui,
-                self.gradient_repeat == GradientRepeat::None,
-                "No Repeat",
-                "No Repeat",
-            ) {
-                self.gradient_repeat = GradientRepeat::None;
-            }
-            if option_selectable(
-                ui,
-                self.gradient_repeat == GradientRepeat::Repeat,
-                "Repeat",
-                "Repeat",
-            ) {
-                self.gradient_repeat = GradientRepeat::Repeat;
-            }
-        });
-        tool_option_row(ui, |ui| {
-            let (from, to) = (self.fill_color, self.secondary_color);
-            ui.colored_label(
-                egui::Color32::from_rgba_unmultiplied(from.r, from.g, from.b, from.a),
-                "Primary",
-            );
-            ui.label("to");
-            ui.colored_label(
-                egui::Color32::from_rgba_unmultiplied(to.r, to.g, to.b, to.a),
-                "Secondary",
-            );
-        });
-        tool_option_row(ui, |ui| {
-            tool_blend_mode_row(ui, &mut self.gradient_blend);
-        });
+        strip_combo(
+            ui,
+            "gradient-type",
+            "Gradient type",
+            gradient_type_label(self.gradient_type),
+            &mut self.gradient_type,
+            &gradient_type_items(),
+        );
+        strip_separator(ui);
+        strip_swatch(ui, "Gradient start color", self.fill_color);
+        strip_swatch(ui, "Gradient end color", self.secondary_color);
+        strip_separator(ui);
+        let blend = blend_mode_label(self.gradient_blend);
+        strip_combo(
+            ui,
+            "gradient-blend",
+            "Blend mode",
+            blend,
+            &mut self.gradient_blend,
+            &BLEND_MENU_ITEMS,
+        );
+        strip_separator(ui);
+        let repeat = gradient_repeat_label(self.gradient_repeat);
+        strip_combo(
+            ui,
+            "gradient-repeat",
+            "Repeat mode",
+            repeat,
+            &mut self.gradient_repeat,
+            &[
+                StripComboItem::new(GradientRepeat::None, "None", "Repeat mode: No Repeat", true),
+                StripComboItem::new(
+                    GradientRepeat::Repeat,
+                    "Repeat",
+                    "Repeat mode: Repeat",
+                    true,
+                ),
+            ],
+        );
+        if strip_toggle(
+            ui,
+            "Transparency only",
+            "α",
+            self.gradient_alpha_only,
+            "Transparency only: replace layer alpha, keep RGB",
+        ) {
+            self.gradient_alpha_only = !self.gradient_alpha_only;
+        }
     }
 
     fn recolor_tool_options(&mut self, ui: &mut egui::Ui) {
-        tool_option_row(ui, |ui| {
-            let width_label = ui.label("Width");
-            ui.add(
-                egui::DragValue::new(&mut self.brush_size)
-                    .range(1..=64)
-                    .suffix(" px"),
-            )
-            .labelled_by(width_label.id);
-            let hardness_label = ui.label("Hardness");
-            ui.add(
-                egui::DragValue::new(&mut self.brush_hardness)
-                    .range(0..=100)
-                    .suffix("%"),
-            )
-            .labelled_by(hardness_label.id);
-            let spacing_label = ui.label("Spacing");
-            ui.add(
-                egui::DragValue::new(&mut self.brush_spacing)
-                    .range(1..=100)
-                    .suffix("%"),
-            )
-            .labelled_by(spacing_label.id);
-        });
-        tool_option_row(ui, |ui| {
-            let tolerance_label = ui.label("Tolerance");
-            ui.add(
-                egui::DragValue::new(&mut self.recolor_tolerance)
-                    .range(0..=100)
-                    .suffix("%"),
-            )
-            .labelled_by(tolerance_label.id);
-            ui.separator();
-            ui.label("Sampling");
-            for sampling in MagicWandSampling::ALL {
-                let (text, accessible) = match sampling {
-                    MagicWandSampling::ActiveLayer => ("Layer", "Sampling: Layer"),
-                    MagicWandSampling::Image => ("Image", "Sampling: Image"),
-                };
-                if option_selectable(ui, self.recolor_sampling == sampling, text, accessible) {
-                    self.recolor_sampling = sampling;
-                }
-            }
-        });
-        tool_option_row(ui, |ui| {
-            let (target, replacement) = (self.secondary_color, self.fill_color);
-            ui.colored_label(
-                egui::Color32::from_rgba_unmultiplied(target.r, target.g, target.b, target.a),
-                "Target: secondary",
-            );
-            ui.colored_label(
-                egui::Color32::from_rgba_unmultiplied(
-                    replacement.r,
-                    replacement.g,
-                    replacement.b,
-                    replacement.a,
+        strip_drag(ui, "Size", &mut self.brush_size, 1..=64, "px");
+        strip_drag(ui, "Hardness", &mut self.brush_hardness, 0..=100, "%");
+        strip_drag(ui, "Spacing", &mut self.brush_spacing, 1..=100, "%");
+        strip_separator(ui);
+        strip_drag(ui, "Tolerance", &mut self.recolor_tolerance, 0..=100, "%");
+        strip_separator(ui);
+        let sampling = sampling_short_label(self.recolor_sampling);
+        strip_combo(
+            ui,
+            "recolor-sampling",
+            "Sampling",
+            sampling,
+            &mut self.recolor_sampling,
+            &sampling_items(),
+        );
+        strip_separator(ui);
+        strip_swatch(ui, "Recolor target color", self.secondary_color);
+        strip_swatch(ui, "Recolor replacement color", self.fill_color);
+    }
+
+    fn brush_tool_options(&mut self, ui: &mut egui::Ui) {
+        if self.active_tool == Tool::Pencil {
+            ui.label(egui::RichText::new("1 px").size(12.0));
+            strip_separator(ui);
+            strip_swatch(ui, "Pencil color", self.fill_color);
+            return;
+        }
+        strip_drag(ui, "Size", &mut self.brush_size, 1..=64, "px");
+        strip_drag(ui, "Hardness", &mut self.brush_hardness, 0..=100, "%");
+        strip_drag(ui, "Spacing", &mut self.brush_spacing, 1..=100, "%");
+        if self.active_tool == Tool::Brush {
+            strip_separator(ui);
+            strip_swatch(ui, "Brush color", self.fill_color);
+        }
+    }
+
+    fn shape_tool_options(&mut self, ui: &mut egui::Ui) {
+        strip_combo(
+            ui,
+            "shape-type",
+            "Shape type",
+            shape_mode_label(self.shape_mode),
+            &mut self.shape_mode,
+            &[
+                StripComboItem::new(
+                    ShapeMode::Rectangle,
+                    "Rectangle",
+                    "Shape type: Rectangle",
+                    true,
                 ),
-                "Replacement: primary",
-            );
-        });
+                StripComboItem::new(ShapeMode::Ellipse, "Ellipse", "Shape type: Ellipse", true),
+            ],
+        );
+        strip_combo(
+            ui,
+            "shape-fill",
+            "Fill style",
+            shape_style_label(self.shape_style),
+            &mut self.shape_style,
+            &[
+                StripComboItem::new(ShapeStyle::Outline, "Outline", "Fill style: Outline", true),
+                StripComboItem::new(ShapeStyle::Fill, "Fill", "Fill style: Fill", true),
+                StripComboItem::new(ShapeStyle::Both, "Both", "Fill style: Both", true),
+            ],
+        );
+        strip_drag(ui, "Border", &mut self.shape_border_width, 1..=64, "px");
+        strip_separator(ui);
+        strip_swatch(ui, "Shape color", self.fill_color);
+    }
+
+    fn zoom_tool_options(&mut self, ui: &mut egui::Ui) {
+        let percent = format!("{}%", (self.zoom * 100.0).round() as u32);
+        let mut zoom = self.zoom;
+        if strip_combo(
+            ui,
+            "zoom-level",
+            "Zoom",
+            &percent,
+            &mut zoom,
+            &[
+                StripComboItem::new(0.5, "50%", "Zoom 50%", true),
+                StripComboItem::new(1.0, "100%", "Zoom 100%", true),
+                StripComboItem::new(2.0, "200%", "Zoom 200%", true),
+                StripComboItem::new(4.0, "400%", "Zoom 400%", true),
+            ],
+        ) {
+            self.zoom = zoom;
+        }
+        strip_separator(ui);
+        if strip_action_button(
+            ui,
+            "Fit",
+            "Fit canvas",
+            "Fit the canvas in the window",
+            true,
+        ) {
+            self.fit_canvas_requested = true;
+        }
     }
 
     fn open_layer_properties(&mut self, index: usize) {
@@ -7977,34 +8017,341 @@ fn paint_selection_mode_icon(
     painter.rect_stroke(b, 0, stroke, egui::StrokeKind::Inside);
 }
 
-const fn blend_modes() -> [BlendMode; 4] {
-    [
-        BlendMode::Normal,
+/// One compact dropdown choice. `accessible` is what screen readers and tests see.
+#[derive(Clone, Copy)]
+struct StripComboItem<T> {
+    value: T,
+    visual: &'static str,
+    accessible: &'static str,
+    enabled: bool,
+}
+
+impl<T> StripComboItem<T> {
+    const fn new(value: T, visual: &'static str, accessible: &'static str, enabled: bool) -> Self {
+        Self {
+            value,
+            visual,
+            accessible,
+            enabled,
+        }
+    }
+}
+
+const BLEND_MENU_ITEMS: [StripComboItem<BlendMode>; 4] = [
+    StripComboItem::new(BlendMode::Normal, "Normal", "Blend mode: Normal", true),
+    StripComboItem::new(
         BlendMode::Multiply,
-        BlendMode::Screen,
-        BlendMode::Overlay,
+        "Multiply",
+        "Blend mode: Multiply",
+        true,
+    ),
+    StripComboItem::new(BlendMode::Screen, "Screen", "Blend mode: Screen", true),
+    StripComboItem::new(BlendMode::Overlay, "Overlay", "Blend mode: Overlay", true),
+];
+
+/// A compact Paint.NET-style dropdown that keeps its group name as the accessible name.
+fn strip_combo<T: Copy + PartialEq>(
+    ui: &mut egui::Ui,
+    id_salt: &'static str,
+    name: &'static str,
+    selected_text: &str,
+    current: &mut T,
+    items: &[StripComboItem<T>],
+) -> bool {
+    let response = strip_combo_button(ui, id_salt, name, selected_text);
+    let mut changed = false;
+    egui::Popup::menu(&response).show(|ui| {
+        ui.set_min_width(response.rect.width().max(112.0));
+        for item in items {
+            let selected = *current == item.value;
+            if !item.enabled {
+                ui.add_enabled(false, egui::Button::new(item.visual))
+                    .on_disabled_hover_text(item.accessible);
+                continue;
+            }
+            let option = ui.selectable_label(selected, item.visual);
+            option.widget_info(|| {
+                egui::WidgetInfo::selected(egui::Role::Button, true, selected, item.accessible)
+            });
+            if option.clicked() {
+                if !selected {
+                    *current = item.value;
+                    changed = true;
+                }
+                ui.close();
+            }
+        }
+    });
+    changed
+}
+
+/// The visible part of a compact dropdown: selected value plus a chevron.
+fn strip_combo_button(
+    ui: &mut egui::Ui,
+    id_salt: &'static str,
+    name: &'static str,
+    selected_text: &str,
+) -> egui::Response {
+    let response = ui
+        .push_id(id_salt, |ui| {
+            ui.add(
+                egui::Button::new(egui::RichText::new(selected_text.to_owned()).size(12.0))
+                    .min_size(egui::vec2(0.0, TOOL_STRIP_HEIGHT))
+                    .small(),
+            )
+        })
+        .inner;
+    response.widget_info(|| {
+        let mut info = egui::WidgetInfo::new(egui::Role::ComboBox);
+        info.label = Some(name.to_owned());
+        info.current_text_value = Some(selected_text.to_owned());
+        info
+    });
+    response.on_hover_text(format!("{name}: {selected_text}"))
+}
+
+/// A small numeric field with a short caption and an explicit accessible label.
+fn strip_drag<Num: egui::emath::Numeric>(
+    ui: &mut egui::Ui,
+    label: &'static str,
+    value: &mut Num,
+    range: std::ops::RangeInclusive<Num>,
+    suffix: &'static str,
+) -> egui::Response {
+    let caption = ui.label(egui::RichText::new(label).size(12.0));
+    ui.add(
+        egui::DragValue::new(value)
+            .range(range)
+            .speed(1.0)
+            .suffix(suffix)
+            .min_size(egui::vec2(0.0, TOOL_STRIP_HEIGHT)),
+    )
+    .labelled_by(caption.id)
+}
+
+/// A compact icon-only toggle with its accessible name and tooltip preserved.
+fn strip_toggle(
+    ui: &mut egui::Ui,
+    label: &'static str,
+    text: &str,
+    selected: bool,
+    tooltip: &'static str,
+) -> bool {
+    let response = ui.add(
+        egui::Button::new(egui::RichText::new(text).size(12.0))
+            .selected(selected)
+            .min_size(egui::vec2(24.0, TOOL_STRIP_HEIGHT))
+            .small(),
+    );
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, label));
+    response.on_hover_text(tooltip).clicked()
+}
+
+/// A compact text action with an accessible name that can differ from the short caption.
+fn strip_action_button(
+    ui: &mut egui::Ui,
+    text: &str,
+    accessible: &'static str,
+    tooltip: &'static str,
+    enabled: bool,
+) -> bool {
+    let response = ui.add_enabled(
+        enabled,
+        egui::Button::new(egui::RichText::new(text).size(12.0))
+            .min_size(egui::vec2(0.0, TOOL_STRIP_HEIGHT))
+            .small(),
+    );
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, accessible));
+    response.on_hover_text(tooltip).clicked()
+}
+
+/// A first-party icon action sized for the compact strip.
+fn strip_icon_action(
+    ui: &mut egui::Ui,
+    icon: VectorIcon,
+    label: &'static str,
+    tooltip: &'static str,
+    enabled: bool,
+) -> bool {
+    vector_icon_button_sized_with_tooltip(
+        ui,
+        icon,
+        label,
+        tooltip,
+        enabled,
+        egui::vec2(24.0, TOOL_STRIP_HEIGHT),
+    )
+    .clicked()
+}
+
+/// A read-only color swatch. Colors live in the Colors panel; this is only a compact preview.
+fn strip_swatch(ui: &mut egui::Ui, name: &'static str, color: Bgra) -> egui::Response {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(16.0, TOOL_STRIP_HEIGHT), egui::Sense::hover());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, name));
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        painter.rect_filled(
+            rect,
+            2,
+            egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+        );
+        painter.rect_stroke(
+            rect,
+            2,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(70)),
+            egui::StrokeKind::Inside,
+        );
+    }
+    response.on_hover_text(format!("{name}: {}", format_hex_color(color)))
+}
+
+/// A slim vertical divider between logical groups in the single row.
+fn strip_separator(ui: &mut egui::Ui) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(1.0, 18.0), egui::Sense::hover());
+    ui.painter().line_segment(
+        [rect.center_top(), rect.center_bottom()],
+        egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
+    );
+}
+
+const fn resample_short_label(mode: ResampleMode) -> &'static str {
+    match mode {
+        ResampleMode::NearestNeighbor => "Nearest",
+        ResampleMode::Bilinear => "Bilinear",
+        ResampleMode::MultisampleBilinear => "Multisample",
+        ResampleMode::Anisotropic => "Anisotropic",
+        ResampleMode::Bicubic => "Bicubic",
+    }
+}
+
+const fn sampling_short_label(sampling: MagicWandSampling) -> &'static str {
+    match sampling {
+        MagicWandSampling::ActiveLayer => "Layer",
+        MagicWandSampling::Image => "Image",
+    }
+}
+
+const fn picker_size_short_label(size: PickerSampleSize) -> &'static str {
+    match size {
+        PickerSampleSize::Point => "1 px",
+        PickerSampleSize::Average3x3 => "3×3",
+        PickerSampleSize::Average5x5 => "5×5",
+        PickerSampleSize::Average11x11 => "11×11",
+        PickerSampleSize::Average31x31 => "31×31",
+        PickerSampleSize::Average51x51 => "51×51",
+    }
+}
+
+const fn line_cap_label(cap: LineCap) -> &'static str {
+    match cap {
+        LineCap::Flat => "None",
+        LineCap::Rounded => "Rounded",
+        LineCap::Arrow => "Arrow",
+    }
+}
+
+const fn line_dash_label(dash: LineDash) -> &'static str {
+    match dash {
+        LineDash::Solid => "Solid",
+        LineDash::Dash => "Dash",
+        LineDash::Dot => "Dot",
+    }
+}
+
+const fn gradient_type_label(kind: GradientType) -> &'static str {
+    match kind {
+        GradientType::Linear => "Linear",
+        GradientType::Reflected => "Reflected",
+        GradientType::Diamond => "Diamond",
+        GradientType::Radial => "Radial",
+        GradientType::Conical => "Conical",
+    }
+}
+
+const fn gradient_repeat_label(repeat: GradientRepeat) -> &'static str {
+    match repeat {
+        GradientRepeat::None => "None",
+        GradientRepeat::Repeat => "Repeat",
+    }
+}
+
+const fn shape_mode_label(mode: ShapeMode) -> &'static str {
+    match mode {
+        ShapeMode::Rectangle => "Rectangle",
+        ShapeMode::Ellipse => "Ellipse",
+    }
+}
+
+const fn shape_style_label(style: ShapeStyle) -> &'static str {
+    match style {
+        ShapeStyle::Outline => "Outline",
+        ShapeStyle::Fill => "Fill",
+        ShapeStyle::Both => "Both",
+    }
+}
+
+fn sampling_items() -> [StripComboItem<MagicWandSampling>; 2] {
+    [
+        StripComboItem::new(
+            MagicWandSampling::ActiveLayer,
+            "Layer",
+            "Sampling: Layer",
+            true,
+        ),
+        StripComboItem::new(MagicWandSampling::Image, "Image", "Sampling: Image", true),
     ]
 }
 
-/// One Tool Options blend-mode button with a stable accessible name.
-fn tool_blend_mode_option(ui: &mut egui::Ui, current: BlendMode, mode: BlendMode) -> bool {
-    let accessible = match mode {
-        BlendMode::Normal => "Blend mode: Normal",
-        BlendMode::Multiply => "Blend mode: Multiply",
-        BlendMode::Screen => "Blend mode: Screen",
-        BlendMode::Overlay => "Blend mode: Overlay",
-    };
-    option_selectable(ui, current == mode, blend_mode_label(mode), accessible)
+fn line_cap_items() -> [StripComboItem<LineCap>; 3] {
+    [
+        StripComboItem::new(LineCap::Flat, "None", "Start cap: None", true),
+        StripComboItem::new(LineCap::Rounded, "Rounded", "Start cap: Rounded", true),
+        StripComboItem::new(LineCap::Arrow, "Arrow", "Start cap: Arrow", true),
+    ]
 }
 
-/// The `Blend Mode:` group shared by the fill, gradient, and text tool options.
-fn tool_blend_mode_row(ui: &mut egui::Ui, current: &mut BlendMode) {
-    ui.label("Blend Mode");
-    for mode in blend_modes() {
-        if tool_blend_mode_option(ui, *current, mode) {
-            *current = mode;
-        }
-    }
+fn end_cap_items() -> [StripComboItem<LineCap>; 3] {
+    [
+        StripComboItem::new(LineCap::Flat, "None", "End cap: None", true),
+        StripComboItem::new(LineCap::Rounded, "Rounded", "End cap: Rounded", true),
+        StripComboItem::new(LineCap::Arrow, "Arrow", "End cap: Arrow", true),
+    ]
+}
+
+fn gradient_type_items() -> [StripComboItem<GradientType>; 5] {
+    [
+        StripComboItem::new(
+            GradientType::Linear,
+            "Linear",
+            "Gradient type: Linear",
+            true,
+        ),
+        StripComboItem::new(
+            GradientType::Reflected,
+            "Reflected",
+            "Gradient type: Reflected",
+            true,
+        ),
+        StripComboItem::new(
+            GradientType::Diamond,
+            "Diamond",
+            "Gradient type: Diamond",
+            true,
+        ),
+        StripComboItem::new(
+            GradientType::Radial,
+            "Radial",
+            "Gradient type: Radial",
+            true,
+        ),
+        StripComboItem::new(
+            GradientType::Conical,
+            "Conical",
+            "Gradient type: Conical",
+            true,
+        ),
+    ]
 }
 
 fn blend_mode_label(mode: paint_document::BlendMode) -> &'static str {
@@ -8106,12 +8453,6 @@ fn disabled_effect_item(ui: &mut egui::Ui, label: &str) {
         .on_disabled_hover_text("Not implemented in the Paint.R preview");
 }
 
-fn labeled_button(ui: &mut egui::Ui, text: &str, label: &'static str) -> egui::Response {
-    let response = ui.button(text);
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
-    response.on_hover_text(label)
-}
-
 /// Averages straight-alpha BGRA pixels over `rect` using premultiplied alpha, matching
 /// Paint.NET's Color Picker average sample.
 fn average_surface_color(surface: &Surface, rect: Rect) -> Result<Bgra, String> {
@@ -8150,27 +8491,6 @@ fn average_surface_color(surface: &Surface, rect: Rect) -> Result<Bgra, String> 
         channel(red_sum),
         (alpha_sum / count as f64).round().clamp(0.0, 255.0) as u8,
     ))
-}
-
-/// One wrapped Tool Options row with a small indent, so grouped tools stay scannable.
-fn tool_option_row(ui: &mut egui::Ui, draw: impl FnOnce(&mut egui::Ui)) {
-    ui.horizontal_wrapped(|ui| {
-        ui.add_space(10.0);
-        draw(ui);
-    });
-}
-
-/// A selectable option whose accessible name includes its group, for unambiguous testing.
-fn option_selectable(
-    ui: &mut egui::Ui,
-    selected: bool,
-    text: &str,
-    accessible: &'static str,
-) -> bool {
-    let response = ui.selectable_label(selected, text);
-    response
-        .widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, accessible));
-    response.clicked()
 }
 
 fn default_session() -> AppSession {

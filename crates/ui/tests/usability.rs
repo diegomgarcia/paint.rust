@@ -65,6 +65,12 @@ fn click(harness: &mut Harness<'_, PaintApp>, label: &str) {
     harness.run();
 }
 
+fn choose_combo(harness: &mut Harness<'_, PaintApp>, combo: &str, option: &str) {
+    harness.get_by_role_and_label(Role::ComboBox, combo).click();
+    harness.run();
+    click(harness, option);
+}
+
 fn set_slider(harness: &mut Harness<'_, PaintApp>, label: &str, value: f64) {
     harness
         .get_by_role_and_label(Role::Slider, label)
@@ -73,7 +79,7 @@ fn set_slider(harness: &mut Harness<'_, PaintApp>, label: &str, value: f64) {
 }
 
 fn replace_field(harness: &mut Harness<'_, PaintApp>, label: &str, text: &str) {
-    if label == "Text content" {
+    if label == "Content" {
         let field = harness.get_by_role(Role::MultilineTextInput);
         field.click();
         harness.run();
@@ -391,17 +397,15 @@ fn selection_tools_expose_combine_modes_and_magic_wand_sampling() {
             harness.get_by_role_and_label(Role::Button, mode);
         }
     }
-    harness.get_by_role_and_label(Role::Button, "Active Layer");
-    assert!(
-        harness
-            .get_all_by_role_and_label(Role::Button, "Image")
-            .count()
-            >= 1,
-        "the magic wand offers Image sampling"
-    );
-    harness.get_by_role_and_label(Role::Label, "Sampling");
-    harness.get_by_role_and_label(Role::Label, "Flood Mode");
-    harness.get_by_role_and_label(Role::Label, "Tolerance");
+    harness.get_by_role_and_label(Role::ComboBox, "Flood mode");
+    harness.get_by_role_and_label(Role::ComboBox, "Sampling");
+    harness.get_by_label("Tolerance");
+    harness
+        .get_by_role_and_label(Role::ComboBox, "Sampling")
+        .click();
+    harness.run();
+    harness.get_by_role_and_label(Role::Button, "Sampling: Active Layer");
+    harness.get_by_role_and_label(Role::Button, "Sampling: Image");
 }
 
 #[test]
@@ -409,10 +413,10 @@ fn union_combine_mode_paints_a_combined_rectangle_selection() {
     let mut harness = app();
     click(&mut harness, "Rectangle Select");
     click(&mut harness, "Selection fields");
-    replace_field(&mut harness, "Selection left", "0");
-    replace_field(&mut harness, "Selection top", "0");
-    replace_field(&mut harness, "Selection right", "2");
-    replace_field(&mut harness, "Selection bottom", "2");
+    replace_field(&mut harness, "Left", "0");
+    replace_field(&mut harness, "Top", "0");
+    replace_field(&mut harness, "Right", "2");
+    replace_field(&mut harness, "Bottom", "2");
     click(&mut harness, "Apply selection");
     assert_eq!(
         harness.state().session().document().selection(),
@@ -420,7 +424,7 @@ fn union_combine_mode_paints_a_combined_rectangle_selection() {
     );
 
     click(&mut harness, "Union");
-    replace_field(&mut harness, "Selection right", "4");
+    replace_field(&mut harness, "Right", "4");
     click(&mut harness, "Apply selection");
     assert_eq!(
         harness.state().session().document().selection(),
@@ -581,7 +585,7 @@ fn rectangle_shape_tool_drag_fills_and_remains_undoable() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Shapes");
-    click(&mut harness, "Fill");
+    choose_combo(&mut harness, "Fill style", "Fill style: Fill");
     let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
     let rect = canvas.rect();
     harness.drag_at(rect.min + egui::vec2(5.0, 6.0));
@@ -617,7 +621,9 @@ fn zoom_tool_click_changes_canvas_zoom_without_editing() {
     let canvas = harness.get_by_role_and_label(Role::Image, "Composed document canvas");
     canvas.click();
     harness.run();
-    assert!(harness.get_all_by_label("125%").count() >= 2);
+    assert_eq!(harness.state().zoom(), 1.25);
+    harness.get_by_role_and_label(Role::ComboBox, "Zoom");
+    harness.get_by_label("125%");
     assert!(!harness.state().session().dirty());
 }
 
@@ -1155,8 +1161,8 @@ fn line_and_ellipse_shapes_fill_pixels_without_setting_a_selection() {
     click(&mut harness, "Undo");
 
     click(&mut harness, "Shapes");
-    click(&mut harness, "Fill");
-    click(&mut harness, "Ellipse");
+    choose_combo(&mut harness, "Fill style", "Fill style: Fill");
+    choose_combo(&mut harness, "Shape type", "Shape type: Ellipse");
     drag_canvas(&mut harness, egui::vec2(10.0, 10.0), egui::vec2(30.0, 30.0));
     let session = harness.state().session();
     let surface = session.document().active_layer().surface();
@@ -2258,7 +2264,7 @@ fn effects_menu_uses_paint_net_groups_and_applies_real_effects_undoably() {
     );
 
     click(&mut harness, "Shapes");
-    click(&mut harness, "Fill");
+    choose_combo(&mut harness, "Fill style", "Fill style: Fill");
     drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(14.0, 15.0));
     menu_item(&mut harness, "Effects", "Blurs");
     harness.get_by_role_and_label(Role::Button, "Gaussian Blur…");
@@ -2857,19 +2863,25 @@ fn text_and_clone_stamp_are_enabled_with_target_specific_options() {
     }
 
     click(&mut harness, "Text");
-    harness.get_by_label("Text content");
-    harness.get_by_label("Font family");
-    harness.get_by_label("Font size");
-    harness.get_by_label("Bold");
-    harness.get_by_label("Italic");
-    harness.get_by_label("Antialiasing");
+    harness.get_by_label("Content");
+    harness.get_by_role_and_label(Role::ComboBox, "Font family");
+    harness.get_by_label("Size");
+    for label in ["Bold", "Italic", "Antialiasing"] {
+        harness.get_by_role_and_label(Role::Button, label);
+    }
     harness.get_by_role_and_label(Role::Button, "Place text");
     harness.get_by_role_and_label(Role::Button, "Cancel text");
+    assert!(
+        harness
+            .query_by_label_contains("Alt-click to set source")
+            .is_none(),
+        "the strip must not contain instructional sentences"
+    );
 
     click(&mut harness, "Clone Stamp");
     harness.get_by_label("Hardness");
     harness.get_by_role_and_label(Role::Button, "Clear clone source");
-    harness.get_by_label_contains("Alt-click to set source");
+    harness.get_by_label("No source");
 }
 
 #[test]
@@ -2883,7 +2895,7 @@ fn text_tool_previews_commits_and_undoes_real_layer_pixels() {
         canvas_dbg.rect(),
         harness.state().tools_window_bounds()
     );
-    replace_field(&mut harness, "Text content", "Ag");
+    replace_field(&mut harness, "Content", "Ag");
     let before = harness
         .state()
         .session()
@@ -2960,7 +2972,7 @@ fn text_preview_clips_to_the_selection_and_style_flags_restyle_it() {
     click(&mut harness, "Rectangle Select");
     drag_canvas(&mut harness, egui::vec2(6.0, 6.0), egui::vec2(46.0, 60.0));
     click(&mut harness, "Text");
-    replace_field(&mut harness, "Text content", "MM");
+    replace_field(&mut harness, "Content", "MM");
     click_canvas_at(&mut harness, egui::vec2(8.0, 8.0));
     harness.run();
 
@@ -3132,7 +3144,7 @@ fn text_cancel_discards_the_preview_and_tool_switch_commits_it() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Text");
-    replace_field(&mut harness, "Text content", "Hi");
+    replace_field(&mut harness, "Content", "Hi");
     let before = harness
         .state()
         .session()
@@ -3350,7 +3362,7 @@ fn magic_wand_click_selects_a_contiguous_region_and_undo_keeps_the_mask() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Shapes");
-    click(&mut harness, "Fill");
+    choose_combo(&mut harness, "Fill style", "Fill style: Fill");
     drag_canvas(&mut harness, egui::vec2(20.0, 0.0), egui::vec2(30.0, 599.0));
 
     let dirty_before = harness.state().session().dirty();
@@ -3777,7 +3789,7 @@ fn brush_options_expose_paint_net_hardness_spacing_and_size_defaults() {
     assert_eq!(harness.state().brush_spacing(), 15);
     harness.get_by_label("Hardness");
     harness.get_by_label("Spacing");
-    harness.get_by_label("Width");
+    harness.get_by_label("Size");
 
     click(&mut harness, "Eraser");
     harness.get_by_label("Hardness");
@@ -3836,11 +3848,22 @@ fn shape_options_support_outline_fill_both_and_border_width() {
     click(&mut harness, "Shapes");
     assert_eq!(harness.state().shape_style(), ShapeStyle::Outline);
     assert_eq!(harness.state().shape_border_width(), 2);
-    harness.get_by_label("Fill style");
-    harness.get_by_label("Border width");
-    for label in ["Outline", "Fill", "Both", "Rectangle", "Ellipse"] {
+    harness.get_by_role_and_label(Role::ComboBox, "Shape type");
+    harness.get_by_role_and_label(Role::ComboBox, "Fill style");
+    harness.get_by_label("Border");
+    choose_combo(&mut harness, "Shape type", "Shape type: Rectangle");
+    harness
+        .get_by_role_and_label(Role::ComboBox, "Fill style")
+        .click();
+    harness.run();
+    for label in [
+        "Fill style: Outline",
+        "Fill style: Fill",
+        "Fill style: Both",
+    ] {
         harness.get_by_role_and_label(Role::Button, label);
     }
+    click(&mut harness, "Fill style: Outline");
 
     drag_canvas(&mut harness, egui::vec2(5.0, 5.0), egui::vec2(15.0, 15.0));
     {
@@ -3862,7 +3885,7 @@ fn shape_options_support_outline_fill_both_and_border_width() {
     }
     click(&mut harness, "Undo");
 
-    click(&mut harness, "Both");
+    choose_combo(&mut harness, "Fill style", "Fill style: Both");
     drag_canvas(&mut harness, egui::vec2(5.0, 5.0), egui::vec2(15.0, 15.0));
     let surface = harness
         .state()
@@ -3908,23 +3931,30 @@ fn gradient_options_select_shape_and_repeat_modes() {
     click(&mut harness, "Gradient");
     assert_eq!(harness.state().gradient_type(), GradientType::Linear);
     assert_eq!(harness.state().gradient_repeat(), GradientRepeat::None);
-    harness.get_by_label("Gradient type");
-    harness.get_by_label("Repeat mode");
-    for label in ["Linear", "Reflected", "Diamond", "Radial", "Conical"] {
+    harness.get_by_role_and_label(Role::ComboBox, "Gradient type");
+    harness.get_by_role_and_label(Role::ComboBox, "Repeat mode");
+    harness
+        .get_by_role_and_label(Role::ComboBox, "Gradient type")
+        .click();
+    harness.run();
+    for label in [
+        "Gradient type: Linear",
+        "Gradient type: Reflected",
+        "Gradient type: Diamond",
+        "Gradient type: Radial",
+        "Gradient type: Conical",
+    ] {
         harness.get_by_role_and_label(Role::Button, label);
     }
-    for label in ["No Repeat", "Repeat"] {
+    click(&mut harness, "Gradient type: Linear");
+    harness
+        .get_by_role_and_label(Role::ComboBox, "Repeat mode")
+        .click();
+    harness.run();
+    for label in ["Repeat mode: No Repeat", "Repeat mode: Repeat"] {
         harness.get_by_role_and_label(Role::Button, label);
     }
-
-    let repeat_center = harness
-        .get_by_role_and_label(Role::Button, "Repeat")
-        .rect()
-        .center();
-    harness.drag_at(repeat_center);
-    harness.run();
-    harness.drop_at(repeat_center);
-    harness.run();
+    click(&mut harness, "Repeat mode: Repeat");
     assert_eq!(harness.state().gradient_repeat(), GradientRepeat::Repeat);
     drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(25.0, 6.0));
     {
@@ -3943,7 +3973,7 @@ fn gradient_options_select_shape_and_repeat_modes() {
     }
     click(&mut harness, "Undo");
 
-    click(&mut harness, "No Repeat");
+    choose_combo(&mut harness, "Repeat mode", "Repeat mode: No Repeat");
     drag_canvas(&mut harness, egui::vec2(5.0, 6.0), egui::vec2(25.0, 6.0));
     assert_eq!(
         *harness
@@ -3959,7 +3989,7 @@ fn gradient_options_select_shape_and_repeat_modes() {
     );
     click(&mut harness, "Undo");
 
-    click(&mut harness, "Reflected");
+    choose_combo(&mut harness, "Gradient type", "Gradient type: Reflected");
     assert_eq!(harness.state().gradient_type(), GradientType::Reflected);
     drag_canvas(&mut harness, egui::vec2(10.0, 20.0), egui::vec2(20.0, 20.0));
     let reflected = *harness
@@ -4121,7 +4151,7 @@ fn command_d_deselects_everything() {
 
 fn fill_contrast_rectangle(harness: &mut Harness<'_, PaintApp>) {
     click(harness, "Shapes");
-    click(harness, "Fill");
+    choose_combo(harness, "Fill style", "Fill style: Fill");
     drag_canvas(harness, egui::vec2(5.0, 6.0), egui::vec2(14.0, 15.0));
 }
 

@@ -20,6 +20,12 @@ fn click(harness: &mut Harness<'_, PaintApp>, label: &str) {
     harness.run();
 }
 
+fn choose_combo(harness: &mut Harness<'_, PaintApp>, combo: &str, option: &str) {
+    harness.get_by_role_and_label(Role::ComboBox, combo).click();
+    harness.run();
+    click(harness, option);
+}
+
 fn replace_field(harness: &mut Harness<'_, PaintApp>, label: &str, text: &str) {
     harness.get_by_label(label).click();
     harness.run();
@@ -106,17 +112,21 @@ fn color_picker_switches_to_the_previous_tool_when_configured() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Paintbrush");
-    harness.get_by_label("Width");
+    harness.get_by_label("Size");
     click(&mut harness, "Color Picker");
     assert!(
-        harness.query_by_label("Width").is_none(),
+        harness.query_by_label("Size").is_none(),
         "the picker must replace the paintbrush options"
     );
-    click(&mut harness, "Switch to previous tool");
+    choose_combo(
+        &mut harness,
+        "Click behavior",
+        "Click behavior: Switch to previous tool",
+    );
     click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
 
     // Paintbrush is active again only when its Tool Options row is rendered.
-    harness.get_by_label("Width");
+    harness.get_by_label("Size");
     assert_eq!(harness.state().fill_color(), Bgra::WHITE);
 }
 
@@ -127,7 +137,11 @@ fn color_picker_keeps_picking_when_configured_not_to_switch() {
     click(&mut harness, "Pencil");
     drag_canvas(&mut harness, egui::vec2(10.0, 10.0), egui::vec2(11.0, 10.0));
     click(&mut harness, "Color Picker");
-    click(&mut harness, "Do not switch");
+    choose_combo(
+        &mut harness,
+        "Click behavior",
+        "Click behavior: Do not switch",
+    );
 
     click_canvas_at(&mut harness, egui::vec2(10.0, 10.0));
     assert_eq!(harness.state().fill_color(), Bgra::BLACK);
@@ -143,7 +157,7 @@ fn color_picker_samples_the_active_layer_or_the_composed_image() {
     click(&mut harness, "Add Layer");
     click(&mut harness, "Color Picker");
 
-    click(&mut harness, "Layer");
+    choose_combo(&mut harness, "Sampling", "Sampling: Layer");
     click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
     assert_eq!(
         harness.state().fill_color(),
@@ -151,7 +165,7 @@ fn color_picker_samples_the_active_layer_or_the_composed_image() {
         "the new active layer is transparent; layer sampling must not see the white background"
     );
 
-    click(&mut harness, "Composed image");
+    choose_combo(&mut harness, "Sampling", "Sampling: Composed image");
     click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
     assert_eq!(
         harness.state().fill_color(),
@@ -170,13 +184,13 @@ fn color_picker_average_sample_uses_neighbouring_pixels() {
     assert_eq!(pixel(&harness, 11, 10), Bgra::BLACK);
 
     click(&mut harness, "Color Picker");
-    click(&mut harness, "3×3 average");
+    choose_combo(&mut harness, "Sample size", "Sample size: 3×3 average");
     // The 3x3 neighbourhood around (10, 10) contains two black pixels and seven white
     // ones: round((7 * 255) / 9) = 198.
     click_canvas_at(&mut harness, egui::vec2(10.0, 10.0));
     assert_eq!(harness.state().fill_color(), Bgra::new(198, 198, 198, 255));
 
-    click(&mut harness, "5×5 average");
+    choose_combo(&mut harness, "Sample size", "Sample size: 5×5 average");
     // Five by five contains the same two black pixels and twenty-three white ones:
     // round((23 * 255) / 25) = 235.
     click_canvas_at(&mut harness, egui::vec2(10.0, 10.0));
@@ -189,31 +203,44 @@ fn line_tool_options_expose_grouped_caps_dash_and_width() {
     dock_tools(&mut harness);
     click(&mut harness, "Line / Curve");
 
-    for label in ["Width", "Start cap", "Dash style", "End cap"] {
-        harness.get_by_label(label);
+    harness.get_by_label("Width");
+    for label in ["Start cap", "Dash style", "End cap"] {
+        harness.get_by_role_and_label(Role::ComboBox, label);
     }
-    harness.get_by_role_and_label(Role::Label, "Primary color");
-    for label in [
-        "Start cap: None",
-        "Start cap: Rounded",
-        "Start cap: Arrow",
-        "Dash style: Solid",
-        "Dash style: Dash",
-        "Dash style: Dot",
-        "End cap: None",
-        "End cap: Rounded",
-        "End cap: Arrow",
+    harness.get_by_role_and_label(Role::Label, "Line color");
+    for (combo, options) in [
+        (
+            "Start cap",
+            ["Start cap: None", "Start cap: Rounded", "Start cap: Arrow"],
+        ),
+        (
+            "Dash style",
+            ["Dash style: Solid", "Dash style: Dash", "Dash style: Dot"],
+        ),
+        (
+            "End cap",
+            ["End cap: None", "End cap: Rounded", "End cap: Arrow"],
+        ),
     ] {
-        harness.get_by_role_and_label(Role::Button, label);
+        harness.get_by_role_and_label(Role::ComboBox, combo).click();
+        harness.run();
+        for option in options {
+            harness.get_by_role_and_label(Role::Button, option);
+        }
+        click(&mut harness, options[0]);
     }
 
-    // Grouped rows: the cap controls render below the width/color row.
+    // Compact single row: every line control shares one 24 px-high strip row.
     let width = harness.get_by_label("Width").rect();
-    let start_cap = harness.get_by_label("Start cap").rect();
+    let start_cap = harness
+        .get_by_role_and_label(Role::ComboBox, "Start cap")
+        .rect();
     assert!(
-        start_cap.top() > width.top() + 4.0,
-        "line options should group caps on their own row: width={width:?} cap={start_cap:?}"
+        (start_cap.center().y - width.center().y).abs() <= 2.0,
+        "line options must share the compact strip row: width={width:?} cap={start_cap:?}"
     );
+    let strip = harness.state().tool_options_bounds().expect("strip bounds");
+    assert!(strip.height() <= 40.0, "strip is too tall: {strip:?}");
 }
 
 #[test]
@@ -230,8 +257,8 @@ fn line_rounded_and_arrow_caps_paint_real_pixels() {
         "flat start cap must not extend past the endpoint"
     );
 
-    click(&mut harness, "Start cap: Rounded");
-    click(&mut harness, "End cap: Rounded");
+    choose_combo(&mut harness, "Start cap", "Start cap: Rounded");
+    choose_combo(&mut harness, "End cap", "End cap: Rounded");
     drag_canvas(&mut harness, egui::vec2(20.0, 20.0), egui::vec2(30.0, 20.0));
     assert_eq!(
         pixel(&harness, 19, 20),
@@ -239,8 +266,8 @@ fn line_rounded_and_arrow_caps_paint_real_pixels() {
         "rounded start cap must paint a disc past the endpoint"
     );
 
-    click(&mut harness, "Start cap: None");
-    click(&mut harness, "End cap: Arrow");
+    choose_combo(&mut harness, "Start cap", "Start cap: None");
+    choose_combo(&mut harness, "End cap", "End cap: Arrow");
     drag_canvas(&mut harness, egui::vec2(20.0, 60.0), egui::vec2(30.0, 60.0));
     assert_eq!(
         pixel(&harness, 26, 63),
@@ -272,7 +299,7 @@ fn line_dash_and_dot_styles_leave_real_gaps() {
         );
     }
 
-    click(&mut harness, "Dash style: Dash");
+    choose_combo(&mut harness, "Dash style", "Dash style: Dash");
     drag_canvas(&mut harness, egui::vec2(20.0, 30.0), egui::vec2(40.0, 30.0));
     // 1 px pen, GDI-style 3:1 dash pattern measured from the first endpoint.
     for x in [20, 21, 22, 24, 25, 26] {
@@ -280,7 +307,7 @@ fn line_dash_and_dot_styles_leave_real_gaps() {
     }
     assert_eq!(pixel(&harness, 23, 30), Bgra::WHITE, "dash gap at x=23");
 
-    click(&mut harness, "Dash style: Dot");
+    choose_combo(&mut harness, "Dash style", "Dash style: Dot");
     drag_canvas(&mut harness, egui::vec2(20.0, 40.0), egui::vec2(40.0, 40.0));
     for x in [20, 22, 24] {
         assert_eq!(pixel(&harness, x, 40), Bgra::BLACK, "dot on at x={x}");
@@ -391,11 +418,6 @@ fn move_selection_numeric_offsets_apply_and_cancel() {
 // --- Tool Options parity batch: fill sampling/blend, gradient blend/alpha, picker sizes,
 // text alignment, and clone spacing ---
 
-fn click_checkbox(harness: &mut Harness<'_, PaintApp>, label: &str) {
-    harness.get_by_role_and_label(Role::CheckBox, label).click();
-    harness.run();
-}
-
 fn pixel_at(harness: &Harness<'_, PaintApp>, x: u32, y: u32) -> Bgra {
     *harness
         .state()
@@ -430,7 +452,7 @@ fn fill_sampling_switches_between_the_layer_and_the_composed_image() {
     replace_field(&mut harness, "Hex color", "#00FF00");
     click(&mut harness, "Paint Bucket");
 
-    click(&mut harness, "Sampling: Layer");
+    choose_combo(&mut harness, "Sampling", "Sampling: Layer");
     click_canvas_at(&mut harness, egui::vec2(400.0, 100.0));
     assert_eq!(
         pixel_at(&harness, 400, 100),
@@ -444,7 +466,7 @@ fn fill_sampling_switches_between_the_layer_and_the_composed_image() {
     );
 
     click(&mut harness, "Undo");
-    click(&mut harness, "Sampling: Image");
+    choose_combo(&mut harness, "Sampling", "Sampling: Image");
     click_canvas_at(&mut harness, egui::vec2(400.0, 100.0));
     assert_eq!(
         pixel_at(&harness, 400, 100),
@@ -469,7 +491,7 @@ fn fill_blend_mode_blends_into_the_active_layer() {
     assert_eq!(pixel_at(&harness, 400, 300), Bgra::new(128, 128, 128, 255));
 
     replace_field(&mut harness, "Hex color", "#FF0000");
-    click(&mut harness, "Blend mode: Multiply");
+    choose_combo(&mut harness, "Blend mode", "Blend mode: Multiply");
     click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
     assert_eq!(
         pixel_at(&harness, 400, 300),
@@ -493,7 +515,7 @@ fn gradient_blend_mode_and_transparency_only_affect_committed_pixels() {
 
     replace_field(&mut harness, "Hex color", "#FF0000");
     click(&mut harness, "Gradient");
-    click(&mut harness, "Blend mode: Multiply");
+    choose_combo(&mut harness, "Blend mode", "Blend mode: Multiply");
     drag_canvas(
         &mut harness,
         egui::vec2(100.0, 300.0),
@@ -506,8 +528,8 @@ fn gradient_blend_mode_and_transparency_only_affect_committed_pixels() {
     );
 
     click(&mut harness, "Undo");
-    click(&mut harness, "Blend mode: Normal");
-    click_checkbox(&mut harness, "Transparency only");
+    choose_combo(&mut harness, "Blend mode", "Blend mode: Normal");
+    click(&mut harness, "Transparency only");
     assert!(harness.state().gradient_alpha_only());
     drag_canvas(
         &mut harness,
@@ -538,7 +560,7 @@ fn color_picker_offers_real_11_31_and_51_pixel_averages() {
     );
     click(&mut harness, "Color Picker");
 
-    click(&mut harness, "11×11 average");
+    choose_combo(&mut harness, "Sample size", "Sample size: 11×11 average");
     click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
     assert_eq!(
         harness.state().fill_color(),
@@ -546,7 +568,7 @@ fn color_picker_offers_real_11_31_and_51_pixel_averages() {
         "11×11 contains 11 black pixels out of 121"
     );
 
-    click(&mut harness, "31×31 average");
+    choose_combo(&mut harness, "Sample size", "Sample size: 31×31 average");
     click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
     assert_eq!(
         harness.state().fill_color(),
@@ -554,7 +576,7 @@ fn color_picker_offers_real_11_31_and_51_pixel_averages() {
         "31×31 contains 21 black pixels out of 961"
     );
 
-    click(&mut harness, "51×51 average");
+    choose_combo(&mut harness, "Sample size", "Sample size: 51×51 average");
     click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
     assert_eq!(
         harness.state().fill_color(),
@@ -610,7 +632,7 @@ fn text_alignment_moves_committed_glyph_ink() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Text");
-    replace_field(&mut harness, "Text content", "M");
+    replace_field(&mut harness, "Content", "M");
     click_canvas_at(&mut harness, egui::vec2(400.0, 300.0));
     click(&mut harness, "Place text");
     let (_, left_max) = text_ink_bounds(&harness);
@@ -640,7 +662,7 @@ fn recolor_sampling_reads_the_layer_or_the_composed_image() {
     replace_field(&mut harness, "Hex color", "#00FF00");
     click(&mut harness, "Recolor");
 
-    click(&mut harness, "Sampling: Layer");
+    choose_combo(&mut harness, "Sampling", "Sampling: Layer");
     drag_canvas(
         &mut harness,
         egui::vec2(400.0, 300.0),
@@ -652,7 +674,7 @@ fn recolor_sampling_reads_the_layer_or_the_composed_image() {
         "the transparent active layer has no white target pixels"
     );
 
-    click(&mut harness, "Sampling: Image");
+    choose_combo(&mut harness, "Sampling", "Sampling: Image");
     drag_canvas(
         &mut harness,
         egui::vec2(400.0, 300.0),

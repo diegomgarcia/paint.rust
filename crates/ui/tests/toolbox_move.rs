@@ -42,6 +42,12 @@ fn click(harness: &mut Harness<'_, PaintApp>, label: &str) {
     harness.run();
 }
 
+fn choose_combo(harness: &mut Harness<'_, PaintApp>, combo: &str, option: &str) {
+    harness.get_by_role_and_label(Role::ComboBox, combo).click();
+    harness.run();
+    click(harness, option);
+}
+
 fn dock_tools(harness: &mut Harness<'_, PaintApp>) {
     harness
         .get_by_role_and_label(Role::Button, "Window")
@@ -241,7 +247,20 @@ fn move_options_expose_reference_sampling_choices_and_default() {
     dock_tools(&mut harness);
     click(&mut harness, "Move Selected Pixels");
 
-    harness.get_by_label("Sampling:");
+    let sampling = harness.get_by_role_and_label(Role::ComboBox, "Sampling");
+    let finish = harness.get_by_role_and_label(Role::Button, "Finish");
+    assert!(
+        sampling.rect().left() < finish.rect().left(),
+        "the sampling section must precede Finish in reference ToolConfigStrip order"
+    );
+    let strip = harness.state().tool_options_bounds().expect("strip bounds");
+    assert!(
+        strip.height() <= 40.0,
+        "the Move strip must stay on one compact row: {strip:?}"
+    );
+
+    sampling.click();
+    harness.run();
     for label in [
         "Nearest Neighbor",
         "Bilinear",
@@ -256,18 +275,9 @@ fn move_options_expose_reference_sampling_choices_and_default() {
         "Anisotropic must be disabled instead of approximated"
     );
     assert_eq!(harness.state().move_resample_mode_label(), "Bicubic");
-    assert!(
-        harness.get_by_label("Sampling:").rect().left()
-            < harness
-                .get_by_role_and_label(Role::Button, "Finish")
-                .rect()
-                .left(),
-        "the sampling section must precede Finish in reference ToolConfigStrip order"
-    );
-
     click(&mut harness, "Bilinear");
     assert_eq!(harness.state().move_resample_mode_label(), "Bilinear");
-    click(&mut harness, "Nearest Neighbor");
+    choose_combo(&mut harness, "Sampling", "Nearest Neighbor");
     assert_eq!(
         harness.state().move_resample_mode_label(),
         "Nearest Neighbor"
@@ -329,7 +339,11 @@ fn fractional_move_really_resamples_with_the_selected_mode() {
     let mut harness = app();
     dock_tools(&mut harness);
     click(&mut harness, "Shapes");
-    click(&mut harness, "Fill");
+    harness
+        .get_by_role_and_label(Role::ComboBox, "Fill style")
+        .click();
+    harness.run();
+    click(&mut harness, "Fill style: Fill");
     drag_canvas(&mut harness, egui::vec2(10.0, 10.0), egui::vec2(30.0, 20.0));
     assert_eq!(pixel(&harness, 30, 15), Bgra::BLACK);
 
@@ -343,7 +357,7 @@ fn fractional_move_really_resamples_with_the_selected_mode() {
     harness.run();
 
     // dest 31 samples source 30.5: Bilinear halves the black/white edge.
-    click(&mut harness, "Bilinear");
+    choose_combo(&mut harness, "Sampling", "Bilinear");
     assert_eq!(
         pixel(&harness, 31, 15),
         Bgra::new(128, 128, 128, 255),
@@ -351,7 +365,7 @@ fn fractional_move_really_resamples_with_the_selected_mode() {
     );
 
     // Nearest snaps dest 31 to source 31, which is white.
-    click(&mut harness, "Nearest Neighbor");
+    choose_combo(&mut harness, "Sampling", "Nearest Neighbor");
     assert_eq!(
         pixel(&harness, 31, 15),
         Bgra::WHITE,
