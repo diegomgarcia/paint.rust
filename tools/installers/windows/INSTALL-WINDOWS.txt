@@ -1,0 +1,56 @@
+Paint.Rust - Windows x86_64 development preview
+================================================
+
+Paint.Rust is an early development preview of a native Paint.NET-inspired image
+editor. This build is for 64-bit Windows (x86_64).
+
+UNSIGNED BUILD
+--------------
+
+This application and this installer are unsigned. No Authenticode signature,
+certificate, timestamp, or SmartScreen reputation is provided or claimed.
+Windows SmartScreen or an organization policy may warn about or block the
+installer and the application. No signing step is part of this build.
+
+INSTALLATION
+------------
+
+The installer runs with administrator approval and installs for all users in:
+
+    C:\Program Files\Paint.Rust
+
+It creates:
+
+  - paint-ui.exe, the application
+  - INSTALL-WINDOWS.txt, this file
+  - LICENSE, the Paint.Rust MIT license
+  - uninstall.exe
+  - a Paint.Rust folder in the Start Menu with application and uninstall links
+  - optionally, a Paint.Rust shortcut on the desktop (unchecked by default)
+
+To uninstall, open Settings > Apps > Installed apps, select Paint.Rust and
+choose Uninstall. You can also use the Start Menu uninstall shortcut.
+
+USER DATA
+---------
+
+Your documents and per-user settings are not stored in the installation folder.
+Uninstall removes only the application files, shortcuts, and registry entries
+created by this installer. It never deletes saved images, PDR/PDN files, or
+files in your user profile. The install directory is removed only when it is
+empty, so files you place there are preserved.
+
+SCOPE AND LIMITATIONS
+---------------------
+
+  - Unsigned, per-machine development preview; no code-signing claim.
+  - Windows x86_64 only; no ARM64, 32-bit, MSI, or store package is supplied.
+  - No automatic updater, background service, telemetry, or file associations.
+  - No claim of complete Paint.NET compatibility or pixel parity.
+  - Save/export capabilities depend on the build; see the project README.
+
+Paint.Rust is MIT-licensed. See the installed LICENSE file and the project:
+https://github.com/diegomgarcia/paint.rust
+
+Paint.NET is a trademark of its respective owner. Paint.Rust is an independent
+project and is not affiliated with or endorsed by the Paint.NET authors.
