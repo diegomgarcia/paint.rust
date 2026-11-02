@@ -97,7 +97,7 @@ jobs:
             --repeat 2 \
             --timeout 30 \
             --distribution internal-preview \
-            --cargo-command bash ./tools/cargo-pinned.sh
+            --cargo-command rustup run 1.95.0 cargo
           python3 tools/package/preview_package.py \
             --binary "repro-b/release/${binary_name}" \
             --platform "${{ matrix.platform }}" \
@@ -105,5 +105,5 @@ jobs:
             --repeat 2 \
             --timeout 30 \
             --distribution internal-preview \
-            --cargo-command bash ./tools/cargo-pinned.sh
+            --cargo-command rustup run 1.95.0 cargo
           python3 tools/package/verify_reproduction.py ci-dist-a ci-dist-b
