@@ -1,7 +1,7 @@
 # Release status
 
 **Product:** Paint.Rust development preview  
-**Version:** 0.1.x (post-UI-polish `main`)  
+**Version:** 0.1.2 (installer pipeline)  
 **Result:** internal development preview passes the demonstrated local gates; public binary
 distribution remains blocked.
 

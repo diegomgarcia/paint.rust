@@ -45,7 +45,7 @@ description. The honest positioning is "Paint.NET-inspired", not "Paint.NET-comp
 
 ## Suggested first release
 
-Create the `v0.1.1` tag on the current `main` commit.
+Create the `v0.1.2` tag on the current `main` commit.
 
 - Release title: `Paint.Rust 0.1.1 — PDR sessions and multi-format open`
 - Tag: `v0.1.1`

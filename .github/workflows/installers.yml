@@ -380,7 +380,10 @@ jobs:
             echo "release tag $RELEASE_TAG does not match Cargo package version $version" >&2
             exit 1
           fi
-          if [ "$RELEASE_TAG" = "v0.1.1" ]; then
+          if [ -f "docs/releases/${RELEASE_TAG}.md" ]; then
+            title="Paint.Rust ${version} — installers and release automation"
+            cat "docs/releases/${RELEASE_TAG}.md" > release-notes.md
+          elif [ "$RELEASE_TAG" = "v0.1.1" ]; then
             title="Paint.Rust ${version} — PDR sessions and multi-format open"
             cat docs/releases/v0.1.1.md > release-notes.md
           else

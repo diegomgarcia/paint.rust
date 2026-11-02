@@ -7,7 +7,7 @@ A fast, modular image editor written in Rust, inspired by Paint.NET's direct, to
 [![CI](https://github.com/diegomgarcia/paint.rust/actions/workflows/ci.yml/badge.svg)](https://github.com/diegomgarcia/paint.rust/actions/workflows/ci.yml)
 [![Installers](https://github.com/diegomgarcia/paint.rust/actions/workflows/installers.yml/badge.svg)](https://github.com/diegomgarcia/paint.rust/actions/workflows/installers.yml)
 ![Rust](https://img.shields.io/badge/Rust-1.95-orange?logo=rust)
-![Version](https://img.shields.io/badge/version-0.1.1-blue)
+![Version](https://img.shields.io/badge/version-0.1.2-blue)
 ![Status](https://img.shields.io/badge/status-development%20preview-yellow)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
