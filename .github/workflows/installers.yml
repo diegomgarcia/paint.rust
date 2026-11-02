@@ -1,0 +1,425 @@
+name: installers
+
+# Builds unsigned development-preview installers and portable archives on every
+# change to main, and publishes them as a GitHub prerelease when a v* tag is
+# pushed. Pull requests are deliberately excluded. A manual workflow_dispatch
+# run only builds artifacts unless it is dispatched on a v* tag (or the tag is
+# pushed) and `publish` is explicitly enabled.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a GitHub prerelease when dispatched on a v* tag"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installers-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  RUST_BACKTRACE: "1"
+  SOURCE_DATE_EPOCH: "946684800"
+
+jobs:
+  installers:
+    name: Installer / ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: macos-aarch64
+            binary: target/release/paint-ui
+            portable_suffix: .zip
+          - os: windows-2022
+            platform: windows-x86_64
+            binary: target/release/paint-ui.exe
+            portable_suffix: .zip
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+            binary: target/release/paint-ui
+            portable_suffix: .tar.gz
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Static installer workflow policy tests
+        run: python3 -m unittest discover -s tools/installers/tests -p 'test_workflow.py' -v
+      - name: Install Linux native libraries for eframe and wgpu
+        if: matrix.platform == 'linux-x86_64'
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            libgtk-3-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libx11-xcb-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libgl1-mesa-dev \
+            libegl1-mesa-dev \
+            libvulkan-dev \
+            libssl-dev \
+            pkg-config
+      - name: Install NSIS installer builder
+        if: matrix.platform == 'windows-x86_64'
+        shell: pwsh
+        run: |
+          $nsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS'
+          if (-not (Test-Path (Join-Path $nsis 'makensis.exe'))) {
+            choco install nsis --no-progress -y
+          }
+          if (-not (Test-Path (Join-Path $nsis 'makensis.exe'))) {
+            throw 'NSIS installation did not provide makensis.exe'
+          }
+          $nsis | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        # Registers makensis.exe for the installer step; only the build needs it.
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal
+      - name: Resolve package version and validate release tag
+        id: meta
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import pathlib, tomllib; print(tomllib.loads(pathlib.Path("Cargo.toml").read_text(encoding="utf-8"))["workspace"]["package"]["version"])')"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "refusing unexpected Cargo package version: $version" >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
+            tag="$RELEASE_TAG"
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+              echo "refusing unexpected release tag: $tag" >&2
+              exit 1
+            fi
+            if [ "$tag" != "v${version}" ]; then
+              echo "release tag $tag does not match Cargo package version $version" >&2
+              exit 1
+            fi
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Fetch locked dependencies
+        run: bash ./tools/cargo-pinned.sh fetch --locked
+      - name: Build release paint-ui binary once
+        run: bash ./tools/cargo-pinned.sh build --release --locked --package paint-ui
+      - name: Build portable preview archive
+        env:
+          BINARY: ${{ matrix.binary }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          python3 tools/package/preview_package.py \
+            --binary "$BINARY" \
+            --platform "$PLATFORM" \
+            --output-dir dist-portable \
+            --repeat 2 \
+            --timeout 30 \
+            --distribution internal-preview \
+            --cargo-command bash ./tools/cargo-pinned.sh
+      - name: Verify portable preview archive
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          SUFFIX: ${{ matrix.portable_suffix }}
+        run: |
+          set -eo pipefail
+          shopt -s nullglob
+          archives=(dist-portable/paint-r-*-"${PLATFORM}""${SUFFIX}")
+          if [ "${#archives[@]}" -ne 1 ]; then
+            echo "expected exactly one portable archive for ${PLATFORM}, found ${#archives[@]}" >&2
+            ls -la dist-portable >&2 || true
+            exit 1
+          fi
+          archive="${archives[0]}"
+          if [ ! -s "$archive" ]; then
+            echo "portable archive is empty: $archive" >&2
+            exit 1
+          fi
+          if [ ! -s "${archive}.sha256" ]; then
+            echo "portable archive sidecar is missing: ${archive}.sha256" >&2
+            exit 1
+          fi
+          echo "portable archive: $archive"
+      - name: Build macOS installer
+        if: matrix.platform == 'macos-aarch64'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -eo pipefail
+          shopt -s nullglob
+          archives=(dist-portable/paint-r-*-macos-aarch64.zip)
+          if [ "${#archives[@]}" -ne 1 ]; then
+            echo "expected exactly one macOS portable archive, found ${#archives[@]}" >&2
+            exit 1
+          fi
+          mkdir -p installer-out
+          bash tools/installers/macos/build.sh "$VERSION" "${archives[0]}" "installer-out"
+      - name: Build Windows installer
+        if: matrix.platform == 'windows-x86_64'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path installer-out | Out-Null
+          pwsh -File tools/installers/windows/build.ps1 -Version "$env:VERSION" -BinaryPath "target/release/paint-ui.exe" -OutputDir "installer-out"
+      - name: Build Linux installer
+        if: matrix.platform == 'linux-x86_64'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -eo pipefail
+          mkdir -p installer-out
+          bash tools/installers/linux/build.sh "$VERSION" "target/release/paint-ui" "installer-out"
+      - name: Verify installer files
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -eo pipefail
+          shopt -s nullglob nocaseglob
+          files=(installer-out/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "installer build produced no files in installer-out" >&2
+            exit 1
+          fi
+          case "$PLATFORM" in
+            macos-aarch64) candidates=(installer-out/*.dmg installer-out/*.pkg) ;;
+            windows-x86_64) candidates=(installer-out/*.exe installer-out/*.msi) ;;
+            linux-x86_64) candidates=(installer-out/*.appimage installer-out/*.deb installer-out/*.rpm) ;;
+            *)
+              echo "unknown platform: $PLATFORM" >&2
+              exit 1
+              ;;
+          esac
+          found=0
+          for candidate in "${candidates[@]}"; do
+            if [ -f "$candidate" ] && [ -s "$candidate" ]; then
+              found=$((found + 1))
+              echo "installer: $candidate"
+            fi
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "no expected non-empty installer file found; contents of installer-out:" >&2
+            ls -la installer-out >&2 || true
+            exit 1
+          fi
+      - name: Generate SHA-256 sidecars
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import pathlib
+
+          for root in (pathlib.Path("dist-portable"), pathlib.Path("installer-out")):
+              for path in sorted(candidate for candidate in root.rglob("*") if candidate.is_file()):
+                  if path.name.endswith(".sha256") or path.name == "SHA256SUMS.txt":
+                      continue
+                  sidecar = path.with_name(path.name + ".sha256")
+                  if sidecar.exists():
+                      continue
+                  with path.open("rb") as source:
+                      digest = hashlib.file_digest(source, "sha256").hexdigest()
+                  sidecar.write_text(f"{digest}  {path.name}\n", encoding="utf-8")
+          PY
+      - name: Upload portable archive artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: paint-r-portable-${{ matrix.platform }}
+          path: dist-portable/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: paint-r-installers-${{ matrix.platform }}
+          path: installer-out/
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish unsigned prerelease
+    needs:
+      - installers
+    if: "startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true'))"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Download installers and portable archives from this run
+        run: gh run download "$GITHUB_RUN_ID" --dir release-assets
+      - name: Verify downloaded release assets
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+
+          root = pathlib.Path("release-assets")
+          if not root.is_dir():
+              sys.exit("release-assets directory is missing")
+
+          platforms = ("macos-aarch64", "windows-x86_64", "linux-x86_64")
+          installer_suffixes = {
+              "macos-aarch64": (".dmg", ".pkg"),
+              "windows-x86_64": (".exe", ".msi"),
+              "linux-x86_64": (".appimage", ".deb", ".rpm"),
+          }
+          problems = []
+          assets = []
+
+          def verify_sidecar(path):
+              sidecar = path.with_name(path.name + ".sha256")
+              if not sidecar.is_file():
+                  return f"missing sidecar: {sidecar}"
+              fields = sidecar.read_text(encoding="utf-8").split()
+              if len(fields) < 2:
+                  return f"malformed sidecar: {sidecar}"
+              digest = fields[0].lower()
+              named = pathlib.PurePosixPath(fields[-1].lstrip("*")).name
+              if named != path.name:
+                  return f"sidecar names a different file: {sidecar}"
+              with path.open("rb") as source:
+                  actual = hashlib.file_digest(source, "sha256").hexdigest()
+              if digest != actual:
+                  return f"sidecar digest mismatch: {sidecar}"
+              return None
+
+          for platform in platforms:
+              portable = root / f"paint-r-portable-{platform}"
+              installers = root / f"paint-r-installers-{platform}"
+              if not portable.is_dir():
+                  problems.append(f"missing portable artifact directory: {portable}")
+                  continue
+              if not installers.is_dir():
+                  problems.append(f"missing installer artifact directory: {installers}")
+                  continue
+              archives = [
+                  path
+                  for path in sorted(portable.iterdir())
+                  if path.is_file()
+                  and path.name.startswith("paint-r-")
+                  and path.name.endswith((".zip", ".tar.gz"))
+              ]
+              if len(archives) != 1:
+                  problems.append(f"expected one portable archive for {platform}, found {len(archives)}")
+              for path in sorted(portable.iterdir()):
+                  if not path.is_file() or path.name.endswith(".sha256"):
+                      continue
+                  assets.append(path)
+                  if path in archives and path.stat().st_size == 0:
+                      problems.append(f"empty portable archive: {path}")
+              found_installers = 0
+              for path in sorted(installers.iterdir()):
+                  if not path.is_file() or path.name.endswith(".sha256"):
+                      continue
+                  assets.append(path)
+                  if path.name.lower().endswith(installer_suffixes[platform]):
+                      found_installers += 1
+                      if path.stat().st_size == 0:
+                          problems.append(f"empty installer: {path}")
+                  else:
+                      problems.append(f"unexpected installer file type: {path}")
+              if found_installers == 0:
+                  problems.append(f"no installer file found for {platform}")
+
+          by_name = {}
+          for asset in assets:
+              if asset.name in by_name:
+                  problems.append(f"duplicate release asset name: {asset.name}")
+              by_name[asset.name] = asset
+              if asset.suffix != ".sha256":
+                  sidecar_problem = verify_sidecar(asset)
+                  if sidecar_problem:
+                      problems.append(sidecar_problem)
+
+          if problems:
+              for problem in problems:
+                  print(f"asset verification failed: {problem}", file=sys.stderr)
+              sys.exit(1)
+          print(f"verified {len(assets)} release assets with SHA-256 sidecars")
+          PY
+      - name: Resolve release title and notes
+        id: notes
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import pathlib, tomllib; print(tomllib.loads(pathlib.Path("Cargo.toml").read_text(encoding="utf-8"))["workspace"]["package"]["version"])')"
+          if [ "$RELEASE_TAG" != "v${version}" ]; then
+            echo "release tag $RELEASE_TAG does not match Cargo package version $version" >&2
+            exit 1
+          fi
+          if [ "$RELEASE_TAG" = "v0.1.1" ]; then
+            title="Paint.Rust ${version} — PDR sessions and multi-format open"
+            cat docs/releases/v0.1.1.md > release-notes.md
+          else
+            title="Paint.Rust ${version} — development preview"
+            {
+              printf '# Paint.Rust %s\n\n' "$version"
+              printf 'Development preview of Paint.Rust %s for macOS (Apple silicon), Windows x86_64 and Linux x86_64.\n\n' "$version"
+              printf 'The attached portable archives and installers are unsigned, unnotarized development builds.\n'
+              printf "Build, licensing and support status are documented in \`README.md\` and \`docs/RELEASE_STATUS.md\`.\n"
+            } > release-notes.md
+          fi
+          {
+            printf '\n## Installer downloads\n\n'
+            printf 'Portable archives and installers for macOS (Apple silicon), Windows x86_64 and Linux x86_64.\n'
+            printf "Every asset has a \`.sha256\` sidecar. These are **unsigned, unnotarized development previews**;\n"
+            printf 'macOS Gatekeeper and Windows SmartScreen may warn. No code signing or notarization is claimed.\n'
+          } >> release-notes.md
+          echo "title=${title}" >> "$GITHUB_OUTPUT"
+      - name: Create or update the GitHub prerelease
+        env:
+          RELEASE_TITLE: ${{ steps.notes.outputs.title }}
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "refusing to publish unexpected tag: $tag" >&2
+            exit 1
+          fi
+          assets=()
+          asset_count=0
+          while IFS= read -r asset; do
+            assets+=("$asset")
+            asset_count=$((asset_count + 1))
+          done < <(find release-assets -mindepth 2 -maxdepth 2 -type f -print | sort)
+          if [ "$asset_count" -eq 0 ]; then
+            echo "no release assets found under release-assets" >&2
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "$RELEASE_TITLE" --notes-file release-notes.md --prerelease
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            gh release create "$tag" --title "$RELEASE_TITLE" --notes-file release-notes.md --prerelease --verify-tag "${assets[@]}"
+          fi
