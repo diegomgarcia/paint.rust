@@ -20,7 +20,7 @@ log=$(mktemp "${TMPDIR:-/tmp}/paint-r-native-window.XXXXXX") || exit 1
 "$binary" >"$log" 2>&1 &
 pid=$!
 succeeded=false
-# shellcheck disable=SC2329 # Invoked indirectly by the traps below.
+# shellcheck disable=SC2329,SC2317 # Invoked indirectly by the traps below.
 cleanup() {
   if kill -0 "$pid" 2>/dev/null; then
     kill "$pid" 2>/dev/null

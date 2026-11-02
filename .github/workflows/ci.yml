@@ -55,7 +55,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends shellcheck
       - name: ShellCheck build and native launchers
         if: matrix.os == 'ubuntu-24.04'
-        run: shellcheck --severity=warning tools/cargo-pinned.sh plugin-host/test-cross-language.sh tools/macos_native_window_smoke.sh
+        run: shellcheck tools/cargo-pinned.sh plugin-host/test-cross-language.sh tools/macos_native_window_smoke.sh
       - name: Check formatting
         run: bash ./tools/cargo-pinned.sh fmt --all -- --check
       - name: Clippy
