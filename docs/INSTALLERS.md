@@ -55,13 +55,14 @@ bash tools/installers/linux/build.sh 0.1.1 target/release/paint-ui dist-installe
 
 ## Validation status
 
-- macOS DMG/PKG: real 0.1.1 package built and verified locally with `hdiutil` and `pkgutil`;
-  app is unsigned.
-- Linux DEB: real 0.1.1 package built and verified with `dpkg-deb` inside an x86_64-compatible
-  Linux environment; package is unsigned.
+- GitHub Actions `ci` and `installers`: **green on macOS, Windows and Linux**.
+- `v0.1.2` prerelease published with DMG, PKG, NSIS setup, DEB, all portable archives and
+  SHA-256 sidecars.
+- macOS DMG/PKG and Linux DEB were also built and verified on real local hosts; packages are
+  unsigned.
 - Windows NSIS: driver tested with PowerShell 7 and NSIS 3 against a synthetic x86_64 PE
-  fixture; a real Windows-host install/launch/uninstall remains a CI/host gap.
-- The first hosted GitHub Actions run is pending after the workflow is pushed.
+  fixture, and CI built the real `Paint.Rust-0.1.2-windows-x86_64-setup.exe`; a real
+  Windows-host install/launch/uninstall remains a host gap.
 
 ## Known limitations
 
@@ -69,6 +70,7 @@ bash tools/installers/linux/build.sh 0.1.1 target/release/paint-ui dist-installe
 - No auto-update mechanism.
 - macOS installer is Apple-silicon-only (`arm64`).
 - Windows installer is x86_64 and requires NSIS 3.x to build.
+- Windows byte-for-byte release reproducibility is not asserted; macOS/Linux keep that gate.
 - Linux package has no MIME database trigger or desktop-cache trigger.
 - Windows install/launch/uninstall and SmartScreen/UAC behavior have not been verified on a
   real Windows host yet.

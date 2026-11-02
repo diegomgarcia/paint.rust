@@ -105,8 +105,8 @@ Unsigned development-preview installers are built by GitHub Actions:
 `main` pushes upload workflow artifacts; `v*` tags publish a prerelease with all installers,
 portable archives and SHA-256 sidecars. Nothing is code-signed or notarized yet.
 
-See [docs/INSTALLERS.md](docs/INSTALLERS.md) for the local build commands, CI behavior and
-current validation gaps.
+See [docs/INSTALLERS.md](docs/INSTALLERS.md) for local build commands and validation gaps.
+The latest artifacts are attached to the [v0.1.2 prerelease](https://github.com/diegomgarcia/paint.rust/releases/tag/v0.1.2).
 
 ## How should I use it?
 

@@ -18,11 +18,12 @@ This is a status summary, not a release announcement.
 | Canvas-only zoom shortcuts | **PASS** | UI regression test and live Cmd+Plus/Cmd+Minus check |
 | Windows native build/window gate | **NOT RUN** | No Windows gate in this checkout |
 | Linux native window/input gate | **NOT RUN** | No native Linux desktop gate in this checkout |
-| Hosted three-OS CI | **NOT CONFIGURED** | No git remote or CI workflow |
+| Hosted three-OS CI | **PASS** | GitHub Actions `ci` green on macOS, Windows and Linux at `61e35d5` |
+| Installer CI/CD | **PASS** | `installers` green; `v0.1.2` prerelease has DMG/PKG, NSIS and DEB assets |
 | Third-party notices | **INCOMPLETE** | Dependency notice curation is not complete |
 | Code signing / notarization | **NOT RUN** | No Developer ID identity or notary submission |
 | Installer / public binary | **NOT PRODUCED** | Preview builds from source only |
-| Public release | **BLOCKED** | Notices, signing/notarization, CI and platform gates remain |
+| Public release | **BLOCKED** | Notices, signing/notarization and real Windows-host validation remain |
 
 ## What is demonstrated
 
