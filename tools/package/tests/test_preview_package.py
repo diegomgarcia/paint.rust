@@ -100,8 +100,12 @@ class ArchiveDeterminismTests(DisposableFixtureMixin):
                 self.assertEqual(info.date_time, (2000, 1, 1, 0, 0, 0))
                 self.assertEqual(info.create_system, 3)
                 self.assertEqual(info.extra, b"")
-            self.assertEqual(archive.getinfo("paint-r-test/paint-ui").external_attr >> 16, 0o100755)
-            self.assertEqual(archive.getinfo("paint-r-test/docs/README.txt").external_attr >> 16, 0o100644)
+            if os.name != "nt":
+                self.assertEqual(archive.getinfo("paint-r-test/paint-ui").external_attr >> 16, 0o100755)
+                self.assertEqual(
+                    archive.getinfo("paint-r-test/docs/README.txt").external_attr >> 16,
+                    0o100644,
+                )
 
     def test_tar_gzip_is_byte_deterministic_and_normalizes_metadata(self) -> None:
         first = self.payload("first")
@@ -124,14 +128,16 @@ class ArchiveDeterminismTests(DisposableFixtureMixin):
                 self.assertEqual(member.mtime, EPOCH)
                 self.assertEqual((member.uid, member.gid), (0, 0))
                 self.assertEqual((member.uname, member.gname), ("", ""))
-            self.assertEqual(archive.getmember("paint-r-test/paint-ui").mode, 0o755)
-            self.assertEqual(archive.getmember("paint-r-test/docs/README.txt").mode, 0o644)
+            if os.name != "nt":
+                self.assertEqual(archive.getmember("paint-r-test/paint-ui").mode, 0o755)
+                self.assertEqual(archive.getmember("paint-r-test/docs/README.txt").mode, 0o644)
 
     def test_sha256_manifest_is_sorted_exact_and_excludes_itself(self) -> None:
         root = self.payload("manifest")
         manifest = package.write_sha256_manifest(root)
         files = sorted(
-            path for path in root.rglob("*") if path.is_file() and path.name != "SHA256SUMS.txt"
+            (path for path in root.rglob("*") if path.is_file() and path.name != "SHA256SUMS.txt"),
+            key=lambda path: path.relative_to(root).as_posix(),
         )
         expected = "".join(
             f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.relative_to(root).as_posix()}\n"
@@ -1621,6 +1627,7 @@ class BinaryArchitectureTests(DisposableFixtureMixin):
 
 
 class PlatformLayoutTests(DisposableFixtureMixin):
+    @unittest.skipIf(os.name == "nt", "POSIX executable mode is not meaningful on Windows")
     def test_macos_layout_is_an_app_zip_payload(self) -> None:
         binary = self.root / "paint-ui"
         binary.write_bytes(b"disposable layout fixture")
@@ -1731,6 +1738,10 @@ class SmokeEvidenceValidationTests(DisposableFixtureMixin):
             self.normalize(report)
 
 
+@unittest.skipIf(
+    os.name == "nt",
+    "Linux tar.gz package mode checks are not meaningful on Windows; the Windows product path uses ZIP",
+)
 class PackageReleaseIntegrationTests(DisposableFixtureMixin):
     """Exercise packaging end to end with disposable external-command doubles.
 
