@@ -103,7 +103,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
             '--output-dir ci-dist',
             '--repeat 2',
             '--distribution internal-preview',
-            '--cargo-command bash ./tools/cargo-pinned.sh',
+            '--cargo-command rustup run 1.95.0 cargo',
         ):
             self.assertIn(fragment, self.ci)
         self.assertNotIn("actions/upload-artifact@", self.ci)

@@ -365,7 +365,7 @@ class InstallersWorkflowTests(unittest.TestCase):
             "--repeat 2",
             "--timeout 30",
             "--distribution internal-preview",
-            "--cargo-command bash ./tools/cargo-pinned.sh",
+            "--cargo-command rustup run 1.95.0 cargo",
         ):
             self.assertIn(fragment, run)
         self.assertEqual(step["env"]["BINARY"], "${{ matrix.binary }}")
