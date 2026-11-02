@@ -4,6 +4,8 @@ A fast, modular image editor written in Rust, inspired by Paint.NET's direct, to
 
 ![Paint.Rust editor preview](docs/images/paint-rust-preview.png)
 
+[![CI](https://github.com/diegomgarcia/paint.rust/actions/workflows/ci.yml/badge.svg)](https://github.com/diegomgarcia/paint.rust/actions/workflows/ci.yml)
+[![Installers](https://github.com/diegomgarcia/paint.rust/actions/workflows/installers.yml/badge.svg)](https://github.com/diegomgarcia/paint.rust/actions/workflows/installers.yml)
 ![Rust](https://img.shields.io/badge/Rust-1.95-orange?logo=rust)
 ![Version](https://img.shields.io/badge/version-0.1.1-blue)
 ![Status](https://img.shields.io/badge/status-development%20preview-yellow)
@@ -41,7 +43,8 @@ The main goals are:
 - Native macOS keyboard, focus, dirty-close and screenshot gate passing.
 - macOS Apple Silicon is the only platform currently covered by the native window/input gate.
   Windows and Linux build paths are intended, but are not yet release-gated.
-- No hosted CI, installer, notarized binary or packaged distribution yet.
+- GitHub Actions CI/CD builds unsigned installers on every `main` push and publishes them as a
+  prerelease on `v*` tags. Signed/notarized distribution is not configured yet.
 
 ## Features
 
@@ -88,6 +91,22 @@ The main goals are:
 
 PDR is the recommended format to continue work later; it preserves the History panel stacks
 and the exact document state. The flat formats intentionally flatten the composition.
+
+## Installers
+
+Unsigned development-preview installers are built by GitHub Actions:
+
+| Platform | Installer | Portable |
+|---|---|---|
+| macOS Apple silicon | DMG + PKG | ZIP |
+| Windows x86_64 | NSIS setup EXE | ZIP |
+| Linux x86_64 | DEB | tar.gz |
+
+`main` pushes upload workflow artifacts; `v*` tags publish a prerelease with all installers,
+portable archives and SHA-256 sidecars. Nothing is code-signed or notarized yet.
+
+See [docs/INSTALLERS.md](docs/INSTALLERS.md) for the local build commands, CI behavior and
+current validation gaps.
 
 ## How should I use it?
 

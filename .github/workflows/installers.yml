@@ -65,6 +65,8 @@ jobs:
           python-version: "3.12"
       - name: Static installer workflow policy tests
         run: python3 -m unittest discover -s tools/installers/tests -p 'test_workflow.py' -v
+      - name: Installer builder unit and integration tests
+        run: python3 -m unittest discover -s tools/installers/tests -p 'test_*.py' -v
       - name: Install Linux native libraries for eframe and wgpu
         if: matrix.platform == 'linux-x86_64'
         run: |
